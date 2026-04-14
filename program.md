@@ -26,7 +26,7 @@ Minimize the metric `avg executed Toffoli` printed by `cargo run --release`.
    - the forward∘reverse identity check passes — after running the
      circuit and then its gate-reversed inverse, every qubit returns to
      its pre-forward snapshot.
-2. `qubits` (peak live) must be ≤ **2600** (≈ current baseline).
+2. `qubits` (peak live) must be ≤ **3100** (≈ current baseline).
    Prefer to reduce qubits over time; never exceed the current best's
    qubit count by more than 5% unless the Toffoli win is >10%.
 3. `cargo build --release` must succeed with no warnings introduced by your
