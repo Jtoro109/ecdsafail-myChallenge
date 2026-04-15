@@ -1088,12 +1088,26 @@ fn kaliski_iteration(
     // ─── STEP 7: r := 2*r (shift left by 1 in (n+1) bits) ───
     shift_left_1(b, r);
 
-    // ─── STEP 8: if r > p: r -= p; uncompute `larger` via cx(r[0], larger) ───
-    let larger = b.alloc_qubit();
-    cmp_gt_const_n1(b, r, p, larger);
-    csub_nbit_const(b, r, p, larger);
-    b.cx(r[0], larger);
-    b.assert_zero_and_free(larger);
+    // ─── STEP 8: if r ≥ p: r -= p (Solinas fold). r is even after shift_left
+    //   and p is odd, so `r = p` never occurs and `r ≥ p` ≡ `r > p`. Cheaper
+    //   than the prior cmp_gt_const_n1 + csub_nbit_const(p) pair.
+    {
+        let n1 = r.len();
+        let c = U256::MAX.wrapping_sub(p).wrapping_add(U256::from(1));
+        // r' = r + c (fits in n+1 bits since r < 2p and c = 2^n - p).
+        add_nbit_const(b, r, c);
+        let flag = b.alloc_qubit();
+        b.cx(r[n1 - 1], flag);   // flag := top bit of r' = (r ≥ p)
+        // If flag=0: undo the add of c (we don't reduce).
+        b.x(flag);
+        csub_nbit_const(b, r, c, flag);
+        b.x(flag);
+        // If flag=1: clear top bit, giving r + c - 2^n = r - p.
+        b.cx(flag, r[n1 - 1]);
+        // Uncompute flag via parity (r was even pre-step; r-p odd if reduced).
+        b.cx(r[0], flag);
+        b.assert_zero_and_free(flag);
+    }
 
     // ─── STEP 9: with control(a): swap(u, v_w); swap(r, s) (again) ───
     for j in 0..n { cswap(b, a_f, u[j], v_w[j]); }
