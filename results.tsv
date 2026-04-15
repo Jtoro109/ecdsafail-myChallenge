@@ -8,3 +8,4 @@ timestamp	commit	toffoli	clifford	qubits	ops	correct	notes
 1776220432	740020e	48963274.000	95340235.250	3339	180571939	OK	move k_const correction out of Bennett
 1776220725	8deb885	45834122.000	83605971.344	3339	159697739	OK	Solinas mod_double (2 adds not 3)
 1776220828	a86f208	44777066.000	80323119.406	3339	152490518	OK	Solinas mod_add_qq
+1776220976	5aa67b7	42906674.000	75971465.828	3339	146281030	OK	k_const correction via 2n halvings
