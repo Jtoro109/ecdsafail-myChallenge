@@ -412,16 +412,9 @@ fn mod_add_qb(b: &mut Builder, acc: &[QubitId], bits: &[BitId], p: U256) {
 }
 
 fn mod_sub_qb(b: &mut Builder, acc: &[QubitId], bits: &[BitId], p: U256) {
-    // acc := (acc - bits) mod p
-    //     = (acc + (p - bits)) mod p
-    // Implement as load → neg → add → uneg → unload.
-    let n = acc.len();
-    let a = load_bits(b, bits);
-    mod_neg_inplace(b, &a, p);
-    mod_add_qq(b, acc, &a, p);
-    mod_neg_inplace(b, &a, p);
-    unload_bits(b, &a, bits);
-    let _ = n;
+    // Gate-inverse of mod_add_qb, by the same bijection argument as mod_sub_qq.
+    let bits_copy: Vec<BitId> = bits.to_vec();
+    emit_inverse(b, move |b| mod_add_qb(b, acc, &bits_copy, p));
 }
 
 /// `v := (p - v) mod p`. Operates on an n-bit register in [0, p).
