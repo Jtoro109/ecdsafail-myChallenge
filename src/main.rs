@@ -22,7 +22,7 @@ mod point_add;
 
 use alloy_primitives::U256;
 use builder::{Builder, Layout};
-use circuit::{Op, OperationType, QubitOrBit, analyze_ops};
+use circuit::{Op, QubitOrBit, analyze_ops};
 use sha3::{digest::{ExtendableOutput, Update, XofReader}, Shake256};
 use sim::Simulator;
 use std::fs::OpenOptions;
@@ -48,70 +48,38 @@ fn secp256k1() -> WeierstrassEllipticCurve {
 
 const NUM_TESTS: usize = 64;
 
-/// Build the inverse op list for a forward-then-reverse reversibility check.
+/// Hash the circuit's op stream into the seed XOF (Fiat-Shamir).
 ///
-/// All Clifford+Toffoli gates used by our circuit (X, Z, CX, CZ, CCX, CCZ,
-/// Swap) are self-inverse, so reversing just means reversing the op order.
-/// Metadata ops (Register / AppendToRegister / DebugPrint) are skipped.
-/// `R` is treated as an assertion (identity on zero qubits) and also
-/// skipped — `strict_apply` already enforces its precondition on the
-/// forward pass.
-/// `PushCondition` and `PopCondition` are mirrored (push↔pop) so a
-/// conditional block in the forward pass is still scoped correctly in
-/// the reverse pass — not used by current point_add.rs, but kept for
-/// future correctness.
-/// `Hmr`, `BitInvert`, `BitStore0`, `BitStore1`, `Neg` are errors: they
-/// are either non-reversible or should not appear in a reversible
-/// circuit; panic to fail loud.
-fn invert_ops(ops: &[Op]) -> Vec<Op> {
-    let mut out = Vec::with_capacity(ops.len());
-    for op in ops.iter().rev() {
-        match op.kind {
-            OperationType::X
-            | OperationType::Z
-            | OperationType::CX
-            | OperationType::CZ
-            | OperationType::CCX
-            | OperationType::CCZ
-            | OperationType::Swap => out.push(*op),
-            OperationType::PushCondition => {
-                let mut o = *op;
-                o.kind = OperationType::PopCondition;
-                out.push(o);
-            }
-            OperationType::PopCondition => {
-                let mut o = *op;
-                o.kind = OperationType::PushCondition;
-                out.push(o);
-            }
-            OperationType::R
-            | OperationType::Register
-            | OperationType::AppendToRegister
-            | OperationType::DebugPrint => {
-                // skip: assertions and metadata
-            }
-            OperationType::Hmr
-            | OperationType::BitInvert
-            | OperationType::BitStore0
-            | OperationType::BitStore1
-            | OperationType::Neg => {
-                panic!(
-                    "invert_ops: op kind {:?} is not allowed in a reversible circuit",
-                    op.kind
-                );
-            }
-        }
+/// Mirrors upstream zenodo's protocol: test inputs are derived from
+/// `Shake256(circuit_bytes)`, which makes them deterministic per circuit
+/// and impossible to "tune" the circuit against. We don't have rkyv-
+/// archived bytes handy here, so we feed each `Op`'s fields into the
+/// hasher directly. Any two distinct op streams produce distinct seeds
+/// (we hash the count + every field of every op).
+fn fiat_shamir_seed(ops: &[Op]) -> sha3::Shake256Reader {
+    let mut hasher = Shake256::default();
+    hasher.update(b"quantum_ecc-fiat-shamir-v1");
+    hasher.update(&(ops.len() as u64).to_le_bytes());
+    for op in ops {
+        hasher.update(&[op.kind as u8]);
+        hasher.update(&op.q_control2.0.to_le_bytes());
+        hasher.update(&op.q_control1.0.to_le_bytes());
+        hasher.update(&op.q_target.0.to_le_bytes());
+        hasher.update(&op.c_target.0.to_le_bytes());
+        hasher.update(&op.c_condition.0.to_le_bytes());
+        hasher.update(&op.r_target.0.to_le_bytes());
     }
-    out
+    hasher.finalize_xof()
 }
 
 fn run_tests(ops: &[Op], layout_regs: &[Vec<QubitOrBit>], total_qubits: u32, num_bits: u32)
     -> (bool, f64, f64, u64, u64, usize, Option<String>)
 {
     let curve = secp256k1();
-    let mut hasher = Shake256::default();
-    hasher.update(b"quantum_ecc-baseline-seed-v1");
-    let mut xof = hasher.finalize_xof();
+    // Fiat-Shamir: a single XOF seeded from the circuit op stream feeds
+    // both test-input generation AND the simulator's RNG, exactly as
+    // upstream zenodo's program does.
+    let mut xof = fiat_shamir_seed(ops);
 
     // Generate random target/offset points as k*G.
     let mut targets = Vec::with_capacity(NUM_TESTS);
@@ -136,23 +104,20 @@ fn run_tests(ops: &[Op], layout_regs: &[Vec<QubitOrBit>], total_qubits: u32, num
     }
     let n = targets.len();
 
-    let mut rng_hasher = Shake256::default();
-    rng_hasher.update(b"quantum_ecc-sim-rng-v1");
-    let mut rng = rng_hasher.finalize_xof();
-
-    let mut sim = Simulator::new(total_qubits as usize, num_bits as usize, &mut rng);
+    let mut sim = Simulator::new(total_qubits as usize, num_bits as usize, &mut xof);
     let mut ok = true;
     let mut fail_reason: Option<String> = None;
 
     let mut got = vec![(U256::ZERO, U256::ZERO); n];
 
-    // Precompute inverse circuit for the reversibility identity test.
-    let inv_ops = invert_ops(ops);
-
     const BATCH: usize = 64;
     let num_batches = (n + BATCH - 1) / BATCH;
     for batch in 0..num_batches {
         let bs = BATCH.min(n - batch * BATCH);
+        // `cond_mask`: bit i is 1 iff shot i is "live" in this batch.
+        // Used for the phase + end-state garbage checks below.
+        let cond_mask: u64 = if bs == 64 { u64::MAX } else { (1u64 << bs) - 1 };
+
         sim.clear_for_shot();
         for shot in 0..bs {
             let i = batch * BATCH + shot;
@@ -162,19 +127,15 @@ fn run_tests(ops: &[Op], layout_regs: &[Vec<QubitOrBit>], total_qubits: u32, num
             sim.set_register(&layout_regs[3], offsets[i].1, shot);
         }
 
-        // Snapshot every qubit state before the forward pass so we can
-        // verify forward∘reverse = identity at the end.
-        let snapshot: Vec<u64> = (0..total_qubits)
-            .map(|q| sim.qubit(circuit::QubitId(q)))
-            .collect();
-
-        // Forward pass. `sim.apply` enforces the R-as-assertion contract
-        // internally (modified `sim.rs`), so a dirty ancilla free is caught
-        // here as an Err.
+        // ─── Forward pass ────────────────────────────────────────────────
+        // `sim.apply` enforces the R-as-assertion contract internally
+        // (modified `sim.rs`), so a dirty ancilla free is caught here.
         if let Err(e) = sim.apply(ops) {
             eprintln!("\n!! {e}");
             return (false, 0.0, 0.0, 0, 0, n, Some(e));
         }
+
+        // ─── Correctness check ──────────────────────────────────────────
         for shot in 0..bs {
             let i = batch * BATCH + shot;
             let gx = sim.get_register(&layout_regs[0], shot);
@@ -190,33 +151,55 @@ fn run_tests(ops: &[Op], layout_regs: &[Vec<QubitOrBit>], total_qubits: u32, num
                 ok = false;
             }
         }
+        if !ok { break; }
 
-        // Reversibility identity check: apply the inverse op list and
-        // verify every qubit returns to its pre-forward snapshot. This
-        // catches any form of information loss (dirty R, bad uncompute,
-        // missing inverse, etc.) regardless of whether the forward
-        // result happened to look right.
-        if let Err(e) = sim.apply(&inv_ops) {
-            eprintln!("\n!! reverse pass: {e}");
-            if fail_reason.is_none() { fail_reason = Some(e); }
+        // ─── Phase garbage check ────────────────────────────────────────
+        // Upstream zenodo's protocol: after forward, the global phase must
+        // be 0 across all live shots. Catches misuses of phase-flipping
+        // gates (Z/CZ/CCZ) or bad Hmr uncomputation.
+        let phase = sim.global_phase() & cond_mask;
+        if phase != 0 {
+            let msg = format!(
+                "PHASE GARBAGE: global_phase = {:#018x} across {} live shots (must be 0)",
+                phase, bs
+            );
+            eprintln!("\n!! {msg}");
+            fail_reason = Some(msg);
             ok = false;
             break;
         }
+
+        // ─── End-state ancillary garbage check ──────────────────────────
+        // Upstream zenodo's reversibility contract: at end of forward, every
+        // qubit OUTSIDE the declared output registers must be |0⟩ on every
+        // live shot. We zero the register qubits first, then sweep.
+        for register in layout_regs {
+            for qb in register {
+                if let QubitOrBit::Qubit(q) = *qb {
+                    *sim.qubit_mut(q) = 0;
+                }
+            }
+        }
+        let mut garbage_q: Option<u32> = None;
         for q in 0..total_qubits {
-            let before = snapshot[q as usize];
-            let after = sim.qubit(circuit::QubitId(q));
-            if before != after {
-                let msg = format!(
-                    "REVERSIBILITY FAILURE: qubit {} differs after forward∘reverse: before {:#018x} after {:#018x}",
-                    q, before, after
-                );
-                eprintln!("\n!! {msg}");
-                if fail_reason.is_none() { fail_reason = Some(msg); }
-                ok = false;
+            let v = sim.qubit(circuit::QubitId(q)) & cond_mask;
+            if v != 0 {
+                garbage_q = Some(q);
                 break;
             }
         }
-        if !ok { break; }
+        if let Some(q) = garbage_q {
+            let v = sim.qubit(circuit::QubitId(q)) & cond_mask;
+            let msg = format!(
+                "ANCILLA GARBAGE: qubit {} = {:#018x} (live shots) at end of forward; \
+                 every non-register qubit must be |0⟩ on every live shot",
+                q, v
+            );
+            eprintln!("\n!! {msg}");
+            fail_reason = Some(msg);
+            ok = false;
+            break;
+        }
     }
 
     println!("  test points:");

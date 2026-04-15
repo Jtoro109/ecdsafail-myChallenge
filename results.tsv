@@ -28,3 +28,4 @@ timestamp	commit	toffoli	clifford	qubits	ops	correct	notes
 1776215207	4cbe91f	202568324.000	399088633.000	3595	383933667	OK	full kaliski+bennett after mod_double fix
 1776216094	643550f	202568324.000	399088633.000	3595	383933667	OK	sim.rs: R as hard assertion
 1776216326	643550f	202568324.000	399088633.000	3595	383933667	OK	sim R: assert before original semantics
+1776217965	1447f8b	101284162.000	211257273.000	3595	383933667	OK	upstream-style checks: phase + end-state garbage + Fiat-Shamir
