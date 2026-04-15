@@ -1523,17 +1523,17 @@ pub fn build(b: &mut Builder) -> Layout {
     }
     mod_sub_qb(b, &ty, &oy, p);
 
-    // Uncompute lam using λ = (Qy + Ry) / (Qx - Rx).
-    mod_sub_qb(b, &tx, &ox, p);
-    mod_neg_inplace(b, &tx, p);                   // tx = Qx - Rx
-    // Pair 2: lam -= inv * (Ry + Qy). Mutate ty in place instead of
-    // allocating a sum_y scratch — saves 256 peak qubits.
+    // Uncompute lam. Use (Rx - Qx) as kaliski input (instead of Qx - Rx)
+    // to avoid two mod_neg_inplace calls. The kaliski inverse of (Rx - Qx)
+    // is -(Qx - Rx)^{-1} mod p, so the body's mul_sub becomes a mul_add to
+    // keep the sign convention: lam += (Rx-Qx)^{-1} · (Ry + Qy) zeros lam
+    // because λ = (Ry+Qy)/(Qx-Rx) = -(Ry+Qy)/(Rx-Qx) = -inv·(Ry+Qy).
+    mod_sub_qb(b, &tx, &ox, p);                   // tx = Rx - Qx
     with_kal_inv(b, &tx, p, |b, inv| {
         mod_add_qb(b, &ty, &oy, p);                   // ty = Ry + Qy
-        mod_mul_sub_qq(b, &lam, inv, &ty, p);         // lam -= inv·(Ry + Qy)
+        mod_mul_add_qq(b, &lam, inv, &ty, p);         // lam += inv·(Ry + Qy) = -λ → lam = 0
         mod_sub_qb(b, &ty, &oy, p);                   // ty = Ry
     });
-    mod_neg_inplace(b, &tx, p);                   // tx = -(Qx-Rx) = Rx - Qx
     mod_add_qb(b, &tx, &ox, p);                   // tx = Rx
 
     b.assert_zero_and_free_vec(&lam);
