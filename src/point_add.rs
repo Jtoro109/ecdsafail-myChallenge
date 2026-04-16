@@ -512,6 +512,24 @@ fn mod_sub_qq(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
     emit_inverse(b, move |b| mod_add_qq(b, acc, &a_copy, p));
 }
 
+/// Fast `acc := (acc - a) mod p` using mod_neg + mod_add_qq_fast + mod_neg.
+/// Relies on EC precondition a ≠ 0 (mod_neg_inplace is non-canonical for 0).
+fn mod_sub_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
+    // a → (p - a), acc += (p - a) = acc - a mod p, a → a_orig.
+    mod_neg_inplace_fast(b, a, p);
+    mod_add_qq_fast(b, acc, a, p);
+    mod_neg_inplace_fast(b, a, p);
+}
+
+/// Fast mod_neg using measurement-based Cuccaro for the addition.
+fn mod_neg_inplace_fast(b: &mut B, v: &[QubitId], p: U256) {
+    for &q in v { b.x(q); }
+    let n = v.len();
+    let ca = load_const(b, n, p.wrapping_add(U256::from(1)));
+    add_nbit_qq_fast(b, &ca, v);
+    unload_const(b, &ca, p.wrapping_add(U256::from(1)));
+}
+
 fn mod_add_qc(b: &mut B, acc: &[QubitId], c: U256, p: U256) {
     // acc := (acc + c) mod p. c is a compile-time constant.
     let n = acc.len();
@@ -539,9 +557,10 @@ fn mod_add_qb(b: &mut B, acc: &[QubitId], bits: &[BitId], p: U256) {
 }
 
 fn mod_sub_qb(b: &mut B, acc: &[QubitId], bits: &[BitId], p: U256) {
-    // Gate-inverse of mod_add_qb, by the same bijection argument as mod_sub_qq.
-    let bits_copy: Vec<BitId> = bits.to_vec();
-    emit_inverse(b, move |b| mod_add_qb(b, acc, &bits_copy, p));
+    // acc -= bits mod p. Uses fast mod_sub_qq via neg+add+neg.
+    let a = load_bits(b, bits);
+    mod_sub_qq_fast(b, acc, &a, p);
+    unload_bits(b, &a, bits);
 }
 
 /// `v := (p - v) mod p`. Operates on an n-bit register in [0, p).
@@ -954,7 +973,7 @@ fn cmod_sub_qq(b: &mut B, acc: &[QubitId], a: &[QubitId], ctrl: QubitId, p: U256
     for i in 0..n {
         b.ccx(ctrl, a[i], f[i]);
     }
-    mod_sub_qq(b, acc, &f, p);
+    mod_sub_qq_fast(b, acc, &f, p);
     for i in 0..n {
         let m = b.alloc_bit();
         b.hmr(f[i], m);
@@ -982,7 +1001,7 @@ fn cmod_sub_qq_bit(b: &mut B, acc: &[QubitId], a: &[QubitId], ctrl: BitId, p: U2
     for i in 0..n {
         b.cx_if(a[i], f[i], ctrl);
     }
-    mod_sub_qq(b, acc, &f, p);
+    mod_sub_qq_fast(b, acc, &f, p);
     for i in 0..n {
         b.cx_if(a[i], f[i], ctrl);
     }
@@ -1697,7 +1716,7 @@ fn mul_by_const_acc(
     for i in 0..=top {
         if bit(c, i) {
             if subtract {
-                mod_sub_qq(b, acc, &tmp, p);
+                mod_sub_qq_fast(b, acc, &tmp, p);
             } else {
                 mod_add_qq_fast(b, acc, &tmp, p);
             }
@@ -2180,7 +2199,7 @@ pub fn build() -> Vec<Op> {
     {
         let dxr = b.alloc_qubits(N);
         for i in 0..N { b.x_if(dxr[i], ox[i]); }     // dxr = Qx
-        mod_sub_qq(b, &dxr, &tx, p);                  // dxr = Qx − Rx
+        mod_sub_qq_fast(b, &dxr, &tx, p);              // dxr = Qx − Rx
         mod_mul_add_qq(b, &ty, &lam, &dxr, p);        // ty += λ·(Qx − Rx)
         mod_add_qq_fast(b, &dxr, &tx, p);              // dxr += Rx → Qx
         for i in 0..N { b.x_if(dxr[i], ox[i]); }     // dxr = 0
