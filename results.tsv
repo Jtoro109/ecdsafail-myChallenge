@@ -99,3 +99,4 @@ timestamp	commit	toffoli	clifford	qubits	ops	correct	notes
 1776371697	e6efd4c	8584680.000	47424267.609	3080	65714622	OK	session kickoff baseline check
 1776372822	e6efd4c	8519655.000	46735274.000	3080	64928199	FAIL	mod_mul_sub_qq via neg+Horner-add+neg | CLASSICAL MISMATCH shot 0: got (0xa5ad297bd370ee1c0d116cdf81188ee0ca2137d0c4e6fa38ce89908b40ca9f10,0xd83baab3742002ef4882801cfaef0e487ad593210fb42a9ff8cf4cd63f7d1068) exp (0x3b92bc960845580e02fccd0de29c9dc99945093c2a06dd870c43de5fb58d31cc,0x21b26f979969204a38cef94058409033fefcf20d9150401290bf17f6afca06b7)
 1776374648	e6efd4c	8583660.000	47414401.703	3080	65700386	OK	drop 4 negs around pair1 unadd, inline loop
+1776375382	0340f24	8580847.000	47388317.734	3080	65666317	OK	fold dxr block into tx, drop inner negs in pair2 unadd

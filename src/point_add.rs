@@ -2325,31 +2325,26 @@ pub fn build() -> Vec<Op> {
     mod_add_double_qb(b, &tx, &ox, p);
     mod_neg_inplace_fast(b, &tx, p);
 
-    // With lam = -λ, this multiply produces ty = -(Ry + Qy).
-    {
-        let dxr = b.alloc_qubits(N);
-        for i in 0..N { b.x_if(dxr[i], ox[i]); }     // dxr = Qx
-        mod_sub_qq_fast(b, &dxr, &tx, p);              // dxr = Qx − Rx
-        mod_mul_horner_add_qq(b, &ty, &lam, &dxr, p);  // ty += (-λ)·(Qx − Rx) = -(Ry + Qy)
-        mod_add_qq_fast(b, &dxr, &tx, p);              // dxr += Rx → Qx
-        for i in 0..N { b.x_if(dxr[i], ox[i]); }     // dxr = 0
-        b.free_vec(&dxr);
-    }
-    // Pair 2 uses ty = -(Ry+Qy), which matches the negative lam convention.
-    //
-    // Uncompute lam. Use (Rx - Qx) as kaliski input; inv = -(Rx-Qx)^{-1}
-    // = (Qx-Rx)^{-1}, so inv·ty = -λ and the same `mod_mul_sub_qq` zeroes lam.
-    mod_sub_qb(b, &tx, &ox, p);                   // tx = Rx - Qx
+    // Fold the dxr block into tx itself. Sub Qx from tx (= Rx - Qx) and use
+    // it directly as the multiplier; ty receives +(Ry+Qy) instead of the
+    // previous -(Ry+Qy). This eliminates the dxr ancilla register, drops
+    // mod_sub_qq_fast(dxr,tx) + mod_add_qq_fast(dxr,tx) (~9n CCX), and
+    // sets up tx = Rx - Qx as the kaliski input in one shot.
+    mod_sub_qb(b, &tx, &ox, p);                          // tx = Rx - Qx
+    mod_mul_horner_add_qq(b, &ty, &lam, &tx, p);          // ty += (-λ)·(Rx - Qx) = +(Ry + Qy)
     with_kal_inv_raw(b, &tx, p, |b, inv_raw| {
         // Scale lam up to match Kaliski's raw 2^(2N-1)-scaled inverse.
-        // The product then zeroes lam directly, so no down-scaling restore
-        // is needed afterward.
         for _ in 0..(2 * N - 1) { mod_double_inplace_fast(b, &lam, p); }
-        mod_mul_horner_unadd_qq(b, &lam, inv_raw, &ty, p);
-        mod_add_qb(b, &ty, &oy, p);                   // ty = -Ry
-        mod_neg_inplace_fast(b, &ty, p);              // ty = Ry
+        // Inline no-neg unadd: with ty in flipped sign convention, cmod_add
+        // of inv_raw (without internal negation) zeroes lam. End lam =
+        // (-λ·2^(2N-1) + inv_raw·ty)/2^(n-1) = 2^N·(-λ + (Ry+Qy)/(Qx-Rx)) = 0.
+        for i in 0..N {
+            cmod_add_qq(b, &lam, inv_raw, ty[i], p);
+            if i < N - 1 { mod_halve_inplace_fast(b, &lam, p); }
+        }
+        mod_sub_qb(b, &ty, &oy, p);                      // ty = (Ry+Qy) - Qy = Ry
     });
-    mod_add_qb(b, &tx, &ox, p);                   // tx = Rx
+    mod_add_qb(b, &tx, &ox, p);                           // tx = Rx
 
     b.free_vec(&lam);
 
