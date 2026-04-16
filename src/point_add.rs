@@ -549,10 +549,8 @@ fn mod_sub_qc(b: &mut B, acc: &[QubitId], c: U256, p: U256) {
 
 fn mod_add_qb(b: &mut B, acc: &[QubitId], bits: &[BitId], p: U256) {
     // acc := (acc + bits) mod p. `bits` is a classical bit register.
-    // Uses original mod_add_qq (not _fast) because mod_sub_qb calls
-    // emit_inverse(mod_add_qb).
     let a = load_bits(b, bits);
-    mod_add_qq(b, acc, &a, p);
+    mod_add_qq_fast(b, acc, &a, p);
     unload_bits(b, &a, bits);
 }
 
@@ -2190,7 +2188,7 @@ pub fn build() -> Vec<Op> {
 
     // Px := λ² - Px_orig - Qx
     mod_mul_sub_qq(b, &tx, &lam, &lam, p);
-    mod_neg_inplace(b, &tx, p);
+    mod_neg_inplace_fast(b, &tx, p);
     mod_sub_qb(b, &tx, &ox, p);
     mod_sub_qb(b, &tx, &ox, p);
 
