@@ -847,9 +847,9 @@ fn cmod_halve_inplace(b: &mut B, v: &[QubitId], p: U256, ctrl: QubitId) {
 }
 
 /// Run `body` with `flag` holding (u < v), then uncompute the flag and
-/// restore u, v. Fuses the compute+use+uncompute pattern: a single
-/// forward MAJ sweep + body + single inverse sweep, instead of two full
-/// `cmp_lt_into` calls. Cost ≈ 2n CCX + body.
+/// restore u, v. Uses carry-ancilla + measurement-based uncomputation
+/// for the inv_MAJ sweep (0 Toffoli instead of n CCX).
+/// Cost ≈ n CCX (forward MAJ) + body + 0 CCX (measurement inv_MAJ).
 fn with_lt<F: FnOnce(&mut B)>(
     b: &mut B,
     u: &[QubitId],
@@ -860,19 +860,48 @@ fn with_lt<F: FnOnce(&mut B)>(
     let n = u.len();
     assert_eq!(n, v.len());
     let c_in = b.alloc_qubit();
+    let carries = b.alloc_qubits(n);
     for i in 0..n { b.x(u[i]); }
-    maj(b, c_in, v[0], u[0]);
+
+    // Forward MAJ sweep with separate carry ancillae.
+    // maj_with_carry: CX(w,y); CX(w,x); CCX(x_new,y_new,carry); CX(carry,w)
+    // Step 0: (x=c_in, y=v[0], w=u[0])
+    b.cx(u[0], v[0]);
+    b.cx(u[0], c_in);
+    b.ccx(c_in, v[0], carries[0]);
+    b.cx(carries[0], u[0]);
+    // Steps 1..n-1: (x=u[i-1], y=v[i], w=u[i])
     for i in 1..n {
-        maj(b, u[i - 1], v[i], u[i]);
+        b.cx(u[i], v[i]);
+        b.cx(u[i], u[i - 1]);
+        b.ccx(u[i - 1], v[i], carries[i]);
+        b.cx(carries[i], u[i]);
     }
+
     b.cx(u[n - 1], flag);
     body(b);
     b.cx(u[n - 1], flag);
+
+    // Backward inv_MAJ sweep with measurement-based carry uncompute (0 Toffoli).
+    // inv_maj_with_carry: CX(carry,w); HMR+CZ(carry,x,y); CX(w,x); CX(w,y)
     for i in (1..n).rev() {
-        inv_maj(b, u[i - 1], v[i], u[i]);
+        b.cx(carries[i], u[i]);             // restore w = u[i]
+        let m = b.alloc_bit();
+        b.hmr(carries[i], m);               // measure carry
+        b.cz_if(u[i - 1], v[i], m);         // phase correction
+        b.cx(u[i], u[i - 1]);               // restore x = u[i-1]
+        b.cx(u[i], v[i]);                   // restore y = v[i]
     }
-    inv_maj(b, c_in, v[0], u[0]);
+    // Step 0: (x=c_in, y=v[0], w=u[0])
+    b.cx(carries[0], u[0]);
+    let m0 = b.alloc_bit();
+    b.hmr(carries[0], m0);
+    b.cz_if(c_in, v[0], m0);
+    b.cx(u[0], c_in);
+    b.cx(u[0], v[0]);
+
     for i in 0..n { b.x(u[i]); }
+    b.free_vec(&carries);
     b.free(c_in);
 }
 
