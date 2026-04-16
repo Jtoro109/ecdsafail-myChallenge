@@ -1782,41 +1782,11 @@ fn kaliski_iteration(
     // At this point, if f=1 then v_w is even (low bit 0).
     c_shift_right_1(b, v_w, f);
 
-    // ─── STEP 7: r := 2*r (shift left by 1 in (n+1) bits) ───
-    shift_left_1(b, r);
-
-    // ─── STEP 8: if r ≥ p: r -= p (Solinas fold). r is even after shift_left
-    //   and p is odd, so `r = p` never occurs and `r ≥ p` ≡ `r > p`. Cheaper
-    //   than the prior cmp_gt_const_n1 + csub_nbit_const(p) pair.
-    {
-        let n1 = r.len();
-        let c = U256::MAX.wrapping_sub(p).wrapping_add(U256::from(1));
-        // r' = r + c (fits in n+1 bits since r < 2p and c = 2^n - p).
-        // Fast Cuccaro for add_nbit_const
-        {
-            let ca = load_const(b, n1, c);
-            add_nbit_qq_fast(b, &ca, r);
-            unload_const(b, &ca, c);
-        }
-        let flag = b.alloc_qubit();
-        b.cx(r[n1 - 1], flag);   // flag := top bit of r' = (r ≥ p)
-        // If flag=0: undo the add of c (we don't reduce).
-        b.x(flag);
-        // Fast Cuccaro for csub_nbit_const
-        {
-            let ca = b.alloc_qubits(n1);
-            for i in 0..n1 { if bit(c, i) { b.cx(flag, ca[i]); } }
-            sub_nbit_qq_fast(b, &ca, r);
-            for i in 0..n1 { if bit(c, i) { b.cx(flag, ca[i]); } }
-            b.free_vec(&ca);
-        }
-        b.x(flag);
-        // If flag=1: clear top bit, giving r + c - 2^n = r - p.
-        b.cx(flag, r[n1 - 1]);
-        // Uncompute flag via parity (r was even pre-step; r-p odd if reduced).
-        b.cx(r[0], flag);
-        b.free(flag);
-    }
+    // ─── STEP 7 + 8: r := 2*r mod p ───────────────────────────────────
+    // This is the same secp256k1 pseudo-Mersenne doubling we already use
+    // elsewhere. The high `r[n]` bit returns to 0 after reduction, so the
+    // low n bits carry the entire state.
+    mod_double_inplace_fast(b, &r[..n], p);
 
     // ─── STEP 9: with control(a): swap(u, v_w); swap(r, s) (again) ───
     for j in 0..n { cswap(b, a_f, u[j], v_w[j]); }
@@ -2068,34 +2038,9 @@ fn kaliski_iteration_backward(
     for j in (0..n1).rev() { cswap(b, a_f, r[j], s[j]); }
     for j in (0..n).rev() { cswap(b, a_f, u[j], v_w[j]); }
 
-    // ── Reverse STEP 8 (Solinas fold) with fast Cuccaro ────────────────
-    {
-        let c = U256::MAX.wrapping_sub(p).wrapping_add(U256::from(1));
-        let flag = b.alloc_qubit();
-        b.cx(r[0], flag);
-        b.cx(flag, r[n1 - 1]);
-        b.x(flag);
-        // cadd_nbit_const with fast Cuccaro
-        {
-            let ca = b.alloc_qubits(n1);
-            for i in 0..n1 { if bit(c, i) { b.cx(flag, ca[i]); } }
-            add_nbit_qq_fast(b, &ca, r);
-            for i in 0..n1 { if bit(c, i) { b.cx(flag, ca[i]); } }
-            b.free_vec(&ca);
-        }
-        b.x(flag);
-        b.cx(r[n1 - 1], flag);
-        b.free(flag);
-        // sub_nbit_const with fast Cuccaro
-        {
-            let ca = load_const(b, n1, c);
-            sub_nbit_qq_fast(b, &ca, r);
-            unload_const(b, &ca, c);
-        }
-    }
-
-    // ── Reverse STEP 7 ─────────────────────────────────────────────────
-    shift_right_1(b, r);
+    // ── Reverse STEP 8 + 7 ─────────────────────────────────────────────
+    // Inverse of the fast secp256k1 doubling used in the forward pass.
+    mod_halve_inplace_fast(b, &r[..n], p);
 
     // ── Reverse STEP 6 (conditional shift-right → shift-left) ───────────
     for i in (0..(n - 1)).rev() {
