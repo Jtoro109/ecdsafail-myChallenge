@@ -1177,16 +1177,17 @@ fn mod_mul_write_into_zero_acc_schoolbook(
     let hi: Vec<QubitId> = tmp_ext[n..2*n].to_vec();
     // First add: acc is known to be 0, so use the fast-from-zero variant.
     mod_add_qq_fast_from_zero(b, acc, &lo, p);
-    let max_set_bit: usize = 32;
-    for k in 0..=max_set_bit {
+    // Same shift-by-22 optimization as in mod_mul_add_into_acc_schoolbook.
+    for k in 0..=9 {
         if bit(c, k) {
             mod_add_qq_fast(b, acc, &hi, p);
         }
-        if k < max_set_bit {
-            mod_double_inplace_fast(b, &hi, p);
-        }
+        mod_double_inplace_fast(b, &hi, p);
     }
-    for _ in 0..max_set_bit {
+    let (spill, flag_inv, ovf) = mod_shift_left_by_k(b, &hi, p, 22);
+    mod_add_qq_fast(b, acc, &hi, p);
+    mod_shift_right_by_k(b, &hi, p, 22, spill, flag_inv, ovf);
+    for _ in 0..10 {
         mod_halve_inplace_fast(b, &hi, p);
     }
 
