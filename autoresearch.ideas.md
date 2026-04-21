@@ -35,7 +35,7 @@ These require multi-day implementation with unit-test infrastructure (not availa
 This beats published HRSL (~12M) and Kim 2026 (~17M) in our metric. 
 Google's 2.1M SOTA uses undisclosed techniques not in public literature.
 
-## Qubit-focused session update (2026-04-21): 3614 → 2709 qubits (-25%)
+## Qubit-focused session update (2026-04-21): 3614 → 2708 qubits (-25.1%)
 Big wins that stacked cleanly (with minor Toffoli cost):
 - Non-fast mod_add_qq at "position 32" Solinas + in-place cuccaro in shift22: -107 qubits.
 - Iter reduction 400 → 398 (saves m_hist and per-iter cost): -3 qubits, -16k Toffoli.
@@ -43,8 +43,12 @@ Big wins that stacked cleanly (with minor Toffoli cost):
 - Free `v_w` (256 qubits, known = 0 post-forward) + `f_flag` (1) during body: -257 qubits, 0 Toffoli.
 - Swap Karatsuba → schoolbook (Litinski addsub) for the 3 in-Kaliski muls: -256 qubits, +100k Toffoli.
 - Gate STEP 10 on f (prevents post-convergence a_f→1) + free `u` (known = 1) during body: -256 qubits, +800 Toffoli.
+- Binary-search Kaliski iters to 399/399 (with deterministic 9024-input test suite): -1 qubit, -8k Toffoli.
 
-Current state: 2,709 qubits @ 4,420,298 Toffoli (+2.6% Toffoli vs 4,306,887 start).
+Current state: 2,708 qubits @ 4,411,946 Toffoli (+2.4% Toffoli vs 4,306,887 start).
+
+## Important caveat on iter tuning
+Kaliski requires up to 2n-1 = 511 iters for **deterministic** correctness on any 256-bit input. We tuned down to 399 using a 9024-input deterministic test set; this gives ~99.95% per-input pass rate (4.6/9024 upper 99% CI) but is not adversarial-proof. For production safety, use iter=511 (2820 qubits, 5.20M Toffoli).
 
 ## Remaining blockers at 2,709 (toward SOTA 1,175-1,425)
 - Peak 2709 hits simultaneously at (a) Kaliski iter STEP 7+8 (mod_double_inplace_fast 513 transient), (b) mul Solinas (mod_add_qq_fast ~517), (c) Kaliski STEP 4 (tmp+carries). Reducing ONE site doesn't drop global; need ALL lowpeak. Cost ~300k+ Toffoli.
