@@ -940,6 +940,10 @@ fn mod_halve_no_corr(b: &mut B, v: &[QubitId]) {
 /// stay alive across the body so the inverse can cleanly cancel them.
 ///
 /// k must be small enough that spill·c < p. For k≤22 with secp256k1 this holds.
+fn lowq_shift22() -> bool {
+    std::env::var("LOWQ_SHIFT22").is_ok()
+}
+
 fn mod_shift_left_by_k(b: &mut B, v: &[QubitId], p: U256, k: usize) -> (Vec<QubitId>, QubitId, QubitId) {
     let n = v.len();
     debug_assert_eq!(n, 256);
@@ -967,10 +971,16 @@ fn mod_shift_left_by_k(b: &mut B, v: &[QubitId], p: U256, k: usize) -> (Vec<Qubi
         for i in 0..k.min(pad_width) { b.cx(spill[i], padded[i]); }
         let v_slice: Vec<QubitId> = v_ext[pos..n+1].to_vec();
         let c_in = b.alloc_qubit();
-        // Fast cuccaro: saves ~n CCX per op. Peak during this op (~514
-        // transient) is still below the mod_add_qq_fast peak (517) inside
-        // the enclosing Solinas, so no global peak increase.
-        if is_sub {
+        if lowq_shift22() {
+            if is_sub {
+                cuccaro_sub(b, &padded, &v_slice, c_in);
+            } else {
+                cuccaro_add(b, &padded, &v_slice, c_in);
+            }
+        } else if is_sub {
+            // Fast cuccaro: saves ~n CCX per op. Peak during this op (~514
+            // transient) is still below the mod_add_qq_fast peak (517) inside
+            // the enclosing Solinas, so no global peak increase.
             cuccaro_sub_fast(b, &padded, &v_slice, c_in);
         } else {
             cuccaro_add_fast(b, &padded, &v_slice, c_in);
@@ -990,16 +1000,24 @@ fn mod_shift_left_by_k(b: &mut B, v: &[QubitId], p: U256, k: usize) -> (Vec<Qubi
     b.set_phase("shift22_cuccaro_op_32");
     cuccaro_op(b, 32, false);
 
-    // Step 3: fast const add.
+    // Step 3: const add.
     b.set_phase("shift22_step3");
-    add_nbit_const_fast(b, &v_ext, c);
+    if lowq_shift22() {
+        add_nbit_const(b, &v_ext, c);
+    } else {
+        add_nbit_const_fast(b, &v_ext, c);
+    }
     b.x(ovf);
     b.cx(ovf, flag_inv); // flag_inv = NOT(top_bit_after_add) = (value < p)
     b.x(ovf);
 
-    // Step 4: fast conditional const sub.
+    // Step 4: conditional const sub.
     b.set_phase("shift22_step4");
-    csub_nbit_const_fast(b, &v_ext, c, flag_inv);
+    if lowq_shift22() {
+        csub_nbit_const(b, &v_ext, c, flag_inv);
+    } else {
+        csub_nbit_const_fast(b, &v_ext, c, flag_inv);
+    }
     b.x(flag_inv);
     b.cx(flag_inv, ovf);
     b.x(flag_inv);
@@ -1016,19 +1034,27 @@ fn mod_shift_right_by_k(b: &mut B, v: &[QubitId], p: U256, k: usize, spill: Vec<
     let mut v_ext = v.to_vec();
     v_ext.push(ovf);
 
-    // Reverse step 4. Fast variant.
+    // Reverse step 4.
     b.x(flag_inv);
     b.cx(flag_inv, ovf);
     b.x(flag_inv);
     b.set_phase("rshift22_rev_step4");
-    cadd_nbit_const_fast(b, &v_ext, c, flag_inv);
+    if lowq_shift22() {
+        cadd_nbit_const(b, &v_ext, c, flag_inv);
+    } else {
+        cadd_nbit_const_fast(b, &v_ext, c, flag_inv);
+    }
 
-    // Reverse step 3. Fast variant.
+    // Reverse step 3.
     b.x(ovf);
     b.cx(ovf, flag_inv);
     b.x(ovf);
     b.set_phase("rshift22_rev_step3");
-    sub_nbit_const_fast(b, &v_ext, c);
+    if lowq_shift22() {
+        sub_nbit_const(b, &v_ext, c);
+    } else {
+        sub_nbit_const_fast(b, &v_ext, c);
+    }
     b.free(flag_inv);
     b.set_phase("rshift22_rev_step2");
 
@@ -1039,7 +1065,13 @@ fn mod_shift_right_by_k(b: &mut B, v: &[QubitId], p: U256, k: usize, spill: Vec<
         for i in 0..k.min(pad_width) { b.cx(spill[i], padded[i]); }
         let v_slice: Vec<QubitId> = v_ext[pos..n+1].to_vec();
         let c_in = b.alloc_qubit();
-        if is_sub {
+        if lowq_shift22() {
+            if is_sub {
+                cuccaro_sub(b, &padded, &v_slice, c_in);
+            } else {
+                cuccaro_add(b, &padded, &v_slice, c_in);
+            }
+        } else if is_sub {
             cuccaro_sub_fast(b, &padded, &v_slice, c_in);
         } else {
             cuccaro_add_fast(b, &padded, &v_slice, c_in);
