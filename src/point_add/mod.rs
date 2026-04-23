@@ -4411,21 +4411,21 @@ pub fn build() -> Vec<Op> {
     mod_sub_qb(b, &tx, &ox, p);
     mod_sub_qb(b, &ty, &oy, p);
 
-    let lam = b.alloc_qubits(N);
-
-    // Pair 1: Kaliski's raw inverse carries a 2^(2N-1) factor. Fold that
-    // scale onto lam itself, then halve lam down once. This avoids the
-    // inverse-register restore pass entirely.
+    // lam deferred into closure to reduce Kaliski-iter peak.
+    let lam_cell: std::cell::RefCell<Option<Vec<QubitId>>> = std::cell::RefCell::new(None);
     b.set_phase("pair1_kaliski_forward");
     with_kal_inv_raw(b, &tx, p, pair1_iters, |b, inv_raw| {
+        let lam_inner = b.alloc_qubits(N);
         b.set_phase("pair1_mul1");
-        mod_mul_write_into_zero_acc_schoolbook(b, &lam, &ty, inv_raw, p);
+        mod_mul_write_into_zero_acc_schoolbook(b, &lam_inner, &ty, inv_raw, p);
         b.set_phase("pair1_halve");
-        for _ in 0..pair1_iters { mod_halve_inplace_fast(b, &lam, p); }
+        for _ in 0..pair1_iters { mod_halve_inplace_fast(b, &lam_inner, p); }
         b.set_phase("pair1_mul2");
-        mod_mul_add_into_acc_schoolbook(b, &ty, &lam, &tx, p);
+        mod_mul_add_into_acc_schoolbook(b, &ty, &lam_inner, &tx, p);
         b.set_phase("pair1_kaliski_backward");
+        *lam_cell.borrow_mut() = Some(lam_inner);
     });
+    let lam: Vec<QubitId> = lam_cell.into_inner().expect("lam set");
 
     // Px := λ² - Px_orig - Qx. Rearranged: tx = dx - λ². Add 2Qx, then
     // negate: -(dx - λ² + 2Qx) = λ² - dx - 2Qx = Rx. mod_add_qb is
