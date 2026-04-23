@@ -4410,8 +4410,10 @@ pub fn build() -> Vec<Op> {
     // tail (iter_idx >= ~450 or so) is only active for pathological inputs.
     // We start at the safe bound and claw back by lowering only as far as
     // multi-seed sampling remains clean.
+    // pair1 and pair2 use independent Kaliski inverts; try asymmetric to
+    // probe whether one pair's inputs are easier than the other's.
     let pair1_iters = 410;
-    let pair2_iters = 410;
+    let pair2_iters = 407;
 
     // Step 1-2: Px -= Qx, Py -= Qy
     mod_sub_qb(b, &tx, &ox, p);
