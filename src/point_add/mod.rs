@@ -70,6 +70,8 @@ pub mod by;
 pub mod kaliski_equiv;
 pub mod kaliski_jump;
 pub mod microbench;
+#[cfg(test)]
+pub mod single_inv_numeric;
 pub mod test_timeout;
 
 struct B {
