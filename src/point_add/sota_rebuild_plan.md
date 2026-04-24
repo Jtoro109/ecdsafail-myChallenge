@@ -145,3 +145,38 @@ Low-impact, late cleanup.
 - classically tested on random secp256k1 inputs
 
 Not wired into `build()` yet. No primary metric change at this step.
+
+## Hard structural finding from Phase A analysis
+
+Narrow-r-per-round Kim (= the existing `kaliski_iteration_bulk_prefix3`
+pattern) cannot extend to the full 2n=512 rounds without re-introducing
+the v_w==0 detection (step 0 + f_flag + m_hist), because the per-round
+`mod_double_inplace_fast` on a narrow `r` bakes in termination-dependent
+scaling. Empirically the safe upper bound of bulk_prefix3 is ~315, and
+past that the scaffold breaks because v_w hits 0 inside the bulk region.
+
+Therefore Kim's true win REQUIRES wide r, s (the 2n+1-bit accumulator)
+and postponed modular reduction. With wide r:
+- once v_w reaches 0, the wide-r shift-left just appends zeros,
+- no termination tracking needed,
+- no f_flag, no m_hist, no step 0,
+- single mod-p reduction pass at the end.
+
+Consequence: Phase A is NOT a small modification of the existing
+`kaliski_iteration`. It is a new inversion primitive with different
+register widths (r: 2n+1 bits, s: 2n+1 bits). The per-round arithmetic
+changes from narrow-mod-p-per-round to wide-shift-and-add with no
+modular reduction inside the loop.
+
+Literature-estimated per-round cost (HRSL Fig 7b, Kim Alg 2):
+- 1 cswap on wide (u,v) pair: 3(n+2) CCX
+- 1 cswap on wide (r,s) pair: 3(n+2) CCX
+- `v := v - u` wide: 2(n+2) CCX
+- `s := s + r` wide: 2(n+2) CCX
+- 1-bit flag generation + uncompute: ~4 CCX
+Total ~10(n+2) ≈ 10n per round, 2n rounds ≈ 20n² ≈ 1.31M per inversion.
+
+Two inversions (Bennett) = 2.62M + ~0.3M for muls + ~0.1M misc ≈ 3.0M.
+
+With single-inversion scaffold (Strategy C) + Luo register sharing:
+close to Google's 2.7M at ~1800q. Still not 1175q but within range.
