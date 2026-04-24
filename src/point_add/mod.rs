@@ -4928,7 +4928,7 @@ pub fn build() -> Vec<Op> {
     // multi-seed sampling remains clean.
     // pair1 and pair2 use independent Kaliski inverts; probe lower on both.
     let pair1_iters = 408;
-    let pair2_iters = 405;
+    let pair2_iters = 404;
 
     // Step 1-2: Px -= Qx, Py -= Qy
     mod_sub_qb(b, &tx, &ox, p);
