@@ -71,6 +71,8 @@ pub mod kaliski_equiv;
 pub mod kaliski_jump;
 pub mod microbench;
 #[cfg(test)]
+pub mod primitive_costs;
+#[cfg(test)]
 pub mod kim_inv_circuit;
 #[cfg(test)]
 pub mod kim_proto;
