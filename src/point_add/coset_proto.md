@@ -38,6 +38,16 @@ cargo test coset_proto -- --nocapture
   - coset proto: `9264 CCX`, peak `1801`
   - delta: `+1072 CCX`, `+516q`
 
+- `reps=12, cpad=4`
+  - direct: `12288 CCX`, peak `1285`
+  - coset proto: `11336 CCX`, peak `1801`
+  - delta: `-952 CCX`, `+516q`
+
+- `reps=16, cpad=5`
+  - direct: `16384 CCX`, peak `1285`
+  - coset proto: `14720 CCX`, peak `1802`
+  - delta: `-1664 CCX`, `+517q`
+
 ### Quantum-register add chain (`mod_add_qq_fast` style)
 
 - `reps=3, cpad=2`
@@ -50,19 +60,36 @@ cargo test coset_proto -- --nocapture
   - coset proto: `9264 CCX`, peak `2057`
   - delta: `+1072 CCX`, `+772q`
 
+- `reps=12, cpad=4`
+  - direct: `12288 CCX`, peak `1285`
+  - coset proto: `11336 CCX`, peak `2057`
+  - delta: `-952 CCX`, `+772q`
+
+- `reps=16, cpad=5`
+  - direct: `16384 CCX`, peak `1285`
+  - coset proto: `14720 CCX`, peak `2058`
+  - delta: `-1664 CCX`, `+773q`
+
 ## Interpretation
 
-The overhead is almost a fixed ~1k CCX from exact canonicalization/cleanup, and
-our current modular add primitives are already so cheap that this short-chain
-padded prototype never wins.
+The key observation is a **crossover**:
+
+- below about **12 repeated adds**, exact canonicalization/cleanup dominates and
+  the padded prototype loses,
+- at about **12-16 repeated adds**, the padded prototype starts to win on
+  Toffoli,
+- but it still carries a large **qubit tax**: roughly `+516q` for classical-bit
+  chains and `+772q` for quantum-register chains in these toy setups.
 
 So:
 
 - **Short affine correction chains are NOT a good first landing spot for
   coset/padded arithmetic.**
-- A successful coset strategy would need a **much longer arithmetic region** so
-  the one-time cleanup is amortized — e.g. inversion internals, windowed/QROM
-  batches, or a larger architectural rewrite.
+- The first plausible landing zone is a **long arithmetic region** with at
+  least a dozen adds/subs sharing one cleanup.
+- Even there, we must solve the qubit tax by reusing an already-live wide
+  workspace instead of allocating the padded accumulator on top of the current
+  live set.
 
 ## Current verdict
 

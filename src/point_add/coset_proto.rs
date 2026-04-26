@@ -249,7 +249,7 @@ fn coset_repeated_add_qb_matches_direct_for_secp256k1_n256() {
 #[test]
 fn coset_proto_cost_repeated_add_qb_n256() {
     let p = SECP256K1_P;
-    for (reps, cpad) in [(3usize, 2usize), (8usize, 4usize)] {
+    for (reps, cpad) in [(3usize, 2usize), (8usize, 4usize), (12usize, 4usize), (16usize, 5usize)] {
         let mut direct = B::new();
         let x = direct.alloc_qubits(N);
         let bits = direct.alloc_bits(N);
@@ -290,7 +290,7 @@ fn coset_proto_cost_repeated_add_qb_n256() {
 #[test]
 fn coset_proto_cost_repeated_add_qq_n256() {
     let p = SECP256K1_P;
-    for (reps, cpad) in [(3usize, 2usize), (8usize, 4usize)] {
+    for (reps, cpad) in [(3usize, 2usize), (8usize, 4usize), (12usize, 4usize), (16usize, 5usize)] {
         let mut direct = B::new();
         let x = direct.alloc_qubits(N);
         let a = direct.alloc_qubits(N);
