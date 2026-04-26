@@ -317,17 +317,17 @@ mod tests {
         // Set x=7, y=5 on shot 0
         for i in 0..n {
             if [true, true, true, false][i] {
-                sim.qubit_mut(x[i]).0 |= 1;
+                *sim.qubit_mut(x[i]) |= 1;
             }
             if [true, false, true, false][i] {
-                sim.qubit_mut(y[i]).0 |= 1;
+                *sim.qubit_mut(y[i]) |= 1;
             }
         }
 
         sim.apply(&b.ops);
 
         let acc_val = (0..n).fold(0u64, |v, i| {
-            v | if (sim.qubit_mut(acc[i]).0 & 1) != 0 { 1 << i } else { 0 }
+            v | if (*sim.qubit_mut(acc[i]) & 1) != 0 { 1 << i } else { 0 }
         });
 
         assert_eq!(acc_val, 9, "7 * 5 mod 13 should be 9, got {}", acc_val);
