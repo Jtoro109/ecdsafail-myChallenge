@@ -342,8 +342,8 @@ New tests:
   batched halve had `0/40000` failures.
 - `approximate_batched_shift_reopens_scaled_by_jump_budget`: high-fold cost
   `≈1862 CCX`, batched shift cost `≈1915 CCX`; integer row+cleanup floor
-  `≈6976 CCX`; scaled modular pair window `≈14530 CCX`; 35 windows `≈509k`
-  for the modular pair.
+  `≈6976 CCX`; scaled modular pair window `≈18254 CCX` after also high-folding
+  the two old-row cleanup residuals; 35 windows `≈639k` for the modular pair.
 
 `approximate_batched_halve16_canonical_circuit_matches_classical` then builds
 and simulates the actual canonical batched-shift circuit on 64 random basis

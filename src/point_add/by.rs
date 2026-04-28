@@ -1923,7 +1923,11 @@ mod tests {
         }
         let mean_integer_pair = total_pair_ccx as f64 / samples as f64;
         let row_scale_ccx = highfold_ccx + shift_ccx;
-        let modular_pair_window = mean_integer_pair + 2.0 * row_scale_ccx as f64;
+        // Two forward rows need highfold+shift. Two old rows cleaned by the
+        // sparse adjugate need a highfold to turn the residual small multiple
+        // of p into zero. The base integer_pair already includes the sparse
+        // row additions/subtractions themselves.
+        let modular_pair_window = mean_integer_pair + 2.0 * row_scale_ccx as f64 + 2.0 * highfold_ccx as f64;
         let approx35 = modular_pair_window * 35.0;
         eprintln!(
             "approx batched-shift BY scaled modular budget: highfold_ccx={highfold_ccx}, shift16_ccx={shift_ccx}, integer_pair≈{mean_integer_pair:.1}, modular_pair/window≈{modular_pair_window:.1}, approx35≈{approx35:.0}, shift_peak={}q",
