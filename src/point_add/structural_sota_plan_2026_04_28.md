@@ -668,6 +668,20 @@ So the 600-scratch target is not compatible with the current clean-temp
 history if the controlled modular add uses no clean 256-bit addend (or borrows
 the history bank as dirty workspace).
 
+The existing venting module already contains the right substrate for this:
+`dirty_quantum_offset_adder_is_plausible_cmod_add_substrate` measures
+`iadd_dirty_2clean_qoffset`:
+
+```text
+quantum offset add: 762 CCX
+workspace: 2 clean + 254 dirty, no hidden clean n-register
+```
+
+It is not controlled and not modular by `p`, so it is not a drop-in cmod-add
+replacement, but it shows the desired scratch/cost scale is physically present
+in the codebase. The next implementation problem is controlled dirty q-offset
+modular addition, not inventing an entirely new adder family.
+
 This is the first coherent selected BY replay model in the right Toffoli band.
 It is not yet a complete DIV: branch-history compression/cleanup still need
 production handling. The controlled-neg zero representative was explicitly

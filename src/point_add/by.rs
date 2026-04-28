@@ -2513,6 +2513,29 @@ mod tests {
     }
 
     #[test]
+    fn dirty_quantum_offset_adder_is_plausible_cmod_add_substrate() {
+        // Existing venting code already has the right primitive shape for the
+        // missing no-clean-temp add: add a quantum offset using only two clean
+        // qubits plus n-2 dirty qubits. It is not controlled and not modular by
+        // p, so it is not a drop-in replacement for cmod_add_qq yet, but it
+        // shows the target scratch/cost scale is realistic rather than magical.
+        let mut b = super::super::B::new();
+        let target = b.alloc_qubits(256);
+        let offset = b.alloc_qubits(256);
+        let dirty = b.alloc_qubits(254);
+        let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
+        super::super::venting::iadd_dirty_2clean_qoffset(&mut b, &target, &dirty, &clean2, &offset, false);
+        let ccx = count_ccx(&b.ops);
+        let peak = b.peak_qubits as usize;
+        eprintln!(
+            "dirty quantum-offset add substrate: ccx={ccx}, peak={peak}q, dirty={}q, clean=2q",
+            dirty.len()
+        );
+        assert!(ccx < 1_000, "dirty qoffset add too expensive for cmod_add rewrite substrate");
+        assert_eq!(peak, target.len() + offset.len() + dirty.len() + 2, "unexpected hidden clean workspace");
+    }
+
+    #[test]
     fn compressed_pattern_history_scratch_model_is_600q_if_add_workspace_is_removed() {
         // Peak accounting for the scaled BY DIV core. The current cmod_add
         // implementation uses clean 256-bit addend/carry workspaces, so history
