@@ -2513,6 +2513,28 @@ mod tests {
     }
 
     #[test]
+    fn compressed_pattern_history_scratch_model_is_600q_if_add_workspace_is_removed() {
+        // Peak accounting for the scaled BY DIV core. The current cmod_add
+        // implementation uses clean 256-bit addend/carry workspaces, so history
+        // and arithmetic temp add. If controlled modular add is implemented with
+        // no clean n-bit temp (or uses the history bank as dirty workspace), the
+        // compressed branch-pattern history becomes the dominant scratch item.
+        let pair_regs = 512usize;
+        let current_microstep_peak = 1287usize;
+        let current_local_workspace = current_microstep_peak - pair_regs;
+        let compressed_pattern_bits = 481usize; // fixed per-window distinct-pattern IDs from entropy test.
+        let decoder_bits = 16usize + 10usize; // A scratch for one window + signed delta.
+        let current_scratch = compressed_pattern_bits + decoder_bits + current_local_workspace;
+        let no_clean_temp_workspace = 90usize; // target: controls/ext/carry only, no 256-bit f register.
+        let target_scratch = compressed_pattern_bits + decoder_bits + no_clean_temp_workspace;
+        eprintln!(
+            "BY compressed-pattern scratch model: current_scratch≈{current_scratch}, target_no_clean_temp≈{target_scratch}, local_workspace_now={current_local_workspace}"
+        );
+        assert!(current_scratch > 1_000, "current clean-temp implementation already fits 600 scratch; update model");
+        assert!(target_scratch <= 620, "no-clean-temp target no longer near 600 scratch");
+    }
+
+    #[test]
     fn scaled_by_div_point_add_budget_has_sota_margin_if_history_workspace_solved() {
         // The structural point of the scaled controlled microstep is that it
         // replaces both Kaliski invocations by one in-place tagged DIV. This is

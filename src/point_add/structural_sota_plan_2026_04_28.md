@@ -644,6 +644,22 @@ register and still costs only:
 This fits comfortably inside the 150k branch/decode margin used in the whole
 point-add budget.
 
+`compressed_pattern_history_scratch_model_is_600q_if_add_workspace_is_removed`
+spells out the remaining scratch equation:
+
+```text
+current local microstep workspace over (r,s): 775q
+compressed pattern history:                  481q
+one-window A scratch + delta:                 26q
+current additive scratch:                   1282q
+if no-clean-temp/dirty controlled add:       ~597q
+```
+
+So the 600-scratch target is not compatible with the current clean-temp
+`cmod_add_qq` implementation, but it is compatible with the branch-pattern
+history if the controlled modular add uses no clean 256-bit addend (or borrows
+the history bank as dirty workspace).
+
 This is the first coherent selected BY replay model in the right Toffoli band.
 It is not yet a complete DIV: branch-history compression/cleanup still need
 production handling. The controlled-neg zero representative was explicitly
