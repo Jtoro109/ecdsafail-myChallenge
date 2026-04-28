@@ -831,6 +831,87 @@ mod tests {
         );
     }
 
+    fn row_popcount_adds_i128(row: (i128, i128)) -> usize {
+        let terms = row.0.unsigned_abs().count_ones() as usize
+            + row.1.unsigned_abs().count_ones() as usize;
+        terms.saturating_sub(1)
+    }
+
+    fn matrix_popcount_adds_i128(m: TransitionMatrix) -> usize {
+        row_popcount_adds_i128((m.m00, m.m01)) + row_popcount_adds_i128((m.m10, m.m11))
+    }
+
+    #[test]
+    fn approximate_divstep_cutoff_survey() {
+        // With approximate failure tolerance, BY's empirical convergence tail
+        // is much shorter than the 742-step proof bound. This matters because
+        // jump windows scale directly with the iteration cap. Keep this as a
+        // distributional fact, not as an exact-circuit claim.
+        let p = SECP256K1_P;
+        let samples = 20_000usize;
+        let mut sampler = Sampler::new(b"by-approx-cutoff-v1", p);
+        let mut iters = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let x = sampler.next();
+            let run = run_divsteps(x, p, safegcd_iters(256));
+            assert!(run.converged);
+            iters.push(run.iters_done);
+        }
+        iters.sort_unstable();
+        let q99 = iters[(samples * 99) / 100];
+        let q999 = iters[(samples * 999) / 1000];
+        let fail_550 = iters.iter().filter(|&&k| k > 550).count();
+        let fail_560 = iters.iter().filter(|&&k| k > 560).count();
+        eprintln!(
+            "BY divstep cutoff: q99={q99}, q999={q999}, fail>550={:.4}, fail>560={:.4}, max={}",
+            fail_550 as f64 / samples as f64,
+            fail_560 as f64 / samples as f64,
+            iters[samples - 1]
+        );
+        assert!(fail_550 as f64 / samples as f64 <= 0.01, "550-step approximate cutoff exceeded 1% on sample");
+    }
+
+    #[test]
+    fn jumpdivstep_matrix_arithmetic_intensity_model() {
+        // BY/jumpdivsteps is attractive because branch selection is local to
+        // low words + delta, not a full-width u>v comparator. The price is a
+        // selected signed 2x2 matrix. This row-popcount model estimates the
+        // shifted add/sub terms needed to apply that matrix to one full-width
+        // pair. It is not a complete circuit cost, but it is the right first
+        // lower-bound for deciding if BY deserves a live prototype.
+        let samples = 50_000usize;
+        let mut hasher = sha3::Shake128::default();
+        hasher.update(b"by-jump-matrix-popcount-v1");
+        let mut reader = hasher.finalize_xof();
+        let mut buf = [0u8; 24];
+        for &w in &[4usize, 8, 12, 16] {
+            let mut total = 0usize;
+            let mut max_cost = 0usize;
+            let mut costs = Vec::with_capacity(samples);
+            for _ in 0..samples {
+                reader.read(&mut buf);
+                let f_low = (u64::from_le_bytes(buf[0..8].try_into().unwrap()) as i128) | 1;
+                let g_low = u64::from_le_bytes(buf[8..16].try_into().unwrap()) as i128;
+                let delta = (u64::from_le_bytes(buf[16..24].try_into().unwrap()) % 41) as i64 - 20;
+                let (_, _, _, m) = jump_matrix_direct_lowword(w, w, delta, f_low, g_low);
+                let c = matrix_popcount_adds_i128(m);
+                total += c;
+                max_cost = max_cost.max(c);
+                costs.push(c);
+            }
+            costs.sort_unstable();
+            let mean = total as f64 / samples as f64;
+            let p90 = costs[(samples * 90) / 100];
+            let exact_windows = safegcd_iters(256).div_ceil(w);
+            let mean_terms_per_pair = mean * exact_windows as f64;
+            eprintln!(
+                "BY jump w={w}: mean row-add terms/window={mean:.2}, p90={p90}, max={max_cost}, exact_windows={}, mean_terms_per_pair={mean_terms_per_pair:.1}",
+                exact_windows
+            );
+            assert!(mean_terms_per_pair < 600.0, "BY row-add intensity unexpectedly high");
+        }
+    }
+
     #[test]
     fn jumpdivstep_matrix_entry_survey_test() {
         let samples = 100_000;

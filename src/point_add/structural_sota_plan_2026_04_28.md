@@ -216,6 +216,31 @@ Next concrete work: synthesize/lower-bound selected matrix application for
 `t=4..16` with QROM/control costs included. If it cannot exploit cswap deletion
 strongly enough, move to BY/divstep or a different DIV transform.
 
+### BY/divstep jump update (new stronger candidate)
+
+The Bernstein-Yang route deserves renewed attention because branch selection is
+local to `(delta, low f, low g)` rather than full `u>v` comparisons. New tests
+in `by.rs` add two relevant facts:
+
+1. `jumpdivstep_matrix_arithmetic_intensity_model` row-popcount model for one
+   full-width pair under the exact 742-step bound:
+
+| w | mean row-add terms/window | exact windows | mean terms/pair |
+|---:|---:|---:|---:|
+| 4  | 2.04 | 186 | 379 |
+| 8  | 4.51 | 93  | 419 |
+| 12 | 7.66 | 62  | 475 |
+| 16 | 11.56| 47  | 543 |
+
+2. With approximate tolerance, `approximate_divstep_cutoff_survey` on 20k
+   samples gives `q99=549`, `q999=555`, `fail>550≈0.0062`, `fail>560≈0.0001`.
+   So a 550-step approximate BY inversion is within the user's 1% failure
+   allowance empirically, reducing `w=16` windows from 47 to 35.
+
+This is not yet a circuit, but it is a better Toffoli-structural lead than
+Kaliski low-bit windows: no full comparator sequence, moderate matrix row
+intensity, and approximate iteration count is plausible.
+
 ### Program B — triangular one-inversion schedule (highest payoff, highest risk)
 
 Goal: use Strategy C or B2 but avoid Bennett-clean fresh outputs. A successful
