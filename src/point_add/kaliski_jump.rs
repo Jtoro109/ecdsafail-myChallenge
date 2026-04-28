@@ -618,6 +618,42 @@ mod tests {
     }
 
     #[test]
+    fn global_window_matrix_indices_do_not_compress_history() {
+        // The short per-key hints above are only useful if a low-state-keyed
+        // lookup is affordable. If we instead store a global matrix id, the
+        // number of distinct matrices/branch sequences explodes and the history
+        // is not compressed. This separates the qubit idea from its QROM cost.
+        use std::collections::BTreeSet;
+
+        const INPUTS: usize = 5_000;
+        let mut sampler = Sampler::new(b"global-window-matrix-index-v1", SECP256K1_P);
+        for &t in &[4usize, 8, 16] {
+            let mut global: BTreeSet<(Mat2, Mat2)> = BTreeSet::new();
+            let mut windows = 0usize;
+            for _ in 0..INPUTS {
+                let mut u = SECP256K1_P;
+                let mut v = sampler.next();
+                for _ in (0..407).step_by(t) {
+                    if v.is_zero() { break; }
+                    let (nu, nv, obs) = observe_window(u, v, 8, t);
+                    global.insert((obs.uv_mat, obs.rs_mat));
+                    windows += 1;
+                    u = nu;
+                    v = nv;
+                }
+            }
+            let id_bits = usize::BITS as usize - (global.len() - 1).leading_zeros() as usize;
+            let n_windows = (407 + t - 1) / t;
+            let history_bits = id_bits * n_windows;
+            eprintln!(
+                "t={t}: observed_global_matrices={} global_id_bits/window={} total_global_id_bits={} sampled_windows={}",
+                global.len(), id_bits, history_bits, windows
+            );
+            assert!(history_bits > 407, "global matrix ids unexpectedly compress m_hist at t={t}");
+        }
+    }
+
+    #[test]
     fn selected_matrix_application_arithmetic_intensity_model() {
         // A selected t-window matrix can delete many generic cswaps/comparators,
         // but it is not "free": dense coefficients require shifted add/sub terms

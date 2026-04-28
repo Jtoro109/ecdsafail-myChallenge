@@ -199,6 +199,19 @@ focuses the synthesis target sharply: a viable implementation needs a coherent
 matrix application that avoids generic controlled-cswap replay and does not pay
 QROM/control overhead proportional to all candidate matrices.
 
+Another executable check, `global_window_matrix_indices_do_not_compress_history`,
+separates the hint idea from lookup cost. If we store a **global** matrix id
+instead of a low-state-keyed short hint, sampled distinct matrices explode:
+
+| t | observed global matrices | global id bits/window | total bits |
+|---:|---:|---:|---:|
+| 4  | 125    | 7  | 714 |
+| 8  | 9478   | 14 | 714 |
+| 16 | 111696 | 17 | 442 |
+
+So the qubit compression requires a low-state-keyed QROM/table. It is not a
+free history encoding. The next synthesis must include that QROM/control cost.
+
 Next concrete work: synthesize/lower-bound selected matrix application for
 `t=4..16` with QROM/control costs included. If it cannot exploit cswap deletion
 strongly enough, move to BY/divstep or a different DIV transform.
