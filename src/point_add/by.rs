@@ -2513,6 +2513,72 @@ mod tests {
     }
 
     #[test]
+    fn controlled_dirty_qoffset_adder_small_basis_check() {
+        let n = 8usize;
+        let mask = (1u64 << n) - 1;
+        let mut b = super::super::B::new();
+        let ctrl = b.alloc_qubit();
+        let target = b.alloc_qubits(n);
+        let offset = b.alloc_qubits(n);
+        let dirty = b.alloc_qubits(n - 2);
+        let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
+        let clean3 = b.alloc_qubit();
+        super::super::venting::ciadd_dirty_3clean_qoffset(&mut b, &target, &dirty, &clean2, clean3, &offset, ctrl);
+        let ccx = count_ccx(&b.ops);
+        let peak = b.peak_qubits;
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        for ctrl_v in [false, true] {
+            for target_v in [0x00u64, 0x35, 0xf1] {
+                for offset_v in [0x00u64, 0x17, 0x80] {
+                    let dirty_v = 0x2du64 & ((1u64 << (n - 2)) - 1);
+                    let mut hasher = sha3::Shake128::default();
+                    hasher.update(b"by-ciadd-qoffset-small-v1");
+                    let mut xof = hasher.finalize_xof();
+                    let mut sim = crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+                    if ctrl_v {
+                        *sim.qubit_mut(ctrl) |= 1;
+                    }
+                    set_slice_u512_by(&mut sim, &target, U512::from(target_v));
+                    set_slice_u512_by(&mut sim, &offset, U512::from(offset_v));
+                    set_slice_u512_by(&mut sim, &dirty, U512::from(dirty_v));
+                    sim.apply(&ops);
+                    let expected = if ctrl_v { target_v.wrapping_add(offset_v) & mask } else { target_v & mask };
+                    assert_eq!(get_slice_u512_by(&sim, &target).to::<u64>() & mask, expected, "target mismatch");
+                    assert_eq!(get_slice_u512_by(&sim, &offset).to::<u64>() & mask, offset_v & mask, "offset changed");
+                    assert_eq!(get_slice_u512_by(&sim, &dirty).to::<u64>() & ((1u64 << (n - 2)) - 1), dirty_v, "dirty changed");
+                    assert_eq!(sim.global_phase() & 1, 0, "phase changed");
+                }
+            }
+        }
+        eprintln!("controlled dirty qoffset small check: n={n}, ccx={ccx}, peak={peak}q");
+    }
+
+    #[test]
+    fn naive_controlled_dirty_qoffset_is_scratch_right_but_toffoli_heavy() {
+        let mut b = super::super::B::new();
+        let ctrl = b.alloc_qubit();
+        let target = b.alloc_qubits(256);
+        let offset = b.alloc_qubits(256);
+        let dirty = b.alloc_qubits(254);
+        let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
+        let clean3 = b.alloc_qubit();
+        super::super::venting::ciadd_dirty_3clean_qoffset(&mut b, &target, &dirty, &clean2, clean3, &offset, ctrl);
+        let ccx = count_ccx(&b.ops);
+        let peak = b.peak_qubits as usize;
+        let scaled_microstep_with_this_add = ccx + 256 + 255 + 255;
+        let div560 = scaled_microstep_with_this_add as f64 * 560.0;
+        eprintln!(
+            "naive controlled dirty qoffset add: ccx={ccx}, peak={peak}q, dirty={}q, clean=3q, scaled_step≈{scaled_microstep_with_this_add}, div560≈{div560:.0}",
+            dirty.len()
+        );
+        assert_eq!(peak, 1 + target.len() + offset.len() + dirty.len() + 3, "unexpected hidden clean workspace");
+        assert!(ccx > 3_000, "naive controlled dirty qoffset unexpectedly cheap; revisit BY cmod_add rewrite");
+        assert!(div560 > 2_000_000.0, "naive controlled dirty qoffset would be SOTA-shaped after all");
+    }
+
+    #[test]
     fn dirty_quantum_offset_adder_is_plausible_cmod_add_substrate() {
         // Existing venting code already has the right primitive shape for the
         // missing no-clean-temp add: add a quantum offset using only two clean

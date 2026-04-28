@@ -677,10 +677,20 @@ quantum offset add: 762 CCX
 workspace: 2 clean + 254 dirty, no hidden clean n-register
 ```
 
-It is not controlled and not modular by `p`, so it is not a drop-in cmod-add
-replacement, but it shows the desired scratch/cost scale is physically present
-in the codebase. The next implementation problem is controlled dirty q-offset
-modular addition, not inventing an entirely new adder family.
+A first controlled version, `ciadd_dirty_3clean_qoffset`, was added and checked
+on small basis states. It has the right scratch shape but is too Toffoli-heavy
+when built by the naive controlled-qoffset transformation:
+
+```text
+n=8 basis check: passes, dirty restored, phase clean
+n=256 controlled qoffset: 3557 CCX, peak 770q
+scaled BY step with this substrate ≈ 4323 CCX
+560-step DIV ≈ 2.42M just for replay
+```
+
+So dirty qoffset addition solves the scratch direction but not yet the Toffoli
+direction. The next implementation problem is a **shared/control-efficient**
+dirty q-offset modular add, not merely controlling every qoffset use.
 
 This is the first coherent selected BY replay model in the right Toffoli band.
 It is not yet a complete DIV: branch-history compression/cleanup still need
