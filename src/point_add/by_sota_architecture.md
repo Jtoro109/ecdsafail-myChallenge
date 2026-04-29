@@ -96,6 +96,22 @@ pre-tail x-column workspace = 2 * 9 * 16 = 288 bits
 This is the first selector subproblem that is actually inside the ~600-bit
 scratch target: windows 16..34 can be driven by a 528-bit carry core.
 
+For the early `x`-dependent part, storing all first-16 raw patterns would cost
+256 bits.  Empirically the per-window fixed code is smaller:
+
+```text
+first16 pattern history entropy H ≈ 195.4 bits
+fixed per-window pattern IDs     = 208 bits
+carry core + fixed first16 IDs   = 736 bits
+```
+
+This is low-gate-shaped (`512 data + 736 selector ≈ 1248q`, before arithmetic
+scratch and assuming b-workspace is recomputed/borrowed), but not low-qubit
+1175-shaped (`736 > 663` extra-qubit allowance).  It says an exact
+Google-low-gate-ish selector may be reachable with compressed first16 history;
+Google-low-qubit still needs either less carry state or no persistent early
+history.
+
 A tempting projective normalization sets the folded carry `c0=1`, because BY
 branch choices are invariant under a common odd scale.  That would reduce the
 selector to three entries:

@@ -2213,6 +2213,54 @@ mod tests {
     }
 
     #[test]
+    fn first16_pattern_history_entropy_is_low_gate_but_not_low_qubit() {
+        // If the 288-bit x-column workspace is recomputed from early pattern
+        // history instead of carried, only the first 16 window patterns are
+        // needed after the x tail is exhausted.  They compress well enough for
+        // a 1425q-style low-gate point, but not for the 1175q low-qubit target
+        // when added to the 528-bit carry core.
+        use std::collections::HashMap;
+        const W: usize = 16;
+        const WINDOWS: usize = 16;
+        let samples = 5_000usize;
+        let mut counts: Vec<HashMap<u16, usize>> = (0..WINDOWS).map(|_| HashMap::new()).collect();
+        let mut sampler = Sampler::new(b"by-first16-pattern-entropy-v1", SECP256K1_P);
+        for _ in 0..samples {
+            let x = sampler.next();
+            let mut delta = 1i64;
+            let mut f = SInt::from_u(SECP256K1_P);
+            let mut g = SInt::from_u(x);
+            for win in 0..WINDOWS {
+                let mut pat = 0u16;
+                for i in 0..W {
+                    if g.bit0() {
+                        pat |= 1u16 << i;
+                    }
+                    divstep_sint_state(&mut delta, &mut f, &mut g);
+                }
+                *counts[win].entry(pat).or_insert(0) += 1;
+            }
+        }
+        let mut entropy = 0.0f64;
+        let mut fixed_bits = 0usize;
+        for c in &counts {
+            fixed_bits += usize::BITS as usize - (c.len() - 1).leading_zeros() as usize;
+            for &n in c.values() {
+                let p = n as f64 / samples as f64;
+                entropy -= p * p.log2();
+            }
+        }
+        let carry_core = 528usize;
+        let low_gate_persistent = carry_core + fixed_bits;
+        eprintln!(
+            "BY first16 pattern history entropy: H≈{entropy:.1}, fixed_bits={fixed_bits}, carry_plus_fixed={low_gate_persistent}"
+        );
+        assert!(entropy < 220.0, "first16 pattern history too large for low-gate selector plan");
+        assert!(low_gate_persistent < 913, "carry+first16 history misses 1425q low-gate budget");
+        assert!(low_gate_persistent > 663, "carry+first16 history would already hit 1175q low-qubit budget");
+    }
+
+    #[test]
     fn projective_normalized_streaming_selector_loses_high_bits() {
         // Tempting compression: since BY branch choices are invariant under a
         // common odd scale, normalize the folded selector so c0=1 and keep only
