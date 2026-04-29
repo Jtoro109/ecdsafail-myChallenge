@@ -459,8 +459,11 @@ n=8 p=251  ambiguous_occurrences=228000/937500 frac=0.243200
 This is not a negligible exceptional tail.  Changing the linear tag does not
 help: `changing_linear_x_tag_does_not_fix_poststate_branch_ambiguity` checks
 `s0 = y + beta*x` for several nonzero `beta` and gets exactly the same ambiguity
-fractions on exhaustive toys.  The tag avoids the zero-scalar exception but does
-not encode branch history.  A self-cleaning Kaliski needs explicit history or a
+fractions on exhaustive toys.  The stronger
+`any_x_only_additive_tag_is_only_a_bijection_not_branch_history` checks nonlinear
+`h(x)` in `s0=y+h(x)` and again gets the same `n=8` fraction `0.243200`.  For
+fixed `x`, additive x-tags only relabel the coefficient scalar; they do not
+encode branch history.  A self-cleaning Kaliski needs explicit history or a
 genuinely different state invariant.
 
 Recomputing branch history directly from the preserved initial `x` is also not

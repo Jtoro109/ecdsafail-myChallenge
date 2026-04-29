@@ -1659,8 +1659,11 @@ version is not viable either: `tagged_full_poststate_branch_ambiguity_is_not_a_r
 finds ambiguous full-poststate occurrences at about 19%, 22%, 23%, 23%, and 24%
 for toy `n=4..8` with nonzero tag `s0=x+y`, so the ambiguity is not a tiny
 patchable tail.  `changing_linear_x_tag_does_not_fix_poststate_branch_ambiguity`
-checks `s0=y+beta*x` and finds identical ambiguity fractions for nonzero beta,
-so retagging does not add branch information.  Direct regeneration from the preserved initial `x` is not cheap either:
+checks `s0=y+beta*x` and finds identical ambiguity fractions for nonzero beta;
+`any_x_only_additive_tag_is_only_a_bijection_not_branch_history` extends this to
+nonlinear additive tags `s0=y+h(x)` and gets the same `n=8` fraction `0.2432`.
+For fixed `x`, such tags are only a bijective relabeling of the coefficient
+scalar, not branch-history encoding.  Direct regeneration from the preserved initial `x` is not cheap either:
 `initial_x_to_branch_history_oracle_is_dense_on_toy_kaliski` sees branch-history
 parity as full-degree/near-half-density in `x` (`n=8: degree 8, density 116/256;
 `n=12: degree 11, density 1976/4096`).  `exact_branch_history_has_field_entropy_lower_bound`

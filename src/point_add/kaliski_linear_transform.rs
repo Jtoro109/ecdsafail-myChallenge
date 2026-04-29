@@ -780,13 +780,17 @@ fn tagged_full_poststate_branch_ambiguity_is_not_a_rare_exception() {
     }
 }
 
-fn toy_tagged_poststate_ambiguous_fraction(n: usize, p: u64, beta: u64) -> f64 {
+fn toy_additive_x_tagged_poststate_ambiguous_fraction<F>(n: usize, p: u64, tag_of_x: F) -> f64
+where
+    F: Fn(u64, u64) -> u64,
+{
     use std::collections::BTreeMap;
     let mut seen: BTreeMap<ToyLinKey, [usize; 4]> = BTreeMap::new();
     let mut total = 0usize;
     for x in 1..p {
+        let hx = tag_of_x(x, p) % p;
         for y in 0..p {
-            let tag = (y + beta * x) % p;
+            let tag = (y + hx) % p;
             if tag == 0 { continue; }
             let mut st = ToyLinState { u: p, v: x, r: 0, s: tag, f: 1 };
             for iter in 0..(2 * n - 1) {
@@ -806,6 +810,10 @@ fn toy_tagged_poststate_ambiguous_fraction(n: usize, p: u64, beta: u64) -> f64 {
     ambiguous_occurrences as f64 / total as f64
 }
 
+fn toy_tagged_poststate_ambiguous_fraction(n: usize, p: u64, beta: u64) -> f64 {
+    toy_additive_x_tagged_poststate_ambiguous_fraction(n, p, |x, p| (beta * x) % p)
+}
+
 #[test]
 fn changing_linear_x_tag_does_not_fix_poststate_branch_ambiguity() {
     // Tagged DIV can seed s0 = y + beta*x for any known nonzero beta; the
@@ -823,6 +831,33 @@ fn changing_linear_x_tag_does_not_fix_poststate_branch_ambiguity() {
                 "linear-x tag ambiguity: n={n}, p={p}, beta={beta}, frac={got:.6} (base={base:.6})"
             );
             assert!((got - base).abs() < 1e-12);
+        }
+    }
+}
+
+#[test]
+fn any_x_only_additive_tag_is_only_a_bijection_not_branch_history() {
+    // Generalize the linear retagging failure.  For fixed denominator x, any
+    // tag of the form s0 = y + h(x) is just a bijective relabeling of the
+    // coefficient scalar y (with one zero-scalar exception removed).  It cannot
+    // encode the Kaliski branch history.  Exhaustive toy checks with nonlinear
+    // h(x) confirm the ambiguity fraction is exactly unchanged.
+    for &(n, p) in &[(4usize, 13u64), (6, 61), (8, 251)] {
+        let base = toy_tagged_poststate_ambiguous_fraction(n, p, 1);
+        let nonlinear_tags: &[fn(u64, u64) -> u64] = &[
+            |x, p| (x * x + 3 * x + 5) % p,
+            |x, p| (x * x % p * x + 7 * x + 11) % p,
+        ];
+        for (idx, tag) in nonlinear_tags.iter().enumerate() {
+            let got = toy_additive_x_tagged_poststate_ambiguous_fraction(n, p, *tag);
+            eprintln!(
+                "x-only additive tag ambiguity: n={n}, p={p}, tag#{idx}, frac={got:.6} (base={base:.6})"
+            );
+            assert!((got - base).abs() < 1e-12);
+            if n == 8 && idx == 1 {
+                println!("METRIC x_only_additive_tag_ambiguity_frac_n8={got:.6}");
+                println!("METRIC x_only_additive_tag_ambiguity_invariant=1");
+            }
         }
     }
 }
