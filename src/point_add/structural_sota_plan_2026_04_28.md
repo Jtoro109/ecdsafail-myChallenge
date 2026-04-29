@@ -891,9 +891,28 @@ altseed/classical/phase/ancilla failures = 0
 
 This is far too wide and expensive, but it is the first production-harness
 component where BY controls are genuinely denominator-derived from live quantum
-data and then self-cleaned. The remaining replacement work is to make the
-replay act on the tagged numerator/product channel instead of zero scratch, and
-then move this component into pair1/pair2 rather than appending it.
+data and then self-cleaned.
+
+`BY_CENTERED_LIVE_NUM_BENCH=1` takes one more wiring step: it uses the same
+quantum-denominator-derived controls, but the centered replay scratch is now a
+centered copy of the live quantum `y` output register rather than zero. The
+forward+inverse replay is still a no-op, and the centered copy is uncentered and
+uncopied afterwards:
+
+```text
+BY_CENTERED_LIVE_NUM_BENCH=1
+avg_toffoli = 7,870,438
+qubits      = 4,965
+emitted_ops = 55,834,807
+altseed/classical/phase/ancilla failures = 0
+```
+
+So the production harness now accepts live denominator-derived controls acting
+on live numerator-derived signed data, with all controls/parity/numerator copy
+cleaned. The remaining replacement work is to stop reversing the replay as a
+no-op: run pair1 forward to write the tagged quotient channel, or pair2 inverse
+to write the product-clean channel, then delete the corresponding Kaliski/mul
+piece.
 
 Naively synthesizing the range test is too expensive:
 `naive_centered_parity_recovery_cost_would_erase_redundant_replay_win` measures

@@ -4049,7 +4049,8 @@ const BULK_PREFIX_SAFE_ITERS: usize = 375;
 fn bulk_prefix_safe_iters() -> usize {
     let centered_roundtrip_hook = std::env::var("BY_CENTERED_CLEAN_ROUNDTRIP_BENCH").ok().as_deref() == Some("1")
         || std::env::var("BY_CENTERED_FAST_CLEAN_ROUNDTRIP_BENCH").ok().as_deref() == Some("1")
-        || std::env::var("BY_CENTERED_DENOM_CONTROLS_BENCH").ok().as_deref() == Some("1");
+        || std::env::var("BY_CENTERED_DENOM_CONTROLS_BENCH").ok().as_deref() == Some("1")
+        || std::env::var("BY_CENTERED_LIVE_NUM_BENCH").ok().as_deref() == Some("1");
     let default = if centered_roundtrip_hook {
         // The huge centered roundtrip hooks change the circuit hash / RNG stream
         // enough that the aggressively tuned 375 bulk-prefix setting can hit a
@@ -4675,6 +4676,33 @@ fn emit_centered_signed_by_fast_clean_roundtrip_benchmark_scaffold(b: &mut B, p:
     let _ = (odd, a_ctrl, parity, r, s);
 }
 
+fn by_load_centered_copy_for_bench(b: &mut B, src: &[QubitId], dst: &[QubitId], p: U256) -> QubitId {
+    assert!(dst.len() >= src.len());
+    for i in 0..src.len() {
+        b.cx(src[i], dst[i]);
+    }
+    let center_flag = b.alloc_qubit();
+    let half_p = p >> 1usize;
+    let half = load_const(b, src.len(), half_p);
+    cmp_lt_into(b, &half, &dst[..src.len()], center_flag);
+    unload_const(b, &half, half_p);
+    csub_nbit_const(b, dst, p, center_flag);
+    center_flag
+}
+
+fn by_unload_centered_copy_for_bench(b: &mut B, src: &[QubitId], dst: &[QubitId], p: U256, center_flag: QubitId) {
+    assert!(dst.len() >= src.len());
+    cadd_nbit_const(b, dst, p, center_flag);
+    let half_p = p >> 1usize;
+    let half = load_const(b, src.len(), half_p);
+    cmp_lt_into(b, &half, &dst[..src.len()], center_flag);
+    unload_const(b, &half, half_p);
+    for i in 0..src.len() {
+        b.cx(src[i], dst[i]);
+    }
+    b.free(center_flag);
+}
+
 fn emit_centered_by_denominator_derived_controls_benchmark_scaffold(b: &mut B, tx: &[QubitId], p: U256) {
     // First functional integration step beyond fixed traces: derive the BY odd/A
     // controls reversibly from a live quantum denominator copy (here the current
@@ -4732,6 +4760,73 @@ fn emit_centered_by_denominator_derived_controls_benchmark_scaffold(b: &mut B, t
             b.x(f[i]);
         }
     }
+    let _ = (f, g, delta, odd, a_ctrl, parity, r, s);
+}
+
+fn emit_centered_by_denom_controls_live_numerator_benchmark_scaffold(
+    b: &mut B,
+    tx: &[QubitId],
+    ty: &[QubitId],
+    p: U256,
+) {
+    // Same denominator-derived control component, but now the centered replay
+    // scratch is a nonzero live numerator-derived value: a centered copy of the
+    // current y register.  The fast centered replay is still run as a
+    // forward+inverse no-op, but it now exercises arbitrary quantum numerator
+    // data rather than the zero scratch used by the first denominator hook.
+    const STEPS: usize = 560;
+    const DBITS: usize = 12;
+    const WIDE: usize = N + 4;
+    b.set_phase("by_centered_live_num_bench_alloc_num");
+    let r = b.alloc_qubits(WIDE);
+    let s = b.alloc_qubits(WIDE);
+    let center_flag = by_load_centered_copy_for_bench(b, ty, &s, p);
+
+    b.set_phase("by_centered_live_num_bench_alloc_den");
+    let f = b.alloc_qubits(STEPS);
+    let g = b.alloc_qubits(STEPS);
+    let delta = b.alloc_qubits(DBITS);
+    let odd = b.alloc_qubits(STEPS);
+    let a_ctrl = b.alloc_qubits(STEPS);
+    let parity = b.alloc_qubits(STEPS);
+    for i in 0..N {
+        if bit(p, i) {
+            b.x(f[i]);
+        }
+        b.cx(tx[i], g[i]);
+    }
+    b.x(delta[0]);
+
+    b.set_phase("by_centered_live_num_bench_generate");
+    for i in 0..STEPS {
+        let rem = STEPS - i;
+        by_2adic_branch_step_for_bench(b, &f[..rem], &g[..rem], &delta, odd[i], a_ctrl[i]);
+    }
+
+    b.set_phase("by_centered_live_num_bench_replay");
+    for i in 0..STEPS {
+        centered_signed_by_microstep_for_bench(b, &r, &s, odd[i], a_ctrl[i], parity[i], p);
+    }
+    for i in (0..STEPS).rev() {
+        centered_signed_by_microstep_inverse_for_bench(b, &r, &s, odd[i], a_ctrl[i], parity[i], p);
+        centered_signed_by_clear_parity_after_inverse_for_bench(b, &r, &s, odd[i], parity[i]);
+    }
+
+    b.set_phase("by_centered_live_num_bench_reverse_den");
+    for i in (0..STEPS).rev() {
+        let rem = STEPS - i;
+        by_2adic_branch_step_reverse_for_bench(b, &f[..rem], &g[..rem], &delta, odd[i], a_ctrl[i]);
+    }
+
+    b.set_phase("by_centered_live_num_bench_clear");
+    b.x(delta[0]);
+    for i in 0..N {
+        b.cx(tx[i], g[i]);
+        if bit(p, i) {
+            b.x(f[i]);
+        }
+    }
+    by_unload_centered_copy_for_bench(b, ty, &s, p, center_flag);
     let _ = (f, g, delta, odd, a_ctrl, parity, r, s);
 }
 
@@ -7604,6 +7699,9 @@ pub fn build() -> Vec<Op> {
     }
     if std::env::var("BY_CENTERED_DENOM_CONTROLS_BENCH").ok().as_deref() == Some("1") {
         emit_centered_by_denominator_derived_controls_benchmark_scaffold(b, &tx, p);
+    }
+    if std::env::var("BY_CENTERED_LIVE_NUM_BENCH").ok().as_deref() == Some("1") {
+        emit_centered_by_denom_controls_live_numerator_benchmark_scaffold(b, &tx, &ty, p);
     }
 
     if std::env::var("BY_TEST").is_ok() {
