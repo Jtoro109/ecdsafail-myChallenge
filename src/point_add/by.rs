@@ -2427,6 +2427,54 @@ mod tests {
         (degree, density)
     }
 
+    fn v2_i128_for_ratio_test(x: i128) -> usize {
+        if x == 0 {
+            128
+        } else {
+            (x.unsigned_abs()).trailing_zeros() as usize
+        }
+    }
+
+    #[test]
+    fn ratio_window_mobius_denominators_are_not_near_constant() {
+        // Windowing the ratio update gives
+        //   h' = (m10 + m11*h) / (m00 + m01*h)
+        // and, after consuming the low 16 bits, an odd denominator
+        //   D = q0 + m01*H.
+        // If m01 had high 2-adic valuation in most windows, D^{-1} could be a
+        // short series.  In real traces m01 is often odd or only weakly even,
+        // so windowing does not by itself remove the variable-inverse problem.
+        const W: usize = 16;
+        let samples = 64usize;
+        let mut sampler = Sampler::new(b"by-ratio-window-den-v2-v1", SECP256K1_P);
+        let mut hist = [0usize; 17];
+        let mut windows = 0usize;
+        for _ in 0..samples {
+            let x = sampler.next();
+            let mut delta = 1i64;
+            let mut f = SInt::from_u(SECP256K1_P);
+            let mut g = SInt::from_u(x);
+            for _ in 0..35 {
+                let f_low = low_signed_sint16_for_streaming_test(f);
+                let g_low = low_signed_sint16_for_streaming_test(g);
+                let bits = branch_bits_for_lowword_window(W, delta, f_low, g_low);
+                let m = matrix_from_branch_bits(delta, &bits);
+                let v = v2_i128_for_ratio_test(m.m01).min(16);
+                hist[v] += 1;
+                windows += 1;
+                for _ in 0..W {
+                    divstep_sint_state(&mut delta, &mut f, &mut g);
+                }
+            }
+        }
+        let weak = hist[0] + hist[1] + hist[2];
+        eprintln!(
+            "BY ratio window denominator v2(m01): windows={windows}, hist={hist:?}, weak_v1_v2={weak}"
+        );
+        assert!(weak > windows / 3, "m01 high-v2 enough to merit a separate follow-up");
+        assert_eq!(hist[0], 0, "m01 should be even after scaled 16-step windows");
+    }
+
     #[test]
     fn ratio_a_step_is_inverse_dense_and_common() {
         // The 560-bit full-ratio selector solves state size, but not

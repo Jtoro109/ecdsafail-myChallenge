@@ -170,7 +170,18 @@ steps (max 149 over 64 samples).  Therefore the full-ratio selector is
 state-optimal but not yet gate-optimal; a naive per-A modular inverse is dead.
 The next architectural question is whether to implement the ratio stream with a
 windowed/Möbius method, a cheap inverse-maintenance invariant, or fall back to a
-larger linear carry state.
+larger linear carry state.  A first windowed check,
+`ratio_window_mobius_denominators_are_not_near_constant`, found that 16-step
+Möbius denominators have even `m01`, but not enough 2-adic valuation to be
+nearly constant:
+
+```text
+v2(m01) histogram over 2240 windows:
+[0, 347, 673, 380, 317, 164, 104, 55, 49, 17, 18, 2, 2, 9, 9, 2, 92]
+```
+
+So a geometric-series inverse gets some help (`v2>=1` always) but not enough for
+a free update: 45.5% of windows have only `v2=1` or `2`.
 
 The 304-bit tail-ratio result remains useful as a fallback/diagnostic: after 16
 windows, `h=g/f mod 2^304` streams the remaining 304 branch bits exactly.
