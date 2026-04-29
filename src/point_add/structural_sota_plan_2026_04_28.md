@@ -810,7 +810,12 @@ emitted_ops = 38,874,541
 altseed/classical/phase/ancilla failures = 0
 ```
 
-Default path remains unchanged at `4,111,918 Toffoli @ 2,716q`.
+Default path remains unchanged at `4,111,918 Toffoli @ 2,716q`. A stronger
+nonzero forward+inverse centered roundtrip hook was also attempted, clearing
+parity from restored pre-step rows. It was classically/ancilla clean but failed
+phase on every altseed batch (`320` phase batches), so the hook was reverted.
+This mirrors the earlier A-clear lesson: MBU signed add/sub phase dependencies
+must be respected by the parity cleanup schedule.
 
 Naively synthesizing the range test is too expensive:
 `naive_centered_parity_recovery_cost_would_erase_redundant_replay_win` measures
