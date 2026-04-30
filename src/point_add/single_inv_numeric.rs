@@ -2417,6 +2417,37 @@ mod tests {
         signed_add_for_halfgcd_test(a, neg_prod)
     }
 
+    fn signed_neg_for_halfgcd_test(x: SignedMagU512ForHalfGcdTest) -> SignedMagU512ForHalfGcdTest {
+        smag_for_halfgcd_test(!x.neg, x.mag)
+    }
+
+    fn signed_mul_mag_for_halfgcd_test(
+        x: SignedMagU512ForHalfGcdTest,
+        q_neg: bool,
+        q: U512,
+    ) -> SignedMagU512ForHalfGcdTest {
+        smag_for_halfgcd_test(x.neg ^ q_neg, x.mag * q)
+    }
+
+    fn centered_euclid_abs_quotients_for_divisor(x: U256, p: U256) -> Vec<U512> {
+        let mut u = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(p));
+        let mut v = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(x));
+        let mut out = Vec::new();
+        while !v.mag.is_zero() {
+            let numerator = (u.mag << 1usize) + v.mag;
+            let denominator = v.mag << 1usize;
+            let q = numerator / denominator;
+            let q_neg = u.neg ^ v.neg;
+            let qv = signed_mul_mag_for_halfgcd_test(v, q_neg, q);
+            let r = signed_add_for_halfgcd_test(u, signed_neg_for_halfgcd_test(qv));
+            out.push(q);
+            u = v;
+            v = r;
+        }
+        assert_eq!(u.mag, U512::from(1u64));
+        out
+    }
+
     fn half_gcd_matrix_parity_anf_stats(n: usize, p: u16, phase_mask: u16) -> (usize, usize) {
         let size = 1usize << n;
         let mut anf = vec![0u8; size];
@@ -2565,6 +2596,71 @@ mod tests {
         assert!(matrix_p99 < 540, "first half-GCD matrix should be compact enough to be tempting");
         assert!(matrix_residual_p99 > 760, "matrix plus live residual state exceeds 600 scratch");
         assert!(matrix_tail_p99 > 680, "matrix plus even raw tail payload exceeds 600 scratch");
+    }
+
+    #[test]
+    fn centered_euclid_raw_stream_fits_but_parser_entropy_does_not() {
+        // Replace ordinary Euclid by a signed/centered remainder step using the
+        // nearest quotient.  Signs are derivable from the signed residual pair,
+        // and the absolute quotients are much smaller: raw magnitude payload is
+        // below the 600-scratch line when paired with one 256-bit data register.
+        // Unfortunately that is not a self-contained reversible stream.  As
+        // soon as we charge even one boundary bit per quotient, or an empirical
+        // prefix-code length for the quotient alphabet, the parser state is back
+        // above the budget.  This is a sharper version of the quotient-stream
+        // lesson: centered quotients are interesting only if a live-state parser
+        // can consume raw magnitude bits without separate denominator work regs.
+        use std::collections::BTreeMap;
+        let p = SECP256K1_P;
+        let samples = 8192usize;
+        let mut rng = 0xced0_e0c1_1d5e_5eedu64;
+        let mut seqs = Vec::with_capacity(samples);
+        let mut freq: BTreeMap<U512, usize> = BTreeMap::new();
+        let mut total = 0usize;
+        let mut raw_payloads = Vec::with_capacity(samples);
+        let mut counts = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let qs = centered_euclid_abs_quotients_for_divisor(x, p);
+            let raw = qs.iter().map(|&q| u512_bit_len_for_halfgcd_test(q)).sum::<usize>();
+            for &q in &qs {
+                *freq.entry(q).or_insert(0) += 1;
+                total += 1;
+            }
+            counts.push(qs.len());
+            raw_payloads.push(raw);
+            seqs.push(qs);
+        }
+        raw_payloads.sort_unstable();
+        counts.sort_unstable();
+        let p99 = samples * 99 / 100;
+        let raw_p99 = raw_payloads[p99];
+        let count_p99 = counts[p99];
+        let boundary_scratch_p99 = 256 + raw_p99 + count_p99;
+        let log_total = (total as f64).log2();
+        let mut entropy_lengths = Vec::with_capacity(samples);
+        for qs in &seqs {
+            let mut bits = 0.0f64;
+            for &q in qs {
+                let f = *freq.get(&q).unwrap() as f64;
+                bits += log_total - f.log2();
+            }
+            entropy_lengths.push(bits);
+        }
+        entropy_lengths.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let entropy_p99 = entropy_lengths[p99];
+        let entropy_scratch_p99 = 256.0 + entropy_p99;
+        eprintln!(
+            "centered Euclid quotients: raw_p99={raw_p99}, count_p99={count_p99}, boundary_scratch_p99={boundary_scratch_p99}, entropy_scratch_p99={entropy_scratch_p99:.1}"
+        );
+        println!("METRIC centered_euclid_raw_payload_p99={raw_p99}");
+        println!("METRIC centered_euclid_raw_scratch_p99={}", 256 + raw_p99);
+        println!("METRIC centered_euclid_boundary_scratch_p99={boundary_scratch_p99}");
+        println!("METRIC centered_euclid_entropy_scratch_p99={entropy_scratch_p99:.3}");
+        assert!(256 + raw_p99 < 600, "raw centered quotient magnitudes should be tantalizing");
+        assert!(boundary_scratch_p99 > 700, "boundary bits should kill self-contained raw packing");
+        assert!(entropy_scratch_p99 > 690.0, "empirical prefix-code parser should still exceed scratch");
     }
 
     #[test]
