@@ -807,7 +807,29 @@ keeps coefficients in `[-2^e p,2^e p]` and still needs extra bits
 this route only if a nonlinear finite-state / entropy-coded sidecar has a cheap
 detector/update rule, or if a cheap curve invariant appears.
 
-## 11. Fast invalidation tasks still open
+## 11. BY dirty-add scratch/gate tradeoff update
+
+The BY scaled-replay path has one fresh primitive worth preserving.  The naive
+controlled dirty qoffset adder was scratch-shaped but far too expensive
+(`3557` CCX at n=256).  A mask-and-borrow construction is much cheaper:
+`masked_controlled_qoffset_borrows_offset_as_dirty_gate_good_scratch_short`
+computes a clean mask `m=ctrl&offset`, runs the uncontrolled dirty qoffset adder
+using the original offset row as dirty workspace, and uncomputes `m`.  It passes
+small basis/phase checks and measures:
+
+```text
+controlled qoffset via mask+borrow: 1274 CCX
+peak for primitive:                  771q
+560-step replay proxy:               1,142,400 CCX
+compressed history + decoder + mask: ~766 scratch
+```
+
+So the gate count is near the scaled-BY target, but the clean 256-bit mask keeps
+it above the user's ~600-scratch cap.  A BY revival under 600 scratch now needs
+mask streaming/overlap with branch-history workspace, not another generic
+controlled-adder wrapper.
+
+## 12. Fast invalidation tasks still open
 
 1. **End-state branch predicate synthesis**: derive a reversible predicate for
    the previous branch from `(u',v',r',s',f', iter_idx)` cheap enough to replace

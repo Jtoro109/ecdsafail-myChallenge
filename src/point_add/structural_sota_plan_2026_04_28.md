@@ -1298,8 +1298,23 @@ scaled BY step with this substrate ≈ 4323 CCX
 ```
 
 So dirty qoffset addition solves the scratch direction but not yet the Toffoli
-direction. The next implementation problem is a **shared/control-efficient**
-dirty q-offset modular add, not merely controlling every qoffset use.
+direction. A newer mask-and-borrow variant gets the opposite tradeoff:
+`masked_controlled_qoffset_borrows_offset_as_dirty_gate_good_scratch_short`
+computes a clean mask `m_i = ctrl & offset_i`, uses the original offset row as
+the dirty workspace for the uncontrolled qoffset adder, then uncomputes the mask.
+It is phase-clean and gate-shaped:
+
+```text
+n=256 masked-borrow controlled qoffset: 1274 CCX, peak 771q
+scaled BY replay with this add:          ≈1,142,400 CCX
+compressed history + mask scratch:       ≈766q
+```
+
+Thus control-efficient dirty qoffset is possible, but the clean mask misses the
+user's ~600-scratch cap by ~166q when added to compressed pattern history. The
+next implementation problem is not raw Toffoli anymore; it is streaming or
+overlapping that mask with history/decoder workspace without losing phase
+cleanliness.
 
 This is the first coherent selected BY replay model in the right Toffoli band.
 It is not yet a complete DIV: branch-history compression/cleanup still need

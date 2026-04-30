@@ -3997,6 +3997,84 @@ mod tests {
     }
 
     #[test]
+    fn masked_controlled_qoffset_borrows_offset_as_dirty_gate_good_scratch_short() {
+        // New control trick for the dirty qoffset adder: compute a clean masked
+        // offset m_i = ctrl & offset_i, then run the *uncontrolled* dirty
+        // qoffset adder using the original offset register as dirty workspace.
+        // This restores offset and mask, and is far cheaper than controlling
+        // every vented-adder primitive.  The catch is the clean n-bit mask: gate
+        // count is SOTA-shaped, but compressed-history + mask still misses the
+        // user's ~600 scratch cap unless the mask can be overlapped/streamed.
+        let n = 8usize;
+        let maskv = (1u64 << n) - 1;
+        let mut b = super::super::B::new();
+        let ctrl = b.alloc_qubit();
+        let target = b.alloc_qubits(n);
+        let offset = b.alloc_qubits(n);
+        let mask = b.alloc_qubits(n);
+        let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
+        for k in 0..n {
+            b.ccx(ctrl, offset[k], mask[k]);
+        }
+        super::super::venting::iadd_dirty_2clean_qoffset(&mut b, &target, &offset[..n - 2], &clean2, &mask, false);
+        for k in 0..n {
+            b.ccx(ctrl, offset[k], mask[k]);
+        }
+        let ccx8 = count_ccx(&b.ops);
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        for ctrl_v in [false, true] {
+            for target_v in [0x00u64, 0x35, 0xf1] {
+                for offset_v in [0x00u64, 0x17, 0x80] {
+                    let mut hasher = sha3::Shake128::default();
+                    hasher.update(b"by-masked-borrow-qoffset-small-v1");
+                    let mut xof = hasher.finalize_xof();
+                    let mut sim = crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+                    if ctrl_v { *sim.qubit_mut(ctrl) |= 1; }
+                    set_slice_u512_by(&mut sim, &target, U512::from(target_v));
+                    set_slice_u512_by(&mut sim, &offset, U512::from(offset_v));
+                    sim.apply(&ops);
+                    let expected = if ctrl_v { target_v.wrapping_add(offset_v) & maskv } else { target_v & maskv };
+                    assert_eq!(get_slice_u512_by(&sim, &target).to::<u64>() & maskv, expected, "target mismatch");
+                    assert_eq!(get_slice_u512_by(&sim, &offset).to::<u64>() & maskv, offset_v & maskv, "offset changed");
+                    assert_eq!(get_slice_u512_by(&sim, &mask).to::<u64>() & maskv, 0, "mask dirty");
+                    assert_eq!(sim.global_phase() & 1, 0, "phase changed");
+                }
+            }
+        }
+
+        let mut b = super::super::B::new();
+        let ctrl = b.alloc_qubit();
+        let target = b.alloc_qubits(256);
+        let offset = b.alloc_qubits(256);
+        let mask = b.alloc_qubits(256);
+        let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
+        for k in 0..256 {
+            b.ccx(ctrl, offset[k], mask[k]);
+        }
+        super::super::venting::iadd_dirty_2clean_qoffset(&mut b, &target, &offset[..254], &clean2, &mask, false);
+        for k in 0..256 {
+            b.ccx(ctrl, offset[k], mask[k]);
+        }
+        let ccx = count_ccx(&b.ops);
+        let peak = b.peak_qubits as usize;
+        let scaled_microstep_with_this_add = ccx + 256 + 255 + 255;
+        let div560 = scaled_microstep_with_this_add as f64 * 560.0;
+        let scratch_with_compressed_history = 481usize + 26 + 256 + 3;
+        eprintln!(
+            "masked-borrow controlled qoffset: ccx8={ccx8}, ccx256={ccx}, peak={peak}q, div560≈{div560:.0}, scratch_with_history≈{scratch_with_compressed_history}q"
+        );
+        println!("METRIC masked_borrow_qoffset_ccx={ccx}");
+        println!("METRIC masked_borrow_qoffset_peak={peak}");
+        println!("METRIC masked_borrow_qoffset_div560={div560:.0}");
+        println!("METRIC masked_borrow_qoffset_scratch_with_history={scratch_with_compressed_history}");
+        assert!(ccx < 1_400, "masked-borrow control failed to hit gate target");
+        assert!(div560 < 1_200_000.0, "masked-borrow controlled qoffset not replay-shaped");
+        assert!(scratch_with_compressed_history > 600, "mask unexpectedly fits the 600 scratch target; revisit BY integration");
+    }
+
+    #[test]
     fn naive_controlled_dirty_qoffset_is_scratch_right_but_toffoli_heavy() {
         let mut b = super::super::B::new();
         let ctrl = b.alloc_qubit();
