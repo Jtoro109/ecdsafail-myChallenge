@@ -4217,6 +4217,78 @@ mod tests {
         b.free(act);
     }
 
+    fn plusminus_kbit_width_for_history_len(len: usize) -> usize {
+        let mut bits = 0usize;
+        let mut x = len;
+        while x > 0 {
+            bits += 1;
+            x >>= 1;
+        }
+        bits.max(1)
+    }
+
+    fn emit_plusminus_inplace_step_forward_konly_barrel_for_test(
+        b: &mut super::super::B,
+        u: &[super::super::QubitId],
+        v: &[super::super::QubitId],
+        cu: &[super::super::QubitId],
+        cv: &[super::super::QubitId],
+        active: &[super::super::QubitId],
+        hist: &[super::super::QubitId],
+        spill: &[super::super::QubitId],
+        flag: super::super::QubitId,
+        one: super::super::QubitId,
+    ) {
+        b.x(one);
+        super::super::sub_nbit_qq_fast(b, v, u); // u=d
+        emit_trailing_zero_active_chain_history_for_plusminus(b, u, active, hist);
+        let kbits = b.alloc_qubits(plusminus_kbit_width_for_history_len(hist.len()));
+        emit_unary_history_to_binary_count_for_plusminus(b, hist, &kbits);
+        emit_barrel_left_shift_unsigned_exact_inverse_for_plusminus(b, u, &kbits, spill); // u=d>>k
+        emit_controlled_integer_add_for_plusminus(b, cu, cv, one, true);
+        emit_barrel_left_shift_signed_nooverflow_for_plusminus(b, cv, &kbits, spill); // cv=cv<<k
+        emit_unary_history_to_binary_count_inverse_for_plusminus(b, hist, &kbits);
+        b.free_vec(&kbits);
+        super::super::cmp_lt_into(b, u, v, flag);
+        for i in 0..u.len() {
+            local_cswap_for_plusminus_cost(b, flag, u[i], v[i]);
+            local_cswap_for_plusminus_cost(b, flag, cu[i], cv[i]);
+        }
+        b.x(one);
+        emit_plusminus_recover_direction_from_coeff_divisibility_for_test(b, cu, hist, flag);
+    }
+
+    fn emit_plusminus_inplace_step_inverse_konly_barrel_for_test(
+        b: &mut super::super::B,
+        u: &[super::super::QubitId],
+        v: &[super::super::QubitId],
+        cu: &[super::super::QubitId],
+        cv: &[super::super::QubitId],
+        active: &[super::super::QubitId],
+        hist: &[super::super::QubitId],
+        spill: &[super::super::QubitId],
+        flag: super::super::QubitId,
+        one: super::super::QubitId,
+    ) {
+        emit_plusminus_recover_direction_from_coeff_divisibility_for_test(b, cu, hist, flag);
+        b.x(one);
+        for i in 0..u.len() {
+            local_cswap_for_plusminus_cost(b, flag, u[i], v[i]);
+            local_cswap_for_plusminus_cost(b, flag, cu[i], cv[i]);
+        }
+        super::super::cmp_lt_into(b, u, v, flag);
+        let kbits = b.alloc_qubits(plusminus_kbit_width_for_history_len(hist.len()));
+        emit_unary_history_to_binary_count_for_plusminus(b, hist, &kbits);
+        emit_barrel_left_shift_signed_nooverflow_inverse_for_plusminus(b, cv, &kbits, spill);
+        emit_controlled_integer_add_for_plusminus(b, cu, cv, one, false);
+        emit_barrel_left_shift_unsigned_exact_for_plusminus(b, u, &kbits, spill);
+        emit_unary_history_to_binary_count_inverse_for_plusminus(b, hist, &kbits);
+        b.free_vec(&kbits);
+        emit_trailing_zero_active_chain_history_for_plusminus(b, u, active, hist);
+        super::super::add_nbit_qq_fast(b, v, u);
+        b.x(one);
+    }
+
     fn plusminus_classical_step_mod_width_for_test(
         u: &mut u64,
         v: &mut u64,
@@ -4430,6 +4502,77 @@ mod tests {
         println!("METRIC plusminus_unary_to_binary_w64_roundtrip_ccx={w64_roundtrip_ccx}");
         println!("METRIC plusminus_unary_to_binary_extrap257_roundtrip_ccx={extrap257_roundtrip}");
         assert!(roundtrip_ccx == 2 * compute_ccx, "roundtrip should be compute+uncompute");
+    }
+
+    #[test]
+    fn plusminus_barrel_shift_konly_step_roundtrip_and_scaling() {
+        // Integrated replacement for the physically repeated shifts inside a
+        // k-only step: unary history -> binary k, unsigned/signed barrel shifts,
+        // then uncompute binary k from the stored unary history.
+        use sha3::digest::{ExtendableOutput, Update};
+        const W: usize = 16;
+        let mut b = super::super::B::new();
+        let u = b.alloc_qubits(W);
+        let v = b.alloc_qubits(W);
+        let cu = b.alloc_qubits(W);
+        let cv = b.alloc_qubits(W);
+        let active = b.alloc_qubits(W + 1);
+        let hist = b.alloc_qubits(W);
+        let spill = b.alloc_qubits(W);
+        let flag = b.alloc_qubit();
+        let one = b.alloc_qubit();
+        let start = b.ops.len();
+        emit_plusminus_inplace_step_forward_konly_barrel_for_test(&mut b, &u, &v, &cu, &cv, &active, &hist, &spill, flag, one);
+        emit_plusminus_inplace_step_inverse_konly_barrel_for_test(&mut b, &u, &v, &cu, &cv, &active, &hist, &spill, flag, one);
+        let ccx = local_count_ccx_for_plusminus_cost(&b.ops[start..]);
+        let peak = b.peak_qubits;
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        let mask = (1u64 << W) - 1;
+        let cases = [(91u64, 27u64), (201, 77), (255, 127), (987, 31), (65535, 1)];
+        for &(uval, vval) in &cases {
+            let mut hasher = sha3::Shake128::default();
+            hasher.update(b"plusminus-barrel-konly-step-roundtrip-v1");
+            let mut xof = hasher.finalize_xof();
+            let mut sim = crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+            set_slice_u512_pm(&mut sim, &u, U512::from(uval));
+            set_slice_u512_pm(&mut sim, &v, U512::from(vval));
+            set_slice_u512_pm(&mut sim, &cu, U512::ZERO);
+            set_slice_u512_pm(&mut sim, &cv, U512::from(1u64));
+            sim.apply(&ops);
+            assert_eq!(get_slice_u512_pm(&sim, &u).as_limbs()[0] & mask, uval & mask, "u changed case=({uval},{vval})");
+            assert_eq!(get_slice_u512_pm(&sim, &v).as_limbs()[0] & mask, vval & mask, "v changed case=({uval},{vval})");
+            assert_eq!(get_slice_u512_pm(&sim, &cu).as_limbs()[0] & mask, 0, "cu changed case=({uval},{vval})");
+            assert_eq!(get_slice_u512_pm(&sim, &cv).as_limbs()[0] & mask, 1, "cv changed case=({uval},{vval})");
+            assert_eq!(get_slice_u512_pm(&sim, &hist), U512::ZERO, "hist not clean case=({uval},{vval})");
+            assert_eq!(get_slice_u512_pm(&sim, &active), U512::ZERO, "active not clean case=({uval},{vval})");
+            assert_eq!(get_slice_u512_pm(&sim, &spill), U512::ZERO, "spill not clean case=({uval},{vval})");
+            assert_eq!(sim.qubit(flag) & 1, 0, "flag not clean case=({uval},{vval})");
+            assert_eq!(sim.qubit(one) & 1, 0, "one not clean case=({uval},{vval})");
+            assert_eq!(sim.global_phase() & 1, 0, "unexpected phase case=({uval},{vval})");
+        }
+
+        let mut b64 = super::super::B::new();
+        let u64 = b64.alloc_qubits(64);
+        let v64 = b64.alloc_qubits(64);
+        let cu64 = b64.alloc_qubits(64);
+        let cv64 = b64.alloc_qubits(64);
+        let active64 = b64.alloc_qubits(65);
+        let hist64 = b64.alloc_qubits(64);
+        let spill64 = b64.alloc_qubits(64);
+        let flag64 = b64.alloc_qubit();
+        let one64 = b64.alloc_qubit();
+        let s64 = b64.ops.len();
+        emit_plusminus_inplace_step_forward_konly_barrel_for_test(&mut b64, &u64, &v64, &cu64, &cv64, &active64, &hist64, &spill64, flag64, one64);
+        let w64_forward_ccx = local_count_ccx_for_plusminus_cost(&b64.ops[s64..]);
+        let extrap257_forward = ((w64_forward_ccx as f64) * (257.0 / 64.0) * (8.0 / 6.0)).round() as usize;
+        eprintln!("plus-minus barrel k-only step: w16_roundtrip={ccx}, peak={peak}, w64_forward={w64_forward_ccx}, extrap257_forward={extrap257_forward}");
+        println!("METRIC plusminus_barrel_step_w16_roundtrip_ccx={ccx}");
+        println!("METRIC plusminus_barrel_step_w16_peak_q={peak}");
+        println!("METRIC plusminus_barrel_step_w64_forward_ccx={w64_forward_ccx}");
+        println!("METRIC plusminus_barrel_step_extrap257_forward_ccx={extrap257_forward}");
+        assert!(w64_forward_ccx < 3 * 9338, "barrel step should beat repeated-shift w64 forward by a wide margin");
     }
 
     #[test]
