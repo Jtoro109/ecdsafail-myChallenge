@@ -144,7 +144,10 @@ all four reachable branch matrices.  Sparse rank coding has the same issue in a
 different form: `curve_collision_event_oracle_is_dense_in_natural_input_frame`
 shows the natural full-domain predicate for whether an input trajectory hits a
 curve-supported ambiguous poststate is already degree `19/20`, density
-`487716/1048576` at toy `n=10`.
+`487716/1048576` at toy `n=10`.  Redundant centered coefficient representatives
+also hit the same width wall: `redundant_centered_coefficients_still_need_growing_range_on_curve_support`
+needs extra range bits `6,9,11` for `n=8,10,12`, and `n=14` still has 301
+conflicts at extra `11`.
 
 ### Strategy C re-estimate at the current baseline
 

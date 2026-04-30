@@ -359,3 +359,6 @@ closed under the Kaliski branch matrices either: there are no common
 one-dimensional sidecar eigenvectors modulo `2^1..2^8`.  Sparse rank coding
 would still need to detect the unique collision event; the natural full-domain
 event predicate is dense (`n=10` degree `19/20`, density `487716/1048576`).
+Keeping centered redundant coefficient representatives in a wider range is also
+not enough: curve toys need extra bits `6,9,11` at `n=8,10,12`, and `n=14`
+still collides at extra `11`.

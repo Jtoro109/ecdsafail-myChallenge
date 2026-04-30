@@ -800,9 +800,12 @@ swap/add/double branch matrices.  The sparse-rank variant also has a detector
 problem: even though each curve-supported toy trajectory hits at most one
 ambiguous poststate, `curve_collision_event_oracle_is_dense_in_natural_input_frame`
 shows the natural full-domain event predicate has degree `19/20` and density
-`487716/1048576` at `n=10`.  Keep this route only if a nonlinear finite-state /
-entropy-coded sidecar has a cheap detector/update rule, or if a cheap curve
-invariant appears.
+`487716/1048576` at `n=10`.  A redundant signed representative is just the same
+tradeoff in another form: `redundant_centered_coefficients_still_need_growing_range_on_curve_support`
+keeps coefficients in `[-2^e p,2^e p]` and still needs extra bits
+`e=6,9,11` for toy `n=8,10,12`; at `n=14`, `e=11` leaves 301 conflicts.  Keep
+this route only if a nonlinear finite-state / entropy-coded sidecar has a cheap
+detector/update rule, or if a cheap curve invariant appears.
 
 ## 11. Fast invalidation tasks still open
 

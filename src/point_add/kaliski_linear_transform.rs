@@ -812,6 +812,90 @@ fn toy_curve_restricted_sidecar_min_bits(n: usize, p: u64, beta: u64, max_bits: 
     None
 }
 
+#[derive(Clone, Copy, Debug)]
+struct ToyRedundantCoeffState {
+    u: u64,
+    v: u64,
+    r: i128,
+    s: i128,
+    f: u8,
+}
+
+fn toy_center_i128(mut x: i128, p: i128, limit: i128) -> i128 {
+    while x > limit { x -= p; }
+    while x < -limit { x += p; }
+    x
+}
+
+fn toy_step_redundant_coeff(st: &mut ToyRedundantCoeffState, p: u64, limit: i128) -> Branch {
+    let mut m = 0u8;
+    if st.f == 1 && st.v == 0 { m ^= 1; }
+    st.f ^= m;
+    let u0 = (st.u & 1) as u8;
+    let v0 = (st.v & 1) as u8;
+    let mut a = 0u8;
+    if st.f == 1 && u0 == 0 { a ^= 1; }
+    if st.f == 1 && u0 == 1 && v0 == 0 { m ^= 1; }
+    let b = a ^ m;
+    let gt = if st.u > st.v { 1u8 } else { 0u8 };
+    let d = (st.f & gt) & (1 ^ b);
+    a ^= d;
+    m ^= d;
+    let br = Branch { a_swap: a == 1, add: (st.f & (1 ^ (a ^ m))) == 1 };
+    if br.a_swap {
+        std::mem::swap(&mut st.u, &mut st.v);
+        std::mem::swap(&mut st.r, &mut st.s);
+    }
+    if br.add {
+        st.v -= st.u;
+        st.s = toy_center_i128(st.s + st.r, p as i128, limit);
+    }
+    st.v /= 2;
+    st.r = toy_center_i128(2 * st.r, p as i128, limit);
+    if br.a_swap {
+        std::mem::swap(&mut st.u, &mut st.v);
+        std::mem::swap(&mut st.r, &mut st.s);
+    }
+    br
+}
+
+fn toy_curve_restricted_redundant_conflicts(n: usize, p: u64, extra_bits: usize) -> usize {
+    use std::collections::HashMap;
+    let q = toy_first_curve_point(p);
+    let roots = toy_sqrt_buckets(p);
+    let limit = (p as i128) << extra_bits;
+    let mut seen: HashMap<(usize, u64, u64, i128, i128, u8), Branch> = HashMap::new();
+    let mut conflicts = 0usize;
+    for px in 0..p {
+        let rhs = toy_curve_rhs(px, p);
+        for &py in &roots[rhs as usize] {
+            let dx = (px + p - q.0) % p;
+            let dy = (py + p - q.1) % p;
+            if dx == 0 { continue; }
+            let tag = (dy + dx) % p;
+            if tag == 0 { continue; }
+            let mut st = ToyRedundantCoeffState { u: p, v: dx, r: 0, s: toy_center_i128(tag as i128, p as i128, limit), f: 1 };
+            for iter in 0..(2 * n - 1) {
+                let br = toy_step_redundant_coeff(&mut st, p, limit);
+                let key = (iter, st.u, st.v, st.r, st.s, st.f);
+                if let Some(prev) = seen.insert(key, br) {
+                    if prev != br { conflicts += 1; }
+                }
+            }
+        }
+    }
+    conflicts
+}
+
+fn toy_curve_restricted_redundant_min_extra_bits(n: usize, p: u64, max_extra: usize) -> Option<usize> {
+    for extra in 0..=max_extra {
+        if toy_curve_restricted_redundant_conflicts(n, p, extra) == 0 {
+            return Some(extra);
+        }
+    }
+    None
+}
+
 fn toy_update_mod2_sidecar(zr: &mut u64, zs: &mut u64, br: Branch, mask: u64) {
     if br.a_swap { std::mem::swap(zr, zs); }
     if br.add { *zs = zs.wrapping_add(*zr) & mask; }
@@ -1206,6 +1290,31 @@ fn curve_restricted_tagged_kaliski_poststate_ambiguity_is_small_but_not_exact() 
         last_frac = frac;
     }
     assert!(last_frac < 0.005);
+}
+
+#[test]
+fn redundant_centered_coefficients_still_need_growing_range_on_curve_support() {
+    // Another way to keep some quotient history is to stop reducing coefficient
+    // registers to a unique residue and instead keep centered redundant signed
+    // representatives in [-2^e p, 2^e p].  This is locally updatable and only
+    // costs e extra bits per coefficient lane.  Unfortunately, on curve support
+    // the exact branch-recovery range still grows with n: toys need e=6,9,11
+    // for n=8,10,12, and n=14 still has collisions at e=11.  This is the same
+    // quotient-width wall as unreduced coefficients, only with a smaller
+    // constant on tiny toys.
+    let cases = [(8usize, 251u64, 8usize), (10, 1021, 11), (12, 4093, 12)];
+    for &(n, p, max_extra) in &cases {
+        let extra = toy_curve_restricted_redundant_min_extra_bits(n, p, max_extra).unwrap();
+        eprintln!("curve redundant centered coefficients: n={n}, p={p}, min_extra_bits={extra}");
+        if n == 12 {
+            println!("METRIC curve_redundant_coeff_extra_bits_n12={extra}");
+        }
+    }
+    let n14_conflicts_e11 = toy_curve_restricted_redundant_conflicts(14, 16381, 11);
+    eprintln!("curve redundant centered coefficients: n=14, p=16381, conflicts_at_extra11={n14_conflicts_e11}");
+    println!("METRIC curve_redundant_coeff_conflicts_n14_e11={n14_conflicts_e11}");
+    println!("METRIC curve_redundant_coeff_linear_extra_bits_secp=235");
+    assert!(n14_conflicts_e11 > 0);
 }
 
 #[test]
