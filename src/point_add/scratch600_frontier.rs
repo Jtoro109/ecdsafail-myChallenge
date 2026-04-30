@@ -52,10 +52,10 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             blocker: "raw stream fits only before boundary/rank/live-parser cost is charged",
         },
         Candidate {
-            name: "plusminus_scaled_konly_slack_solinas_model_unbuilt",
+            name: "plusminus_scaled_konly_slack_denominator_blocked",
             scratch_bits: 517,
             charged_toffoli: None,
-            blocker: "step/direction/packed-history toy circuits are phase-clean; still lacks production 256-bit envelope and variable-S Solinas circuit",
+            blocker: "scratch/history shell is phase-clean in toys, but current denominator shift/normalization lower bound misses by 512k before scale/oracle cleanup",
         },
         Candidate {
             name: "centered_euclid_raw_q_stream_without_parser",

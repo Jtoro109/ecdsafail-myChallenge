@@ -2937,12 +2937,22 @@ mod tests {
         }
         let carry_core = 528usize;
         let low_gate_persistent = carry_core + fixed_bits;
+        let low_gate_scratch = 1425usize - 512usize;
+        let low_qubit_scratch = 1175usize - 512usize;
+        let gap_to_low_gate = low_gate_persistent as isize - low_gate_scratch as isize;
+        let gap_to_low_qubit = low_gate_persistent as isize - low_qubit_scratch as isize;
         eprintln!(
-            "BY first16 pattern history entropy: H≈{entropy:.1}, fixed_bits={fixed_bits}, carry_plus_fixed={low_gate_persistent}"
+            "BY first16 pattern history entropy: H≈{entropy:.1}, fixed_bits={fixed_bits}, carry_plus_fixed={low_gate_persistent}, gap_low_gate={gap_to_low_gate}, gap_low_qubit={gap_to_low_qubit}"
         );
+        println!("METRIC by_first16_pattern_entropy_bits={entropy:.3}");
+        println!("METRIC by_first16_pattern_fixed_bits={fixed_bits}");
+        println!("METRIC by_tail_carry_core_bits={carry_core}");
+        println!("METRIC by_first16_carry_plus_fixed_bits={low_gate_persistent}");
+        println!("METRIC by_first16_gap_to_lowgate_scratch_bits={gap_to_low_gate}");
+        println!("METRIC by_first16_gap_to_lowqubit_scratch_bits={gap_to_low_qubit}");
         assert!(entropy < 220.0, "first16 pattern history too large for low-gate selector plan");
-        assert!(low_gate_persistent < 913, "carry+first16 history misses 1425q low-gate budget");
-        assert!(low_gate_persistent > 663, "carry+first16 history would already hit 1175q low-qubit budget");
+        assert!(low_gate_persistent < low_gate_scratch, "carry+first16 history misses 1425q low-gate budget");
+        assert!(low_gate_persistent > low_qubit_scratch, "carry+first16 history would already hit 1175q low-qubit budget");
     }
 
     #[test]
