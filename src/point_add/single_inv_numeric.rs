@@ -3793,6 +3793,26 @@ mod tests {
         }
     }
 
+    fn emit_unary_history_to_binary_count_for_plusminus(
+        b: &mut super::super::B,
+        hist: &[super::super::QubitId],
+        kbits: &[super::super::QubitId],
+    ) {
+        for &h in hist {
+            super::super::cadd_nbit_const_fast(b, kbits, U256::from(1u64), h);
+        }
+    }
+
+    fn emit_unary_history_to_binary_count_inverse_for_plusminus(
+        b: &mut super::super::B,
+        hist: &[super::super::QubitId],
+        kbits: &[super::super::QubitId],
+    ) {
+        for &h in hist.iter().rev() {
+            super::super::csub_nbit_const_fast(b, kbits, U256::from(1u64), h);
+        }
+    }
+
     fn controlled_left_shift_cost_for_plusminus(width: usize) -> usize {
         let mut b = super::super::B::new();
         let v = b.alloc_qubits(width);
@@ -4337,6 +4357,79 @@ mod tests {
         println!("METRIC plusminus_signed_barrel_w64_left_ccx={w64_left_ccx}");
         println!("METRIC plusminus_signed_barrel_extrap257_left_ccx={extrap257_left}");
         assert!(left_ccx > W * KB && left_ccx < 2 * W * KB, "signed cleanup should be small over W log W");
+    }
+
+    #[test]
+    fn plusminus_unary_history_to_binary_k_roundtrip_cost() {
+        // Barrel shifts need binary k.  This simple converter counts unary
+        // prefix bits with controlled +1 additions, then uncomputes the counter
+        // from the still-stored unary history after the shifts.
+        use sha3::digest::{ExtendableOutput, Update};
+        const W: usize = 16;
+        const KB: usize = 5;
+        let mut bc = super::super::B::new();
+        let hist = bc.alloc_qubits(W);
+        let kbits = bc.alloc_qubits(KB);
+        let start_c = bc.ops.len();
+        emit_unary_history_to_binary_count_for_plusminus(&mut bc, &hist, &kbits);
+        let compute_ccx = local_count_ccx_for_plusminus_cost(&bc.ops[start_c..]);
+        let compute_peak = bc.peak_qubits;
+        let c_num_qubits = bc.next_qubit as usize;
+        let c_num_bits = bc.next_bit as usize;
+        let c_ops = bc.ops;
+        for k in 0u64..=W as u64 {
+            let hist_val = if k == W as u64 { (1u64 << W) - 1 } else { (1u64 << k) - 1 };
+            let mut hasher = sha3::Shake128::default();
+            hasher.update(b"plusminus-unary-to-binary-compute-v1");
+            let mut xof = hasher.finalize_xof();
+            let mut sim = crate::sim::Simulator::new(c_num_qubits, c_num_bits, &mut xof);
+            set_slice_u512_pm(&mut sim, &hist, U512::from(hist_val));
+            sim.apply(&c_ops);
+            assert_eq!(get_slice_u512_pm(&sim, &hist).as_limbs()[0] & ((1u64 << W) - 1), hist_val, "hist changed k={k}");
+            assert_eq!(get_slice_u512_pm(&sim, &kbits).as_limbs()[0] & ((1u64 << KB) - 1), k, "kbits mismatch k={k}");
+            assert_eq!(sim.global_phase() & 1, 0, "unexpected phase k={k}");
+        }
+
+        let mut br = super::super::B::new();
+        let hist_r = br.alloc_qubits(W);
+        let kbits_r = br.alloc_qubits(KB);
+        let start_r = br.ops.len();
+        emit_unary_history_to_binary_count_for_plusminus(&mut br, &hist_r, &kbits_r);
+        emit_unary_history_to_binary_count_inverse_for_plusminus(&mut br, &hist_r, &kbits_r);
+        let roundtrip_ccx = local_count_ccx_for_plusminus_cost(&br.ops[start_r..]);
+        let roundtrip_peak = br.peak_qubits;
+        let r_num_qubits = br.next_qubit as usize;
+        let r_num_bits = br.next_bit as usize;
+        let r_ops = br.ops;
+        for k in 0u64..=W as u64 {
+            let hist_val = if k == W as u64 { (1u64 << W) - 1 } else { (1u64 << k) - 1 };
+            let mut hasher = sha3::Shake128::default();
+            hasher.update(b"plusminus-unary-to-binary-roundtrip-v1");
+            let mut xof = hasher.finalize_xof();
+            let mut sim = crate::sim::Simulator::new(r_num_qubits, r_num_bits, &mut xof);
+            set_slice_u512_pm(&mut sim, &hist_r, U512::from(hist_val));
+            sim.apply(&r_ops);
+            assert_eq!(get_slice_u512_pm(&sim, &hist_r).as_limbs()[0] & ((1u64 << W) - 1), hist_val, "hist changed roundtrip k={k}");
+            assert_eq!(get_slice_u512_pm(&sim, &kbits_r), U512::ZERO, "kbits dirty roundtrip k={k}");
+            assert_eq!(sim.global_phase() & 1, 0, "unexpected phase roundtrip k={k}");
+        }
+
+        let mut b64 = super::super::B::new();
+        let h64 = b64.alloc_qubits(64);
+        let k64 = b64.alloc_qubits(7);
+        let s64 = b64.ops.len();
+        emit_unary_history_to_binary_count_for_plusminus(&mut b64, &h64, &k64);
+        emit_unary_history_to_binary_count_inverse_for_plusminus(&mut b64, &h64, &k64);
+        let w64_roundtrip_ccx = local_count_ccx_for_plusminus_cost(&b64.ops[s64..]);
+        let extrap257_roundtrip = ((w64_roundtrip_ccx as f64) * (257.0 / 64.0) * (8.0 / 7.0)).round() as usize;
+        eprintln!("plus-minus unary-to-binary k: w16 compute={compute_ccx}, compute_peak={compute_peak}, roundtrip={roundtrip_ccx}, roundtrip_peak={roundtrip_peak}, w64_roundtrip={w64_roundtrip_ccx}, extrap257_roundtrip={extrap257_roundtrip}");
+        println!("METRIC plusminus_unary_to_binary_w16_compute_ccx={compute_ccx}");
+        println!("METRIC plusminus_unary_to_binary_w16_compute_peak_q={compute_peak}");
+        println!("METRIC plusminus_unary_to_binary_w16_roundtrip_ccx={roundtrip_ccx}");
+        println!("METRIC plusminus_unary_to_binary_w16_roundtrip_peak_q={roundtrip_peak}");
+        println!("METRIC plusminus_unary_to_binary_w64_roundtrip_ccx={w64_roundtrip_ccx}");
+        println!("METRIC plusminus_unary_to_binary_extrap257_roundtrip_ccx={extrap257_roundtrip}");
+        assert!(roundtrip_ccx == 2 * compute_ccx, "roundtrip should be compute+uncompute");
     }
 
     #[test]
