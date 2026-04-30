@@ -2875,6 +2875,40 @@ mod tests {
         assert!(scratch_p99 > 770.0);
     }
 
+    fn centered_euclid_quotient_payload_parity_anf_stats(n: usize, p: u16) -> (usize, usize) {
+        let size = 1usize << n;
+        let mut anf = vec![0u8; size];
+        for x in 1..p {
+            let mut u = p as i128;
+            let mut v = x as i128;
+            let mut parity = 0u8;
+            while v != 0 {
+                let q_mag = ((2 * u.unsigned_abs()) + v.unsigned_abs()) / (2 * v.unsigned_abs());
+                parity ^= (q_mag.count_ones() as u8) & 1;
+                let q_signed = if (u < 0) ^ (v < 0) { -(q_mag as i128) } else { q_mag as i128 };
+                let rem = u - q_signed * v;
+                u = v;
+                v = rem;
+            }
+            anf[x as usize] = parity;
+        }
+        for bit in 0..n {
+            for idx in 0..size {
+                if (idx & (1usize << bit)) != 0 {
+                    anf[idx] ^= anf[idx ^ (1usize << bit)];
+                }
+            }
+        }
+        let density = anf.iter().filter(|&&c| c != 0).count();
+        let degree = anf
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &c)| if c != 0 { Some(i.count_ones() as usize) } else { None })
+            .max()
+            .unwrap_or(0);
+        (degree, density)
+    }
+
     fn euclid_quotient_payload_parity_anf_stats(n: usize, p: u16) -> (usize, usize) {
         let size = 1usize << n;
         let mut anf = vec![0u8; size];
@@ -3022,6 +3056,30 @@ mod tests {
         println!("METRIC euclid_live_x_recompute_weight_mean={mean:.3}");
         println!("METRIC euclid_live_x_recompute_weight_p99={p99}");
         assert!(mean > 8_000_000.0);
+    }
+
+    #[test]
+    fn mbuc_of_centered_euclid_quotient_stream_is_dense_too() {
+        // Centered quotients made the raw payload tantalizingly small, so check
+        // the other standard escape: measure the quotient stream and kickmix it
+        // from x.  A representative parity of the centered quotient magnitudes
+        // is already maximal/near-half-dense on toy fields.  Thus the centered
+        // raw stream is not cheaply measurable; it requires an actual reversible
+        // parser/consumer if it is ever revived.
+        let cases = [(8usize, 251u16), (10, 1021), (12, 4093), (14, 16381)];
+        for &(n, p) in &cases {
+            let (degree, density) = centered_euclid_quotient_payload_parity_anf_stats(n, p);
+            let table = 1usize << n;
+            eprintln!(
+                "Centered Euclid quotient payload parity ANF: n={n}, degree={degree}, density={density}/{table}"
+            );
+            if n == 14 {
+                println!("METRIC centered_euclid_mbu_degree_n14={degree}");
+                println!("METRIC centered_euclid_mbu_density_n14={density}");
+            }
+            assert!(degree + 1 >= n);
+            assert!(density > table / 3);
+        }
     }
 
     #[test]
