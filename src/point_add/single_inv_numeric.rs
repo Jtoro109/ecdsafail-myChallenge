@@ -1676,6 +1676,35 @@ mod tests {
         })
     }
 
+    fn curve_x_membership_anf_stats(n: usize, p: u16) -> (usize, usize) {
+        let size = 1usize << n;
+        let mut quadratic_residue = vec![false; p as usize];
+        for y in 0..p {
+            quadratic_residue[((y as u32 * y as u32) % p as u32) as usize] = true;
+        }
+        let mut anf = vec![0u8; size];
+        for x in 0..p {
+            let x2 = mul_mod_u16_for_phase_test(x, x, p);
+            let rhs = add_mod_u16_for_phase_test(mul_mod_u16_for_phase_test(x2, x, p), 7, p);
+            anf[x as usize] = quadratic_residue[rhs as usize] as u8;
+        }
+        for bit in 0..n {
+            for idx in 0..size {
+                if (idx & (1usize << bit)) != 0 {
+                    anf[idx] ^= anf[idx ^ (1usize << bit)];
+                }
+            }
+        }
+        let density = anf.iter().filter(|&&v| v != 0).count();
+        let degree = anf
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &v)| if v != 0 { Some(i.count_ones() as usize) } else { None })
+            .max()
+            .unwrap_or(0);
+        (degree, density)
+    }
+
     fn pencil_slope_root_choice_anf_stats(n: usize, p: u16, qx: u16, qy: u16, phase_mask: u16) -> (usize, usize, usize) {
         let size = 1usize << n;
         let mut anf = vec![0u8; size];
@@ -1750,6 +1779,30 @@ mod tests {
             last = min_degree;
         }
         assert!(last >= 7);
+    }
+
+    #[test]
+    fn curve_membership_oracle_itself_is_dense() {
+        // Any branch decoder that tries to use "which predecessor stays on the
+        // curve?" must coherently test whether x^3+7 is a square.  That
+        // Legendre-symbol-style predicate is not a small local side condition:
+        // on toy secp-shaped fields its full-domain ANF is maximal/near-maximal
+        // degree and about half dense.  This is why the low curve-collision rate
+        // cannot be counted as a free Kaliski/old-point cleanup oracle.
+        let cases = [(8usize, 251u16), (10usize, 1021u16), (12usize, 4093u16), (14usize, 16381u16)];
+        for &(n, p) in &cases {
+            let (degree, density) = curve_x_membership_anf_stats(n, p);
+            let table = 1usize << n;
+            eprintln!(
+                "Curve x-membership ANF: n={n}, p={p}, degree={degree}, density={density}/{table}"
+            );
+            if n == 14 {
+                println!("METRIC curve_x_membership_degree_n14={degree}");
+                println!("METRIC curve_x_membership_density_n14={density}");
+            }
+            assert!(degree + 1 >= n);
+            assert!(density > table / 4);
+        }
     }
 
     #[test]
