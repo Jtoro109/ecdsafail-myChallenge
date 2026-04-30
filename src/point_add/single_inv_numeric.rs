@@ -3611,6 +3611,35 @@ mod tests {
         b.x(active[0]);
     }
 
+    fn emit_trailing_zero_active_chain_history_controlled_for_plusminus(
+        b: &mut super::super::B,
+        d: &[super::super::QubitId],
+        start: super::super::QubitId,
+        active: &[super::super::QubitId],
+        hist: &[super::super::QubitId],
+    ) {
+        // Controlled variant for fixed-iteration loops: if start=0, produce an
+        // all-zero history and leave the active chain clean.  If start=1, this
+        // is exactly the ordinary trailing-zero unary generator.
+        assert_eq!(active.len(), d.len() + 1);
+        assert_eq!(hist.len(), d.len());
+        b.cx(start, active[0]);
+        for j in 0..d.len() {
+            b.x(d[j]);
+            b.ccx(active[j], d[j], active[j + 1]);
+            b.x(d[j]);
+        }
+        for j in 0..d.len() {
+            b.cx(active[j + 1], hist[j]);
+        }
+        for j in (0..d.len()).rev() {
+            b.x(d[j]);
+            b.ccx(active[j], d[j], active[j + 1]);
+            b.x(d[j]);
+        }
+        b.cx(start, active[0]);
+    }
+
     fn trailing_zero_active_chain_cost_for_plusminus(width: usize) -> usize {
         // Improved observation: active[j+1] itself is the unary-one bit for
         // position j.  If the active chain is the history payload, no separate
@@ -3774,6 +3803,55 @@ mod tests {
         println!("METRIC plusminus_cint_addsub_peak_q={peak}");
         assert_eq!(add_ccx, 2 * W - 1, "controlled integer add cost drifted");
         assert_eq!(sub_ccx, 2 * W - 1, "controlled integer sub cost drifted");
+    }
+
+    #[test]
+    fn plusminus_controlled_active_chain_unary_generator_circuit_is_clean() {
+        // Terminal-loop building block: inactive fixed iterations must write no
+        // k-history, while active iterations must produce the ordinary unary
+        // trailing-zero chain.  This lets a future fixed-bound DIV loop encode
+        // active=0 as an all-zero history word instead of a separate flag.
+        use sha3::digest::{ExtendableOutput, Update};
+        const W: usize = 16;
+        let mut b = super::super::B::new();
+        let d = b.alloc_qubits(W);
+        let start_flag = b.alloc_qubit();
+        let active = b.alloc_qubits(W + 1);
+        let hist = b.alloc_qubits(W);
+        let start = b.ops.len();
+        emit_trailing_zero_active_chain_history_controlled_for_plusminus(&mut b, &d, start_flag, &active, &hist);
+        let ccx = local_count_ccx_for_plusminus_cost(&b.ops[start..]);
+        let peak = b.peak_qubits;
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        for start_val in [false, true] {
+            for val in 0u64..1024u64 {
+                let mut hasher = sha3::Shake128::default();
+                hasher.update(b"plusminus-controlled-active-chain-generator-v1");
+                let mut xof = hasher.finalize_xof();
+                let mut sim = crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+                set_slice_u512_pm(&mut sim, &d, U512::from(val));
+                if start_val { *sim.qubit_mut(start_flag) |= 1; }
+                sim.apply(&ops);
+                let tz = if val == 0 { W } else { (val.trailing_zeros() as usize).min(W) };
+                let expected = if start_val {
+                    if tz == W { (1u64 << W) - 1 } else { (1u64 << tz) - 1 }
+                } else {
+                    0
+                };
+                assert_eq!(get_slice_u512_pm(&sim, &hist).as_limbs()[0] & ((1u64 << W) - 1), expected, "controlled history mismatch start={start_val} val={val}");
+                assert_eq!(get_slice_u512_pm(&sim, &d).as_limbs()[0] & ((1u64 << W) - 1), val, "d changed");
+                assert_eq!((sim.qubit(start_flag) & 1) != 0, start_val, "start flag changed");
+                assert_eq!(get_slice_u512_pm(&sim, &active), U512::ZERO, "active chain not clean start={start_val} val={val}");
+                assert_eq!(sim.global_phase() & 1, 0, "unexpected phase start={start_val} val={val}");
+            }
+        }
+        eprintln!("plus-minus controlled active-chain unary generator: width={W}, ccx={ccx}, peak={peak}");
+        println!("METRIC plusminus_controlled_active_chain_width={W}");
+        println!("METRIC plusminus_controlled_active_chain_ccx={ccx}");
+        println!("METRIC plusminus_controlled_active_chain_peak_q={peak}");
+        assert_eq!(ccx, 2 * W, "controlled active-chain generator should keep 2W CCX cost");
     }
 
     #[test]
