@@ -110,9 +110,11 @@ a selected/window-local denominator primitive below roughly 10k CCX/window,
 with explicit reversible cleanup and no hidden field-sized selector/parser state.
 ```
 
-2026-04-29 update: a partial-prefix qoffset-mask replay primitive is the first post-retrospective result that reopens a narrow low-scratch BY budget in a hardest-piece-first way rather than by integration optimism. With 36 lowword windows and 564 harness-scale steps, prefix32/48/64/80/90 scratch is `542/558/574/590/600` and projected gaps are `-2,476/-47,596/-92,716/-137,836/-166,036` after charging lowword selector and decoder. Broader local validation passed at n=`8,10,12,16` with phase/dirty restoration. This is still a model/local-primitive checkpoint, not a solved route: no full point-add hook-up until compressed history layout, exact selector/decode production scheduling, denominator failure bound, and cleanup are all charged.
+2026-04-29 update: a partial-prefix qoffset-mask replay primitive is the first post-retrospective result that reopened a narrow low-scratch BY **one-DIV** budget in a hardest-piece-first way rather than by integration optimism. With 36 lowword windows and 564 harness-scale steps, prefix32/48/64/80/90 scratch is `542/558/574/590/600` and one-DIV projected gaps are `-2,476/-47,596/-92,716/-137,836/-166,036` after charging lowword selector and decoder. Broader local validation passed at n=`8,10,12,16` with phase/dirty restoration.
 
-Do not continue BY integration/plumbing experiments unless that primitive (or a successor) survives those charged hard-piece gates first.
+Important correction after user skepticism: the adversarial two-denominator ledger blocks naive BY promotion. If pair1 tagged-DIV and pair2 product-clean replay each need their own 564-step replay+selector/decode, the total is `4,068,262` (`+1,368,262` over 2.7M). This matches the previous BY blow-up failure mode: a good local replay primitive is not a full point-add architecture. Partial-prefix qoffset is therefore only a useful local primitive unless a separate charged algebra deletes the second denominator/replay.
+
+Do not continue BY integration/plumbing experiments unless that primitive (or a successor) survives those charged hard-piece gates first, including the two-denominator objection.
 
 ## What plus-minus taught us
 

@@ -5135,6 +5135,52 @@ mod tests {
     }
 
     #[test]
+    fn partial_prefix_qoffset_two_denominator_ledger_blocks_naive_promotion() {
+        // Adversarial-accountant response to the prior BY blow-up: the one-DIV
+        // budget is not enough evidence.  If the architecture needs separate
+        // pair1 tagged-DIV and pair2 product-clean replay, the partial-prefix
+        // qoffset win is overwhelmed.  Keep this guardrail before any hook-up.
+        let prefix90_qoffset = 2_094usize;
+        let step = prefix90_qoffset + 256 + 255 + 255;
+        let steps = 564usize;
+        let windows = steps.div_ceil(16);
+        let selector_per_den = 5_952usize * windows;
+        let decoder_per_den = 1_776usize * windows;
+
+        let one_div_scaffold = 642_716usize;
+        let one_div_total = one_div_scaffold + step * steps + selector_per_den + decoder_per_den;
+        let one_div_gap = one_div_total as isize - 2_700_000;
+
+        let current_total = 4_132_750isize;
+        let current_two_kaliski = 3_190_000isize;
+        let deleted_pair1_muls = 149_889isize + 150_145isize;
+        let pair1_scale_loop = 407isize * 255;
+        let pair2_scale_loop = 404isize * 255;
+        let pair2_product_mul = 150_145isize;
+        let two_replay_scaffold = current_total
+            - current_two_kaliski
+            - deleted_pair1_muls
+            - pair1_scale_loop
+            - pair2_scale_loop
+            - pair2_product_mul;
+        let two_den_total = two_replay_scaffold
+            + 2 * (step * steps + selector_per_den + decoder_per_den) as isize;
+        let two_den_gap = two_den_total - 2_700_000;
+        let missing_assumption_swing = two_den_total - one_div_total as isize;
+        println!("METRIC by_partial_prefix_one_div_total={one_div_total}");
+        println!("METRIC by_partial_prefix_one_div_gap_ccx={one_div_gap}");
+        println!("METRIC by_partial_prefix_two_den_scaffold={two_replay_scaffold}");
+        println!("METRIC by_partial_prefix_two_den_total={two_den_total}");
+        println!("METRIC by_partial_prefix_two_den_gap_ccx={two_den_gap}");
+        println!("METRIC by_partial_prefix_missing_second_den_swing_ccx={missing_assumption_swing}");
+        eprintln!(
+            "BY partial-prefix adversarial two-den ledger: one_div_total={one_div_total} gap={one_div_gap}, two_den_total={two_den_total} gap={two_den_gap}, swing={missing_assumption_swing}"
+        );
+        assert!(one_div_gap < 0, "one-DIV optimistic model no longer fits; update prior tests");
+        assert!(two_den_gap > 500_000, "two-denominator promotion might fit; revisit before demoting");
+    }
+
+    #[test]
     fn partial_mask_controlled_qoffset_linear_tradeoff_just_misses_600q_target() {
         // First-order model after the masked-borrow primitive: full mask gives
         // good gates but 766q scratch with compressed history; no mask gives

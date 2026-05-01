@@ -31,25 +31,25 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "partial_prefix32_qoffset_lowword_model",
             scratch_bits: 542,
             charged_toffoli: None,
-            blocker: "local pieces project 2697524 with 36 lowword windows, but production point-add integration and harness-scale denominator failure bound are not yet charged",
+            blocker: "one-DIV local pieces project 2697524, but adversarial two-denominator ledger misses by 1368262",
         },
         Candidate {
             name: "partial_prefix48_qoffset_lowword_model",
             scratch_bits: 558,
             charged_toffoli: None,
-            blocker: "local pieces project 2652404 with 36 lowword windows, but production integration/cleanup remains unvalidated",
+            blocker: "one-DIV local pieces project 2652404, but no charged algebra deletes the second denominator/replay",
         },
         Candidate {
             name: "partial_prefix80_qoffset_lowword_model",
             scratch_bits: 590,
             charged_toffoli: None,
-            blocker: "local pieces project 2562164 with 36 lowword windows, but only 10 scratch bits remain and no full hook-up has validated the schedule",
+            blocker: "one-DIV local pieces project 2562164, but only 10 scratch bits remain and two-denominator point-add is not viable",
         },
         Candidate {
             name: "partial_prefix90_qoffset_lowword_model",
             scratch_bits: 600,
             charged_toffoli: None,
-            blocker: "local pieces project 2533964 at the strict scratch cap, but production history/selector overlap and point-add hook-up remain unvalidated",
+            blocker: "one-DIV local pieces project 2533964 at strict scratch cap, but two-denominator ledger projects 4068262",
         },
         Candidate {
             name: "streamed_mask_qoffset_replay_body_only",
@@ -121,10 +121,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let partial_prefix48_projection = 2_652_404usize;
     let partial_prefix80_projection = 2_562_164usize;
     let partial_prefix90_projection = 2_533_964usize;
+    let partial_prefix_two_den_projection = 4_068_262usize;
     let partial_prefix32_gap = partial_prefix32_projection as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
     let partial_prefix48_gap = partial_prefix48_projection as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
     let partial_prefix80_gap = partial_prefix80_projection as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
     let partial_prefix90_gap = partial_prefix90_projection as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let partial_prefix_two_den_gap = partial_prefix_two_den_projection as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
     let centered_raw_scratch = 592usize;
     let centered_boundary_scratch_p99 = 710usize;
     let centered_parser_over_strict = centered_boundary_scratch_p99 - STRICT_SCRATCH;
@@ -167,6 +169,8 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_partial_prefix80_gap_to_2700k={partial_prefix80_gap}");
     println!("METRIC scratch600_partial_prefix90_projected_toffoli={partial_prefix90_projection}");
     println!("METRIC scratch600_partial_prefix90_gap_to_2700k={partial_prefix90_gap}");
+    println!("METRIC scratch600_partial_prefix_two_den_projected_toffoli={partial_prefix_two_den_projection}");
+    println!("METRIC scratch600_partial_prefix_two_den_gap_to_2700k={partial_prefix_two_den_gap}");
     println!("METRIC scratch600_centered_raw_scratch_bits={centered_raw_scratch}");
     println!("METRIC scratch600_centered_boundary_scratch_p99={centered_boundary_scratch_p99}");
     println!("METRIC scratch600_centered_parser_over_strict_bits={centered_parser_over_strict}");
