@@ -5253,6 +5253,49 @@ mod tests {
     }
 
     #[test]
+    fn strategy_e_current_product_clean_is_still_a_second_denominator() {
+        // Stronger risk check: the "known product-clean multiply" used in old
+        // Strategy-E budgets is not a generic near-schoolbook in-place multiply;
+        // it is itself a denominator-controlled BY/product-clean replay on
+        // c=Rx-Qx.  Therefore Strategy E only deletes the second denominator if
+        // a new non-DIV product-clean multiply exists.  With current primitives
+        // the second selector/parser must be charged too.
+        let target_3m = 3_000_000isize;
+        let strategy_e_non_div_scaffold = 942_750isize;
+        let one_div_fixed_replay = 873_600isize;
+        let current_product_clean_div_replay = 1_145_760isize;
+        let optimistic_centered_product_replay = 873_600isize;
+        let selector_decoder_per_den = (5_952isize + 1_776isize) * 36isize;
+        let forgotten_second_selector_total = strategy_e_non_div_scaffold
+            + one_div_fixed_replay
+            + optimistic_centered_product_replay
+            + selector_decoder_per_den;
+        let optimistic_two_den_total = forgotten_second_selector_total + selector_decoder_per_den;
+        let current_two_den_total = strategy_e_non_div_scaffold
+            + one_div_fixed_replay
+            + current_product_clean_div_replay
+            + 2 * selector_decoder_per_den;
+        let forgotten_second_selector_gap = forgotten_second_selector_total - target_3m;
+        let optimistic_two_den_gap = optimistic_two_den_total - target_3m;
+        let current_two_den_gap = current_two_den_total - target_3m;
+        let missing_second_selector_swing = selector_decoder_per_den;
+        let partial_prefix_div_body = 1_891_248isize;
+        let product_clean_budget_after_partial_prefix = target_3m - strategy_e_non_div_scaffold - partial_prefix_div_body;
+        println!("METRIC strategy_e_second_den_selector_decoder_ccx={selector_decoder_per_den}");
+        println!("METRIC strategy_e_forgotten_second_selector_gap_ccx={forgotten_second_selector_gap}");
+        println!("METRIC strategy_e_optimistic_two_den_gap_to_3m_ccx={optimistic_two_den_gap}");
+        println!("METRIC strategy_e_current_two_den_gap_to_3m_ccx={current_two_den_gap}");
+        println!("METRIC strategy_e_missing_second_selector_swing_ccx={missing_second_selector_swing}");
+        println!("METRIC strategy_e_product_clean_budget_after_partial_prefix_ccx={product_clean_budget_after_partial_prefix}");
+        eprintln!(
+            "Strategy E current product-clean risk: forgotten_second_selector_total={forgotten_second_selector_total} gap={forgotten_second_selector_gap}, optimistic_two_den_total={optimistic_two_den_total} gap={optimistic_two_den_gap}, current_two_den_total={current_two_den_total} gap={current_two_den_gap}"
+        );
+        assert!(forgotten_second_selector_gap < 0, "missing-second-selector trap no longer looks tempting; update note");
+        assert!(optimistic_two_den_gap > 0, "even charging two selectors, optimistic Strategy E fits 3M; revisit");
+        assert!(product_clean_budget_after_partial_prefix < 180_000, "partial-prefix Strategy E can afford a schoolbook-like product-clean multiply under 3M");
+    }
+
+    #[test]
     fn partial_mask_controlled_qoffset_linear_tradeoff_just_misses_600q_target() {
         // First-order model after the masked-borrow primitive: full mask gives
         // good gates but 766q scratch with compressed history; no mask gives
