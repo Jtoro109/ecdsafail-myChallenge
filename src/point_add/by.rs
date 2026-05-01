@@ -5208,6 +5208,51 @@ mod tests {
     }
 
     #[test]
+    fn strategy_e_three_million_still_needs_unavailable_div_selector_budget() {
+        // The user's relaxed question is whether anything can reach ~3M while
+        // staying in the low-qubit regime.  Strategy E is the cleanest algebraic
+        // way to delete BY's second denominator, but with the current known
+        // product-clean multiply it leaves only a tiny budget for the single
+        // DIV's denominator controls.  This guardrail prevents counting the
+        // fixed-control replay body as a solved low-scratch DIV.
+        let target_3m = 3_000_000usize;
+        let strategy_e_non_div_scaffold = 942_750usize;
+        let known_product_clean = 1_145_760usize;
+        let best_fixed_control_replay = 873_600usize;
+        let measured_decoder = 1_776usize * 36usize;
+        let measured_lowword_selector = 5_952usize * 36usize;
+        let max_div_body_for_3m = target_3m - strategy_e_non_div_scaffold - known_product_clean;
+        let selector_budget_after_replay = max_div_body_for_3m as isize - best_fixed_control_replay as isize;
+        let decoder_only_gap = (strategy_e_non_div_scaffold
+            + known_product_clean
+            + best_fixed_control_replay
+            + measured_decoder) as isize
+            - target_3m as isize;
+        let lowword_gap = (strategy_e_non_div_scaffold
+            + known_product_clean
+            + best_fixed_control_replay
+            + measured_decoder
+            + measured_lowword_selector) as isize
+            - target_3m as isize;
+        let partial_prefix_div_body = 1_891_248usize;
+        let partial_prefix_gap = (strategy_e_non_div_scaffold
+            + known_product_clean
+            + partial_prefix_div_body) as isize
+            - target_3m as isize;
+        println!("METRIC strategy_e_3m_max_div_body_ccx={max_div_body_for_3m}");
+        println!("METRIC strategy_e_3m_selector_budget_after_fixed_replay_ccx={selector_budget_after_replay}");
+        println!("METRIC strategy_e_3m_decoder_only_gap_ccx={decoder_only_gap}");
+        println!("METRIC strategy_e_3m_lowword_selector_gap_ccx={lowword_gap}");
+        println!("METRIC strategy_e_3m_partial_prefix_gap_ccx={partial_prefix_gap}");
+        eprintln!(
+            "Strategy E 3M risk ledger: max_div_body={max_div_body_for_3m}, selector_budget_after_replay={selector_budget_after_replay}, decoder_only_gap={decoder_only_gap}, lowword_gap={lowword_gap}, partial_prefix_gap={partial_prefix_gap}"
+        );
+        assert!(selector_budget_after_replay < measured_decoder as isize, "fixed replay plus measured decoder now fits under 3M; revisit Strategy E");
+        assert!(lowword_gap > 0, "measured lowword selector would make Strategy E <3M; wire a toy schedule next");
+        assert!(partial_prefix_gap > 0, "partial-prefix DIV is enough for Strategy E under 3M; revisit");
+    }
+
+    #[test]
     fn partial_mask_controlled_qoffset_linear_tradeoff_just_misses_600q_target() {
         // First-order model after the masked-borrow primitive: full mask gives
         // good gates but 766q scratch with compressed history; no mask gives
