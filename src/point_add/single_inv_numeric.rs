@@ -8139,6 +8139,68 @@ mod tests {
     }
 
     #[test]
+    fn centered_euclid_restoring_subtract_plus_barrel_reopens_relaxed_3m_budget() {
+        // The previous packed-extractor budget used a 3n compare+masked-sub
+        // floor.  Long division can instead use a restoring subtract: subtract
+        // shifted v, record the borrow as the quotient bit, and add back only on
+        // borrow.  At the static-Toffoli level this is closer to 2n per q slot.
+        // With centered quotients, that is enough to pay for a generic n log n
+        // variable barrel in the relaxed 3M/2800q model.  This is a candidate
+        // ledger, not a circuit proof; the next hard piece is a phase-clean toy
+        // restoring-subtract + variable-shift extractor.
+        let p = SECP256K1_P;
+        let samples = 4096usize;
+        let mut rng = 0x2800_ce0c_2a15_0001u64;
+        let mut payload_bits = Vec::with_capacity(samples);
+        let mut one_boundary_bits = Vec::with_capacity(samples);
+        let mut counts = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let qs = centered_euclid_abs_quotients_for_divisor(x, p);
+            let payload = qs
+                .iter()
+                .map(|q| u512_bit_len_for_halfgcd_test(*q).max(1))
+                .sum::<usize>();
+            payload_bits.push(payload);
+            one_boundary_bits.push(payload + qs.len());
+            counts.push(qs.len());
+        }
+        payload_bits.sort_unstable();
+        one_boundary_bits.sort_unstable();
+        counts.sort_unstable();
+        let p99 = samples * 99 / 100;
+        let payload_p99 = payload_bits[p99];
+        let count_p99 = counts[p99];
+        let scratch_p99 = 256 + one_boundary_bits[p99];
+        let scaffold_after_div = 642_716isize;
+        let per_qbit_replay_ccx = 587usize;
+        let coeff_replay_per_div = payload_p99 * per_qbit_replay_ccx;
+        let restoring_sub_per_qbit = 2usize * 256usize;
+        let generic_barrel_per_quotient = 256usize * 8usize;
+        let leading_scan_per_quotient = 256usize;
+        let extraction_oneway = payload_p99 * restoring_sub_per_qbit
+            + count_p99 * (generic_barrel_per_quotient + leading_scan_per_quotient);
+        let one_div = coeff_replay_per_div + 2 * extraction_oneway;
+        let pointadd = scaffold_after_div + 2 * one_div as isize;
+        let gap = pointadd - 3_000_000isize;
+        let extraction_oneway_budget = (((3_000_000isize - scaffold_after_div) / 2) as isize
+            - coeff_replay_per_div as isize) / 2;
+        let oneway_margin = extraction_oneway_budget - extraction_oneway as isize;
+        println!("METRIC centered_restoring_payload_p99_bits={payload_p99}");
+        println!("METRIC centered_restoring_count_p99={count_p99}");
+        println!("METRIC centered_restoring_scratch_p99={scratch_p99}");
+        println!("METRIC centered_restoring_extraction_oneway_ccx={extraction_oneway}");
+        println!("METRIC centered_restoring_oneway_margin_ccx={oneway_margin}");
+        println!("METRIC centered_restoring_barrel_gap_to_3m_ccx={gap}");
+        eprintln!(
+            "Centered restoring-sub/barrel ledger: payload_p99={payload_p99}, count_p99={count_p99}, scratch={scratch_p99}, extraction_oneway={extraction_oneway}, margin={oneway_margin}, pointadd={pointadd}, gap={gap}"
+        );
+        assert!(scratch_p99 > 663, "centered restoring quotient stream unexpectedly fits Google scratch");
+        assert!(gap < 0, "restoring subtract + generic barrel no longer fits relaxed 3M");
+    }
+
+    #[test]
     fn euclid_quotient_stream_entropy_also_exceeds_scratch600() {
         // Follow-up to the raw-payload quotient-stream DIV test.  The tempting
         // objection is that a clever prefix/arithmetic code could pack the
