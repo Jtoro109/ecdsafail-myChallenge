@@ -8384,6 +8384,81 @@ mod tests {
     }
 
     #[test]
+    fn centered_nonrestoring_final_nearest_correction_budget() {
+        // The signed-digit non-restoring ledger still hid the conversion from
+        // floor(|u|/|v|) to centered/nearest quotient.  Charge one correction
+        // bit per quotient: compare 2r>v, conditionally subtract v from the
+        // residual, and replay one extra signed digit.  This keeps the route
+        // alive only if the correction overhead stays within the 3M margin.
+        let p = SECP256K1_P;
+        let samples = 4096usize;
+        let mut rng = 0x2800_c5d1_c011_0001u64;
+        let mut center_payload_bits = Vec::with_capacity(samples);
+        let mut floor_payload_bits = Vec::with_capacity(samples);
+        let mut counts = Vec::with_capacity(samples);
+        let mut corrections = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let mut u = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(p));
+            let mut v = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(x));
+            let mut center_payload = 0usize;
+            let mut floor_payload = 0usize;
+            let mut count = 0usize;
+            let mut correction_count = 0usize;
+            while !v.mag.is_zero() {
+                let q_floor = u.mag / v.mag;
+                let r_floor = u.mag - q_floor * v.mag;
+                let centered = (r_floor << 1usize) >= v.mag;
+                let q = if centered { q_floor + U512::from(1u64) } else { q_floor };
+                floor_payload += u512_bit_len_for_halfgcd_test(q_floor).max(1);
+                center_payload += u512_bit_len_for_halfgcd_test(q).max(1);
+                correction_count += centered as usize;
+                count += 1;
+                let q_neg = u.neg ^ v.neg;
+                let qv = signed_mul_mag_for_halfgcd_test(v, q_neg, q);
+                let r = signed_add_for_halfgcd_test(u, signed_neg_for_halfgcd_test(qv));
+                u = v;
+                v = r;
+            }
+            assert_eq!(u.mag, U512::from(1u64));
+            center_payload_bits.push(center_payload);
+            floor_payload_bits.push(floor_payload);
+            counts.push(count);
+            corrections.push(correction_count);
+        }
+        center_payload_bits.sort_unstable();
+        floor_payload_bits.sort_unstable();
+        counts.sort_unstable();
+        corrections.sort_unstable();
+        let p99 = samples * 99 / 100;
+        let floor_payload_p99 = floor_payload_bits[p99];
+        let center_payload_p99 = center_payload_bits[p99];
+        let count_p99 = counts[p99];
+        let corr_p99 = corrections[p99];
+        let corr_max = *corrections.last().unwrap();
+        let scaffold_after_div = 642_716isize;
+        let replay_per_digit = 587usize;
+        let n = 256usize;
+        let barrel_and_scan_per_q = n * 8 + n;
+        let floor_replay_per_div = (floor_payload_p99 + corr_p99) * replay_per_digit;
+        let extraction_oneway = floor_payload_p99 * n
+            + count_p99 * barrel_and_scan_per_q
+            + count_p99 * 2 * n;
+        let one_div = floor_replay_per_div + 2 * extraction_oneway;
+        let pointadd = scaffold_after_div + 2 * one_div as isize;
+        let gap = pointadd - 3_000_000isize;
+        println!("METRIC centered_nonrestoring_floor_payload_p99_bits={floor_payload_p99}");
+        println!("METRIC centered_nonrestoring_center_payload_p99_bits={center_payload_p99}");
+        println!("METRIC centered_nonrestoring_correction_p99={corr_p99}");
+        println!("METRIC centered_nonrestoring_correction_max={corr_max}");
+        println!("METRIC centered_nonrestoring_corrected_extraction_oneway_ccx={extraction_oneway}");
+        println!("METRIC centered_nonrestoring_corrected_gap_to_3m_ccx={gap}");
+        eprintln!("Centered non-restoring nearest correction: floor_payload_p99={floor_payload_p99}, center_payload_p99={center_payload_p99}, count_p99={count_p99}, corr_p99={corr_p99}, corr_max={corr_max}, extraction_oneway={extraction_oneway}, gap={gap}");
+        assert!(gap < 0, "nearest correction overhead kills non-restoring centered Euclid");
+    }
+
+    #[test]
     fn euclid_quotient_stream_entropy_also_exceeds_scratch600() {
         // Follow-up to the raw-payload quotient-stream DIV test.  The tempting
         // objection is that a clever prefix/arithmetic code could pack the
