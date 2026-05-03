@@ -3826,6 +3826,89 @@ mod tests {
     }
 
     #[test]
+    fn half_gcd_inloop_determinant_compression_recovery_kills_margin() {
+        // To avoid the 769-bit straight-line prefix peak, a generator would
+        // have to keep the checkpoint matrix determinant-compressed during the
+        // prefix Euclid loop.  But each matrix update uses all four old entries:
+        // (a,b,c,d) -> (c,d,a-qc,b-qd).  Charge an optimistic lower bound that
+        // recovers one omitted entry per prefix step, choosing the cheapest
+        // determinant recovery available at that step and omitting all control,
+        // parser, and cleanup overhead.
+        const SCAFFOLD_AFTER_DIV: usize = 642_716;
+        const REPLAY_WITH_RECOVERY_FLOOR_ONE_DIV: usize = (1_410_512 - SCAFFOLD_AFTER_DIV) / 2;
+        let p = SECP256K1_P;
+        let samples = 2048usize;
+        let mut rng = 0x1d1c_0d1e_5afe_0001u64;
+        let mut prefix_steps = Vec::with_capacity(samples);
+        let mut inloop_recovery = Vec::with_capacity(samples);
+        let mut pointadd_with_inloop = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let mut u = p;
+            let mut v = x;
+            let mut a = smag_for_halfgcd_test(false, U512::from(1u64));
+            let mut b = smag_for_halfgcd_test(false, U512::ZERO);
+            let mut c = smag_for_halfgcd_test(false, U512::ZERO);
+            let mut d = smag_for_halfgcd_test(false, U512::from(1u64));
+            let mut steps = 0usize;
+            let mut recovery = 0usize;
+            while !v.is_zero() && u256_bit_len(u).max(u256_bit_len(v)) > 128 {
+                let recovery_options = [
+                    (!d.mag.is_zero()).then(|| halfgcd_det_recovery_cost_floor_for_test(b, c, d)),
+                    (!c.mag.is_zero()).then(|| halfgcd_det_recovery_cost_floor_for_test(a, d, c)),
+                    (!b.mag.is_zero()).then(|| halfgcd_det_recovery_cost_floor_for_test(a, d, b)),
+                    (!a.mag.is_zero()).then(|| halfgcd_det_recovery_cost_floor_for_test(b, c, a)),
+                ];
+                let best_recovery = recovery_options
+                    .into_iter()
+                    .flatten()
+                    .min()
+                    .expect("at least one matrix entry should be recoverable");
+                recovery += best_recovery;
+
+                let q = u / v;
+                let rem = u - q * v;
+                let na = c;
+                let nb = d;
+                let nc = signed_sub_scaled_for_halfgcd_test(a, q, c);
+                let nd = signed_sub_scaled_for_halfgcd_test(b, q, d);
+                u = v;
+                v = rem;
+                a = na;
+                b = nb;
+                c = nc;
+                d = nd;
+                steps += 1;
+            }
+            prefix_steps.push(steps);
+            inloop_recovery.push(recovery);
+            pointadd_with_inloop.push(
+                SCAFFOLD_AFTER_DIV + 2 * (REPLAY_WITH_RECOVERY_FLOOR_ONE_DIV + recovery),
+            );
+        }
+        prefix_steps.sort_unstable();
+        inloop_recovery.sort_unstable();
+        pointadd_with_inloop.sort_unstable();
+        let p99 = samples * 99 / 100;
+        let steps_p99 = prefix_steps[p99];
+        let recovery_p99 = inloop_recovery[p99];
+        let pointadd_p99 = pointadd_with_inloop[p99];
+        let gap = pointadd_p99 as isize - 2_700_000isize;
+        eprintln!(
+            "half-GCD in-loop compression recovery floor: steps_p99={steps_p99}, recovery_p99={recovery_p99}, pointadd_p99={pointadd_p99}, gap={gap}"
+        );
+        println!("METRIC halfgcd_inloop_prefix_steps_p99={steps_p99}");
+        println!("METRIC halfgcd_inloop_recovery_floor_p99_ccx={recovery_p99}");
+        println!("METRIC halfgcd_inloop_recovery_pointadd_p99={pointadd_p99}");
+        println!("METRIC halfgcd_inloop_recovery_gap_to_2700k={gap}");
+        assert!(
+            gap > 0,
+            "per-step determinant compression recovery unexpectedly still fits the low-qubit target"
+        );
+    }
+
+    #[test]
     fn plusminus_exponent_only_denominator_normalization_is_not_exact() {
         // Maybe normalization can be controlled by the stored offset exponent
         // without a dense bitlength oracle.  Test the best public threshold on
