@@ -15093,6 +15093,32 @@ mod tests {
     }
 
     #[test]
+    fn direct_centered_restoring_final_residual_only_reverse_is_ambiguous() {
+        // The coefficient-bearing reverse image is injective, but the residual
+        // pair alone is not.  So the cheapest possible decoder, based only on
+        // the adjacent signed residuals and public step, cannot recover q; it
+        // needs either coefficient information or an equivalent history channel.
+        let cases = [(8usize, 251u16), (10, 1021), (12, 4093), (14, 16381)];
+        for &(n, p) in &cases {
+            let (collisions, total_steps, states, max_mult) =
+                direct_centered_restoring_final_residual_only_q_collision_stats(p);
+            eprintln!(
+                "direct-centered residual-only reverse q recovery: n={n}, collisions={collisions}, states={states}, total_steps={total_steps}, max_mult={max_mult}"
+            );
+            if n == 14 {
+                println!("METRIC centered_direct_restoring_final_residual_q_collisions_n14={collisions}");
+                println!("METRIC centered_direct_restoring_final_residual_q_states_n14={states}");
+                println!("METRIC centered_direct_restoring_final_residual_q_total_steps_n14={total_steps}");
+                println!("METRIC centered_direct_restoring_final_residual_q_max_mult_n14={max_mult}");
+            }
+            assert!(
+                collisions > 0 && max_mult > 1,
+                "residual-only reverse state unexpectedly recovers q"
+            );
+        }
+    }
+
+    #[test]
     fn direct_centered_restoring_final_reverse_coeff_decode_needs_branch_bit() {
         // The injective reverse image is actionable only if the quotient has a
         // simple decoder.  The new coefficient pair narrows q_abs to two
@@ -15720,6 +15746,44 @@ mod tests {
                 v = next_v;
                 coeff_u = coeff_v;
                 coeff_v = next_coeff_v;
+                step += 1;
+            }
+        }
+        let collisions = image.values().filter(|qs| qs.len() > 1).count();
+        let max_mult = image.values().map(|qs| qs.len()).max().unwrap_or(0);
+        (collisions, total_steps, image.len(), max_mult)
+    }
+
+    fn direct_centered_restoring_final_residual_only_q_collision_stats(
+        p: u16,
+    ) -> (usize, usize, usize, usize) {
+        use std::collections::{BTreeMap, BTreeSet};
+        let mut image: BTreeMap<(usize, i128, i128), BTreeSet<i128>> = BTreeMap::new();
+        let mut total_steps = 0usize;
+        for x in 1..p {
+            let mut u = p as i128;
+            let mut v = x as i128;
+            let mut step = 0usize;
+            while v != 0 {
+                let abs_u = u.unsigned_abs();
+                let abs_v = v.unsigned_abs();
+                let adjusted = abs_u + (abs_v >> 1);
+                let q_abs = (adjusted / abs_v) as i128;
+                let q_signed = if (u < 0) ^ (v < 0) {
+                    -q_abs
+                } else {
+                    q_abs
+                };
+                let next_v = u - q_signed * v;
+                if next_v != 0 {
+                    image
+                        .entry((step, v, next_v))
+                        .or_default()
+                        .insert(q_signed);
+                    total_steps += 1;
+                }
+                u = v;
+                v = next_v;
                 step += 1;
             }
         }

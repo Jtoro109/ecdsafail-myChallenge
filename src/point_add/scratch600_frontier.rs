@@ -115,7 +115,7 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "direct_centered_restoring_final_raw_digits",
             scratch_bits: 618,
             charged_toffoli: None,
-            blocker: "restoring-final model is under 2.7M and phase-clean in toy; reverse q is collision-free, but coefficient decode needs a dense branch bit and oracle-assisted decoder projects 3380788 Toffoli",
+            blocker: "restoring-final model is under 2.7M and phase-clean in toy; residual-only reverse q is ambiguous, and coefficient decode needs a dense branch bit plus projects 3380788 Toffoli",
         },
         Candidate {
             name: "direct_centered_signnorm_rank_compressed_signs",
@@ -244,6 +244,10 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let direct_restoring_final_reverse_q_states_n14 = 89_008usize;
     let direct_restoring_final_reverse_q_total_steps_n14 = 89_008usize;
     let direct_restoring_final_reverse_q_max_mult_n14 = 1usize;
+    let direct_restoring_final_residual_q_collisions_n14 = 4_248usize;
+    let direct_restoring_final_residual_q_states_n14 = 61_008usize;
+    let direct_restoring_final_residual_q_total_steps_n14 = 89_008usize;
+    let direct_restoring_final_residual_q_max_mult_n14 = 64usize;
     let direct_restoring_final_reverse_coeff_candidates_transitions_n14 = 105_388usize;
     let direct_restoring_final_reverse_coeff_candidates_endpoints_n14 = 16_380usize;
     let direct_restoring_final_reverse_coeff_candidates_low_n14 = 48_896usize;
@@ -439,6 +443,10 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_restoring_final_reverse_q_states_n14={direct_restoring_final_reverse_q_states_n14}");
     println!("METRIC scratch600_direct_restoring_final_reverse_q_total_steps_n14={direct_restoring_final_reverse_q_total_steps_n14}");
     println!("METRIC scratch600_direct_restoring_final_reverse_q_max_mult_n14={direct_restoring_final_reverse_q_max_mult_n14}");
+    println!("METRIC scratch600_direct_restoring_final_residual_q_collisions_n14={direct_restoring_final_residual_q_collisions_n14}");
+    println!("METRIC scratch600_direct_restoring_final_residual_q_states_n14={direct_restoring_final_residual_q_states_n14}");
+    println!("METRIC scratch600_direct_restoring_final_residual_q_total_steps_n14={direct_restoring_final_residual_q_total_steps_n14}");
+    println!("METRIC scratch600_direct_restoring_final_residual_q_max_mult_n14={direct_restoring_final_residual_q_max_mult_n14}");
     println!("METRIC scratch600_direct_restoring_final_reverse_coeff_candidates_transitions_n14={direct_restoring_final_reverse_coeff_candidates_transitions_n14}");
     println!("METRIC scratch600_direct_restoring_final_reverse_coeff_candidates_endpoints_n14={direct_restoring_final_reverse_coeff_candidates_endpoints_n14}");
     println!("METRIC scratch600_direct_restoring_final_reverse_coeff_candidates_low_n14={direct_restoring_final_reverse_coeff_candidates_low_n14}");
@@ -607,6 +615,13 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
                 == direct_restoring_final_reverse_q_total_steps_n14
             && direct_restoring_final_reverse_q_max_mult_n14 == 1,
         "restoring-final reverse q recovery changed; revisit no-payload decoder route"
+    );
+    assert!(
+        direct_restoring_final_residual_q_collisions_n14 > 0
+            && direct_restoring_final_residual_q_states_n14
+                < direct_restoring_final_residual_q_total_steps_n14
+            && direct_restoring_final_residual_q_max_mult_n14 > 1,
+        "residual-only restoring-final reverse q is no longer ambiguous"
     );
     assert!(
         direct_restoring_final_reverse_coeff_candidates_transitions_n14
