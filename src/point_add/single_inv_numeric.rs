@@ -4321,6 +4321,176 @@ mod tests {
     }
 
     #[test]
+    fn half_gcd_second_column_prefix_step_toy_cleans_history() {
+        // Circuit-reality check for the average-gate half-GCD route: one
+        // ordinary floor-division prefix step, with second-column update
+        // `(b,d) -> (d,b-q*d)`, can copy out the useful residual/coefficient
+        // values and semantically reverse to clean quotient digits.
+        use sha3::digest::{ExtendableOutput, Update};
+
+        const REM_W: usize = 11;
+        const DIV_W: usize = 4;
+        const COEFF_W: usize = 10;
+        const DIGITS: usize = 6;
+        let raw_from_i64 = |x: i64| -> u64 {
+            ((x as i128) & ((1i128 << COEFF_W) - 1)) as u64
+        };
+        let i64_from_raw = |raw: u64| -> i64 {
+            let mask = (1u64 << COEFF_W) - 1;
+            let raw = raw & mask;
+            if (raw & (1u64 << (COEFF_W - 1))) != 0 {
+                raw as i64 - (1i64 << COEFF_W)
+            } else {
+                raw as i64
+            }
+        };
+
+        let mut b = super::super::B::new();
+        let rem = b.alloc_qubits(REM_W);
+        let divisor = b.alloc_qubits(DIV_W);
+        let coeff_acc = b.alloc_qubits(COEFF_W);
+        let coeff_v = b.alloc_qubits(COEFF_W);
+        let rem_copy = b.alloc_qubits(REM_W);
+        let coeff_copy = b.alloc_qubits(COEFF_W);
+        let digit_hist = b.alloc_qubits(DIGITS);
+        let final_negative = b.alloc_qubit();
+        let start = b.ops.len();
+        emit_toy_direct_centered_nonrestoring_inline_coeff_for_centered_test(
+            &mut b,
+            &rem,
+            &divisor,
+            &coeff_acc,
+            &coeff_v,
+            &digit_hist,
+            final_negative,
+            false,
+            true,
+            false,
+            false,
+            false,
+            false,
+        );
+        for i in 0..REM_W {
+            b.cx(rem[i], rem_copy[i]);
+        }
+        for i in 0..COEFF_W {
+            b.cx(coeff_acc[i], coeff_copy[i]);
+        }
+        emit_toy_halfgcd_floor_inline_coeff_inverse_for_centered_test(
+            &mut b,
+            &rem,
+            &divisor,
+            &coeff_acc,
+            &coeff_v,
+            &digit_hist,
+            final_negative,
+        );
+        let ccx = local_count_ccx_for_plusminus_cost(&b.ops[start..]);
+        let peak = b.peak_qubits;
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        let rem_mask = (1u64 << REM_W) - 1;
+        let div_mask = (1u64 << DIV_W) - 1;
+        let coeff_mask = (1u64 << COEFF_W) - 1;
+        let mut classical_final_negative_cases = 0usize;
+        for d in 1u64..(1u64 << DIV_W) {
+            for u in 0u64..(d * (1u64 << DIGITS)).min(96) {
+                for b0 in -5i64..=5i64 {
+                    for d0 in -2i64..=2i64 {
+                        let q = (u / d) as i64;
+                        let expected_rem = u % d;
+                        let expected_coeff = b0 - q * d0;
+                        if u != 0 {
+                            let (_, prefinal_rem, _) =
+                                nonrestoring_prefinal_signed_digits_for_centered_test(
+                                    U512::from(u),
+                                    U512::from(d),
+                                );
+                            classical_final_negative_cases +=
+                                (prefinal_rem.neg && !prefinal_rem.mag.is_zero()) as usize;
+                        }
+                        assert!(
+                            (-(1i64 << (COEFF_W - 1))..(1i64 << (COEFF_W - 1)))
+                                .contains(&expected_coeff),
+                            "toy coefficient fixture overflowed"
+                        );
+                        let mut hasher = sha3::Shake128::default();
+                        hasher.update(b"halfgcd-second-column-prefix-step-toy-v1");
+                        let mut xof = hasher.finalize_xof();
+                        let mut sim =
+                            crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+                        set_slice_u512_pm(&mut sim, &rem, U512::from(u));
+                        set_slice_u512_pm(&mut sim, &divisor, U512::from(d));
+                        set_slice_u512_pm(&mut sim, &coeff_acc, U512::from(raw_from_i64(b0)));
+                        set_slice_u512_pm(&mut sim, &coeff_v, U512::from(raw_from_i64(d0)));
+                        sim.apply(&ops);
+
+                        let rem_restored =
+                            get_slice_u512_pm(&sim, &rem).as_limbs()[0] & rem_mask;
+                        let div_out =
+                            get_slice_u512_pm(&sim, &divisor).as_limbs()[0] & div_mask;
+                        let coeff_restored = i64_from_raw(
+                            get_slice_u512_pm(&sim, &coeff_acc).as_limbs()[0] & coeff_mask,
+                        );
+                        let coeff_v_out = i64_from_raw(
+                            get_slice_u512_pm(&sim, &coeff_v).as_limbs()[0] & coeff_mask,
+                        );
+                        let rem_out =
+                            get_slice_u512_pm(&sim, &rem_copy).as_limbs()[0] & rem_mask;
+                        let coeff_out = i64_from_raw(
+                            get_slice_u512_pm(&sim, &coeff_copy).as_limbs()[0] & coeff_mask,
+                        );
+                        assert_eq!(rem_restored, u, "u was not restored u={u} d={d}");
+                        assert_eq!(div_out, d, "v changed u={u} d={d}");
+                        assert_eq!(
+                            coeff_restored, b0,
+                            "b coefficient was not restored u={u} d={d} b0={b0}"
+                        );
+                        assert_eq!(
+                            coeff_v_out, d0,
+                            "d coefficient changed u={u} d={d} d0={d0}"
+                        );
+                        assert_eq!(rem_out, expected_rem, "copied remainder mismatch u={u} d={d}");
+                        assert_eq!(
+                            coeff_out, expected_coeff,
+                            "copied coefficient mismatch u={u} d={d} b0={b0} d0={d0}"
+                        );
+                        assert_eq!(
+                            get_slice_u512_pm(&sim, &digit_hist).as_limbs()[0],
+                            0,
+                            "digit history leaked u={u} d={d}"
+                        );
+                        assert_eq!(
+                            sim.qubit(final_negative) & 1,
+                            0,
+                            "final_negative leaked u={u} d={d}"
+                        );
+                        assert_eq!(sim.global_phase() & 1, 0, "unexpected phase u={u} d={d}");
+                    }
+                }
+            }
+        }
+        let expected_forward = DIGITS * ((REM_W - 1) + (COEFF_W - 1))
+            + (2 * REM_W - 1)
+            + (2 * COEFF_W - 1);
+        let expected_ccx = 2 * expected_forward;
+        println!("METRIC halfgcd_second_col_prefix_step_toy_ccx={ccx}");
+        println!("METRIC halfgcd_second_col_prefix_step_toy_peak_q={peak}");
+        println!(
+            "METRIC halfgcd_second_col_prefix_step_toy_final_negative_cases={classical_final_negative_cases}"
+        );
+        eprintln!(
+            "half-GCD second-column prefix step toy: ccx={ccx}, peak={peak}, final_negative_cases={classical_final_negative_cases}, expected_ccx={expected_ccx}"
+        );
+        assert_eq!(ccx, expected_ccx, "half-GCD prefix step toy cost drifted");
+        assert!(
+            classical_final_negative_cases > 0,
+            "toy fixture did not exercise final-negative correction"
+        );
+    }
+
+    #[test]
     fn half_gcd_second_column_schedule_removes_matrix_extraction_scratch_blocker() {
         // Unlike a determinant-compressed full matrix, the second column can be
         // generated and updated directly during the prefix loop.  Price the
@@ -11096,6 +11266,78 @@ mod tests {
         }
         for i in (0..divisor.len()).rev() {
             b.cx(divisor[i], shifted_v[i]);
+        }
+        b.free_vec(&shifted_cv);
+        b.free_vec(&shifted_v);
+    }
+
+    fn emit_toy_halfgcd_floor_inline_coeff_inverse_for_centered_test(
+        b: &mut super::super::B,
+        rem: &[super::super::QubitId],
+        divisor: &[super::super::QubitId],
+        coeff_acc: &[super::super::QubitId],
+        coeff_v: &[super::super::QubitId],
+        digit_hist: &[super::super::QubitId],
+        final_negative: super::super::QubitId,
+    ) {
+        assert_eq!(digit_hist.len(), 6);
+        assert_eq!(rem.len(), 11);
+        assert_eq!(divisor.len(), 4);
+        assert_eq!(coeff_acc.len(), coeff_v.len());
+        let top_shift = digit_hist.len() - 1;
+        let shifted_v = b.alloc_qubits(rem.len());
+        let shifted_cv = b.alloc_qubits(coeff_v.len());
+        for i in 0..divisor.len() {
+            b.cx(divisor[i], shifted_v[i]);
+        }
+        for i in 0..coeff_v.len() {
+            b.cx(coeff_v[i], shifted_cv[i]);
+        }
+
+        emit_controlled_integer_add_for_plusminus(
+            b,
+            coeff_acc,
+            &shifted_cv,
+            final_negative,
+            true,
+        );
+        emit_controlled_integer_add_for_plusminus(
+            b,
+            rem,
+            &shifted_v,
+            final_negative,
+            true,
+        );
+        b.cx(rem[rem.len() - 1], final_negative);
+
+        for sh in 0..digit_hist.len() {
+            emit_fused_sign_controlled_addsub_digit_opposite_for_centered_test(
+                b,
+                coeff_acc,
+                &shifted_cv,
+                digit_hist[sh],
+            );
+            emit_fused_sign_controlled_addsub_digit_opposite_for_centered_test(
+                b,
+                rem,
+                &shifted_v,
+                digit_hist[sh],
+            );
+            b.cx(rem[rem.len() - 1], digit_hist[sh]);
+            if sh != top_shift {
+                emit_shift_right_1_nooverflow_inverse_for_centered_test(b, &shifted_v);
+                emit_arithmetic_shift_right_1_exact_inverse_for_centered_test(
+                    b,
+                    &shifted_cv,
+                );
+            }
+        }
+
+        for i in (0..coeff_v.len() - top_shift).rev() {
+            b.cx(coeff_v[i], shifted_cv[i + top_shift]);
+        }
+        for i in (0..divisor.len()).rev() {
+            b.cx(divisor[i], shifted_v[i + top_shift]);
         }
         b.free_vec(&shifted_cv);
         b.free_vec(&shifted_v);

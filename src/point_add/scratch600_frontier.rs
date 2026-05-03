@@ -145,7 +145,7 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "halfgcd_second_column_tail_stream",
             scratch_bits: 514,
             charged_toffoli: None,
-            blocker: "second-column exact decoder average model fits at 2606688, but no phase-clean prefix extractor circuit is implemented and p99 remains 2856574",
+            blocker: "second-column exact decoder average model fits at 2606688 and one-step prefix extractor toy cleans, but full variable-length prefix circuit is not implemented and p99 remains 2856574",
         },
         Candidate {
             name: "folded_kaliski_one_pair_plus_required_sidecar",
@@ -400,6 +400,9 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let halfgcd_second_col_prefix_avg_aug_noscan_p99 = 2_643_668usize;
     let halfgcd_second_col_prefix_avg_aug_noscan_gap =
         halfgcd_second_col_prefix_avg_aug_noscan_mean as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let halfgcd_second_col_prefix_step_toy_ccx = 308usize;
+    let halfgcd_second_col_prefix_step_toy_peak_q = 106usize;
+    let halfgcd_second_col_prefix_step_toy_final_negative_cases = 39_270usize;
 
     eprintln!("\nScratch-600 architecture frontier:");
     for c in candidates {
@@ -625,6 +628,9 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_halfgcd_second_col_prefix_avg_aug_noscan_first64={halfgcd_second_col_prefix_avg_aug_noscan_first64}");
     println!("METRIC scratch600_halfgcd_second_col_prefix_avg_aug_noscan_p99={halfgcd_second_col_prefix_avg_aug_noscan_p99}");
     println!("METRIC scratch600_halfgcd_second_col_prefix_avg_aug_noscan_gap_to_2700k={halfgcd_second_col_prefix_avg_aug_noscan_gap}");
+    println!("METRIC scratch600_halfgcd_second_col_prefix_step_toy_ccx={halfgcd_second_col_prefix_step_toy_ccx}");
+    println!("METRIC scratch600_halfgcd_second_col_prefix_step_toy_peak_q={halfgcd_second_col_prefix_step_toy_peak_q}");
+    println!("METRIC scratch600_halfgcd_second_col_prefix_step_toy_final_negative_cases={halfgcd_second_col_prefix_step_toy_final_negative_cases}");
 
     assert!(best_state <= STRICT_SCRATCH, "at least some state shapes fit");
     assert!(streamed_gap_to_google > 0, "no fully charged <=600-scratch row should be counted as solved yet");
@@ -828,5 +834,11 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
         halfgcd_second_col_prefix_avg_aug_noscan_gap < 0
             && halfgcd_second_col_prefix_avg_aug_noscan_p99 < GOOGLE_LOW_QUBIT_TOFFOLI,
         "half-GCD scan-free lower bound no longer has full sampled margin"
+    );
+    assert!(
+        halfgcd_second_col_prefix_step_toy_ccx == 308
+            && halfgcd_second_col_prefix_step_toy_peak_q > 100
+            && halfgcd_second_col_prefix_step_toy_final_negative_cases > 10_000,
+        "half-GCD prefix-step toy evidence changed; revisit extractor implementation risk"
     );
 }
