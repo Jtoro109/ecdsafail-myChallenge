@@ -3389,6 +3389,58 @@ mod tests {
         )
     }
 
+    fn half_gcd_second_column_prefix_reverse_formula_stats(
+        n: usize,
+        p: u16,
+    ) -> (usize, usize, usize, usize, usize) {
+        let mut transitions = 0usize;
+        let mut endpoint_steps = 0usize;
+        let mut coeff_division_steps = 0usize;
+        let mut max_q_bits = 0usize;
+        let mut max_coeff_abs_bits = 0usize;
+        for x in 1..p {
+            let mut u = p as i128;
+            let mut v = x as i128;
+            let mut b = 0i128;
+            let mut d = 1i128;
+            while v != 0 && ((u as u128).ilog2().max((v as u128).ilog2()) as usize + 1) > n / 2 {
+                let q = u / v;
+                let rem = u - q * v;
+                let nb = d;
+                let nd = b - q * d;
+                let nb_abs = nb.unsigned_abs();
+                let nd_abs = nd.unsigned_abs();
+                let decoded_q = if b == 0 {
+                    endpoint_steps += 1;
+                    nd_abs / nb_abs
+                } else {
+                    coeff_division_steps += 1;
+                    (nd_abs - 1) / nb_abs
+                };
+                assert_eq!(decoded_q as i128, q, "reverse quotient formula mismatch");
+                assert_eq!(nd + (decoded_q as i128) * nb, b, "reverse old-b mismatch");
+                assert_eq!(nb, d, "reverse old-d mismatch");
+
+                max_q_bits = max_q_bits.max(usize_bit_len_for_payload_test(q as usize));
+                max_coeff_abs_bits = max_coeff_abs_bits.max(usize_bit_len_for_payload_test(
+                    nb_abs.max(nd_abs) as usize,
+                ));
+                u = v;
+                v = rem;
+                b = nb;
+                d = nd;
+                transitions += 1;
+            }
+        }
+        (
+            transitions,
+            endpoint_steps,
+            coeff_division_steps,
+            max_q_bits,
+            max_coeff_abs_bits,
+        )
+    }
+
     fn u512_popcount_for_halfgcd_test(x: U512) -> usize {
         x.as_limbs().iter().map(|w| w.count_ones() as usize).sum()
     }
@@ -3779,6 +3831,33 @@ mod tests {
             assert_eq!(final_bd_max, 1, "final second-column checkpoint hides prefix path ambiguity");
             assert_eq!(local_max, 1, "reachable second-column prefix state has ambiguous predecessor");
             assert_eq!(local_collisions, 0, "local reverse collision keys appeared");
+        }
+    }
+
+    #[test]
+    fn half_gcd_second_column_prefix_reverse_q_has_coefficient_formula_in_toys() {
+        // Local uniqueness is only actionable if the reverse step has a simple
+        // decoder.  For every non-initial prefix step in these toy fields, the
+        // forward update `(b,d) -> (d,b-q*d)` can recover q from the new
+        // coefficients as `(abs(d)-1)/abs(b)`.  The one initial endpoint per
+        // denominator is the exact `abs(d)/abs(b)` case.
+        let cases = [(8usize, 251u16), (10, 1021), (12, 4093), (14, 16381)];
+        for &(n, p) in &cases {
+            let (transitions, endpoints, coeff_steps, max_q_bits, max_coeff_abs_bits) =
+                half_gcd_second_column_prefix_reverse_formula_stats(n, p);
+            eprintln!(
+                "half-GCD second-column reverse quotient formula: n={n}, transitions={transitions}, endpoints={endpoints}, coeff_steps={coeff_steps}, max_q_bits={max_q_bits}, max_coeff_abs_bits={max_coeff_abs_bits}"
+            );
+            if n == 14 {
+                println!("METRIC halfgcd_second_col_prefix_reverse_formula_transitions_n14={transitions}");
+                println!("METRIC halfgcd_second_col_prefix_reverse_formula_endpoints_n14={endpoints}");
+                println!("METRIC halfgcd_second_col_prefix_reverse_formula_coeff_steps_n14={coeff_steps}");
+                println!("METRIC halfgcd_second_col_prefix_reverse_formula_max_q_bits_n14={max_q_bits}");
+                println!("METRIC halfgcd_second_col_prefix_reverse_formula_max_coeff_abs_bits_n14={max_coeff_abs_bits}");
+            }
+            assert_eq!(endpoints, (p - 1) as usize, "expected one endpoint reverse step per denominator");
+            assert_eq!(transitions, endpoints + coeff_steps, "reverse formula accounting drifted");
+            assert!(coeff_steps > endpoints, "coefficient reverse body unexpectedly small");
         }
     }
 
