@@ -17656,14 +17656,18 @@ mod tests {
         // independent samples.  If the rank of the remaining mismatch positions
         // already exceeds the scratch budget, then a simple public taper plus
         // small correction channel cannot be the missing packed parser.
+        use std::collections::HashMap;
+
         let p = SECP256K1_P;
         let n = 256usize;
         let train_samples = 8192usize;
         let eval_samples = 8192usize;
         const MAX_STEPS: usize = 260;
         const MAX_ALIGN_LEN: usize = 8;
+        const MAX_OBS_LEN: usize = 256;
         let mut rng = 0xd1ce_c0ef_a119_1001u64;
-        let trace_align_lengths = |rng: &mut u64| -> (Vec<usize>, usize, usize) {
+        let trace_align_lengths =
+            |rng: &mut u64| -> (Vec<usize>, Vec<usize>, Vec<usize>, usize, usize) {
             let mut x = rand_u256(rng);
             if x.is_zero() {
                 x = U256::from(1u64);
@@ -17673,11 +17677,20 @@ mod tests {
             let mut coeff_u = smag_for_halfgcd_test(false, U512::ZERO);
             let mut coeff_v = smag_for_halfgcd_test(false, U512::from(1u64));
             let mut align_lens = Vec::new();
+            let mut q_lens = Vec::new();
+            let mut digit_lens = Vec::new();
             let mut align_variable_bits = 0usize;
             let mut ambiguous_branches = 0usize;
             while !v.mag.is_zero() {
                 let adjusted = u.mag + (v.mag >> 1usize);
                 let q_direct = adjusted / v.mag;
+                let q_len = u512_bit_len_for_halfgcd_test(q_direct).max(1);
+                let digit_len =
+                    nonrestoring_floor_restoring_final_digits_for_centered_test(adjusted, v.mag)
+                        .len()
+                        .max(1);
+                assert!(q_len <= MAX_OBS_LEN, "quotient length exceeded predictor table");
+                assert!(digit_len <= MAX_OBS_LEN, "digit length exceeded predictor table");
                 let q_neg = u.neg ^ v.neg;
                 let qv = signed_mul_mag_for_halfgcd_test(v, q_neg, q_direct);
                 let next_v = signed_add_for_halfgcd_test(u, signed_neg_for_halfgcd_test(qv));
@@ -17721,6 +17734,8 @@ mod tests {
                 assert!(align_len <= MAX_ALIGN_LEN, "alignment length exceeded 8 bits");
                 align_variable_bits += align_len;
                 align_lens.push(align_len);
+                q_lens.push(q_len);
+                digit_lens.push(digit_len);
 
                 u = v;
                 v = next_v;
@@ -17728,20 +17743,42 @@ mod tests {
                 coeff_v = next_coeff_v;
             }
             assert_eq!(u.mag, U512::from(1u64), "restoring-final trace ended at non-unit gcd");
-            (align_lens, align_variable_bits, ambiguous_branches)
+            (
+                align_lens,
+                q_lens,
+                digit_lens,
+                align_variable_bits,
+                ambiguous_branches,
+            )
         };
 
         let mut step_len_counts = [[0usize; MAX_ALIGN_LEN + 1]; MAX_STEPS];
+        let mut step_q_len_counts =
+            vec![[0usize; MAX_ALIGN_LEN + 1]; MAX_STEPS * (MAX_OBS_LEN + 1)];
+        let mut step_digit_len_counts =
+            vec![[0usize; MAX_ALIGN_LEN + 1]; MAX_STEPS * (MAX_OBS_LEN + 1)];
+        let joint_key = |step: usize, q_len: usize, digit_len: usize| -> u64 {
+            ((step as u64) << 18) | ((q_len as u64) << 9) | digit_len as u64
+        };
+        let mut step_joint_len_counts = HashMap::<u64, [usize; MAX_ALIGN_LEN + 1]>::new();
         let mut train_counts = Vec::with_capacity(train_samples);
         for _ in 0..train_samples {
-            let (align_lens, _, _) = trace_align_lengths(&mut rng);
+            let (align_lens, q_lens, digit_lens, _, _) = trace_align_lengths(&mut rng);
             assert!(align_lens.len() < MAX_STEPS, "trace exceeded public predictor table");
             train_counts.push(align_lens.len());
             for (step, &align_len) in align_lens.iter().enumerate() {
                 step_len_counts[step][align_len] += 1;
+                step_q_len_counts[step * (MAX_OBS_LEN + 1) + q_lens[step]][align_len] += 1;
+                step_digit_len_counts[step * (MAX_OBS_LEN + 1) + digit_lens[step]][align_len] += 1;
+                step_joint_len_counts
+                    .entry(joint_key(step, q_lens[step], digit_lens[step]))
+                    .or_insert([0usize; MAX_ALIGN_LEN + 1])[align_len] += 1;
             }
         }
         let mut public_len = [0usize; MAX_STEPS];
+        let mut public_q_len = vec![0usize; MAX_STEPS * (MAX_OBS_LEN + 1)];
+        let mut public_digit_len = vec![0usize; MAX_STEPS * (MAX_OBS_LEN + 1)];
+        let mut public_joint_len = HashMap::<u64, usize>::new();
         for step in 0..MAX_STEPS {
             let mut best_len = 0usize;
             let mut best_count = 0usize;
@@ -17752,6 +17789,36 @@ mod tests {
                 }
             }
             public_len[step] = best_len;
+            for observed_len in 0..=MAX_OBS_LEN {
+                let key = step * (MAX_OBS_LEN + 1) + observed_len;
+                let mut best_q_len = public_len[step];
+                let mut best_q_count = 0usize;
+                let mut best_digit_len = public_len[step];
+                let mut best_digit_count = 0usize;
+                for len in 0..=MAX_ALIGN_LEN {
+                    if step_q_len_counts[key][len] > best_q_count {
+                        best_q_count = step_q_len_counts[key][len];
+                        best_q_len = len;
+                    }
+                    if step_digit_len_counts[key][len] > best_digit_count {
+                        best_digit_count = step_digit_len_counts[key][len];
+                        best_digit_len = len;
+                    }
+                }
+                public_q_len[key] = best_q_len;
+                public_digit_len[key] = best_digit_len;
+            }
+        }
+        for (&key, counts) in &step_joint_len_counts {
+            let mut best_len = 0usize;
+            let mut best_count = 0usize;
+            for len in 0..=MAX_ALIGN_LEN {
+                if counts[len] > best_count {
+                    best_count = counts[len];
+                    best_len = len;
+                }
+            }
+            public_joint_len.insert(key, best_len);
         }
 
         let log2_binomial_ceil = |items: usize, chosen: usize| -> usize {
@@ -17768,8 +17835,20 @@ mod tests {
         let mut mismatch_position_ranks = Vec::with_capacity(eval_samples);
         let mut position_only_scratches = Vec::with_capacity(eval_samples);
         let mut position_plus_len_scratches = Vec::with_capacity(eval_samples);
+        let mut q_len_mismatch_counts = Vec::with_capacity(eval_samples);
+        let mut q_len_position_ranks = Vec::with_capacity(eval_samples);
+        let mut q_len_position_only_scratches = Vec::with_capacity(eval_samples);
+        let mut q_len_position_plus_len_scratches = Vec::with_capacity(eval_samples);
+        let mut digit_len_mismatch_counts = Vec::with_capacity(eval_samples);
+        let mut digit_len_position_ranks = Vec::with_capacity(eval_samples);
+        let mut digit_len_position_only_scratches = Vec::with_capacity(eval_samples);
+        let mut digit_len_position_plus_len_scratches = Vec::with_capacity(eval_samples);
+        let mut joint_len_mismatch_counts = Vec::with_capacity(eval_samples);
+        let mut joint_len_position_ranks = Vec::with_capacity(eval_samples);
+        let mut joint_len_position_only_scratches = Vec::with_capacity(eval_samples);
+        let mut joint_len_position_plus_len_scratches = Vec::with_capacity(eval_samples);
         for _ in 0..eval_samples {
-            let (align_lens, align_variable_bits, ambiguous_branches) =
+            let (align_lens, q_lens, digit_lens, align_variable_bits, ambiguous_branches) =
                 trace_align_lengths(&mut rng);
             let count = align_lens.len();
             assert!(count < MAX_STEPS, "trace exceeded public predictor table");
@@ -17778,17 +17857,70 @@ mod tests {
                 .enumerate()
                 .filter(|&(step, &align_len)| public_len[step] != align_len)
                 .count();
+            let q_len_mismatch_count = align_lens
+                .iter()
+                .enumerate()
+                .filter(|&(step, &align_len)| {
+                    let key = step * (MAX_OBS_LEN + 1) + q_lens[step];
+                    public_q_len[key] != align_len
+                })
+                .count();
+            let digit_len_mismatch_count = align_lens
+                .iter()
+                .enumerate()
+                .filter(|&(step, &align_len)| {
+                    let key = step * (MAX_OBS_LEN + 1) + digit_lens[step];
+                    public_digit_len[key] != align_len
+                })
+                .count();
+            let joint_len_mismatch_count = align_lens
+                .iter()
+                .enumerate()
+                .filter(|&(step, &align_len)| {
+                    let key = joint_key(step, q_lens[step], digit_lens[step]);
+                    let fallback = public_digit_len[step * (MAX_OBS_LEN + 1) + digit_lens[step]];
+                    public_joint_len.get(&key).copied().unwrap_or(fallback) != align_len
+                })
+                .count();
             let variable_scratch = n + align_variable_bits + ambiguous_branches;
             let mismatch_rank = log2_binomial_ceil(count, mismatch_count);
             let position_only_scratch = variable_scratch + mismatch_rank;
             let position_plus_len_scratch =
                 position_only_scratch + 3usize * mismatch_count;
+            let q_len_mismatch_rank = log2_binomial_ceil(count, q_len_mismatch_count);
+            let q_len_position_only_scratch = variable_scratch + q_len_mismatch_rank;
+            let q_len_position_plus_len_scratch =
+                q_len_position_only_scratch + 3usize * q_len_mismatch_count;
+            let digit_len_mismatch_rank =
+                log2_binomial_ceil(count, digit_len_mismatch_count);
+            let digit_len_position_only_scratch =
+                variable_scratch + digit_len_mismatch_rank;
+            let digit_len_position_plus_len_scratch =
+                digit_len_position_only_scratch + 3usize * digit_len_mismatch_count;
+            let joint_len_mismatch_rank =
+                log2_binomial_ceil(count, joint_len_mismatch_count);
+            let joint_len_position_only_scratch =
+                variable_scratch + joint_len_mismatch_rank;
+            let joint_len_position_plus_len_scratch =
+                joint_len_position_only_scratch + 3usize * joint_len_mismatch_count;
             eval_counts.push(count);
             variable_scratches.push(variable_scratch);
             mismatch_counts.push(mismatch_count);
             mismatch_position_ranks.push(mismatch_rank);
             position_only_scratches.push(position_only_scratch);
             position_plus_len_scratches.push(position_plus_len_scratch);
+            q_len_mismatch_counts.push(q_len_mismatch_count);
+            q_len_position_ranks.push(q_len_mismatch_rank);
+            q_len_position_only_scratches.push(q_len_position_only_scratch);
+            q_len_position_plus_len_scratches.push(q_len_position_plus_len_scratch);
+            digit_len_mismatch_counts.push(digit_len_mismatch_count);
+            digit_len_position_ranks.push(digit_len_mismatch_rank);
+            digit_len_position_only_scratches.push(digit_len_position_only_scratch);
+            digit_len_position_plus_len_scratches.push(digit_len_position_plus_len_scratch);
+            joint_len_mismatch_counts.push(joint_len_mismatch_count);
+            joint_len_position_ranks.push(joint_len_mismatch_rank);
+            joint_len_position_only_scratches.push(joint_len_position_only_scratch);
+            joint_len_position_plus_len_scratches.push(joint_len_position_plus_len_scratch);
         }
 
         let p99_usize = |rows: &mut Vec<usize>| -> usize {
@@ -17809,6 +17941,42 @@ mod tests {
         let position_only_scratch_max = *position_only_scratches.last().unwrap();
         let position_plus_len_scratch_p99 = p99_usize(&mut position_plus_len_scratches);
         let position_plus_len_scratch_max = *position_plus_len_scratches.last().unwrap();
+        let q_len_mismatch_count_p99 = p99_usize(&mut q_len_mismatch_counts);
+        let q_len_mismatch_count_max = *q_len_mismatch_counts.last().unwrap();
+        let q_len_position_rank_p99 = p99_usize(&mut q_len_position_ranks);
+        let q_len_position_rank_max = *q_len_position_ranks.last().unwrap();
+        let q_len_position_only_scratch_p99 =
+            p99_usize(&mut q_len_position_only_scratches);
+        let q_len_position_only_scratch_max =
+            *q_len_position_only_scratches.last().unwrap();
+        let q_len_position_plus_len_scratch_p99 =
+            p99_usize(&mut q_len_position_plus_len_scratches);
+        let q_len_position_plus_len_scratch_max =
+            *q_len_position_plus_len_scratches.last().unwrap();
+        let digit_len_mismatch_count_p99 = p99_usize(&mut digit_len_mismatch_counts);
+        let digit_len_mismatch_count_max = *digit_len_mismatch_counts.last().unwrap();
+        let digit_len_position_rank_p99 = p99_usize(&mut digit_len_position_ranks);
+        let digit_len_position_rank_max = *digit_len_position_ranks.last().unwrap();
+        let digit_len_position_only_scratch_p99 =
+            p99_usize(&mut digit_len_position_only_scratches);
+        let digit_len_position_only_scratch_max =
+            *digit_len_position_only_scratches.last().unwrap();
+        let digit_len_position_plus_len_scratch_p99 =
+            p99_usize(&mut digit_len_position_plus_len_scratches);
+        let digit_len_position_plus_len_scratch_max =
+            *digit_len_position_plus_len_scratches.last().unwrap();
+        let joint_len_mismatch_count_p99 = p99_usize(&mut joint_len_mismatch_counts);
+        let joint_len_mismatch_count_max = *joint_len_mismatch_counts.last().unwrap();
+        let joint_len_position_rank_p99 = p99_usize(&mut joint_len_position_ranks);
+        let joint_len_position_rank_max = *joint_len_position_ranks.last().unwrap();
+        let joint_len_position_only_scratch_p99 =
+            p99_usize(&mut joint_len_position_only_scratches);
+        let joint_len_position_only_scratch_max =
+            *joint_len_position_only_scratches.last().unwrap();
+        let joint_len_position_plus_len_scratch_p99 =
+            p99_usize(&mut joint_len_position_plus_len_scratches);
+        let joint_len_position_plus_len_scratch_max =
+            *joint_len_position_plus_len_scratches.last().unwrap();
         println!("METRIC centered_direct_restoring_final_align_public_len_train_count_p99={train_count_p99}");
         println!("METRIC centered_direct_restoring_final_align_public_len_train_count_max={train_count_max}");
         println!("METRIC centered_direct_restoring_final_align_public_len_eval_count_p99={eval_count_p99}");
@@ -17823,12 +17991,42 @@ mod tests {
         println!("METRIC centered_direct_restoring_final_align_public_len_position_only_scratch_max={position_only_scratch_max}");
         println!("METRIC centered_direct_restoring_final_align_public_len_position_plus3_scratch_p99={position_plus_len_scratch_p99}");
         println!("METRIC centered_direct_restoring_final_align_public_len_position_plus3_scratch_max={position_plus_len_scratch_max}");
+        println!("METRIC centered_direct_restoring_final_align_q_len_mismatch_count_p99={q_len_mismatch_count_p99}");
+        println!("METRIC centered_direct_restoring_final_align_q_len_mismatch_count_max={q_len_mismatch_count_max}");
+        println!("METRIC centered_direct_restoring_final_align_q_len_position_rank_p99={q_len_position_rank_p99}");
+        println!("METRIC centered_direct_restoring_final_align_q_len_position_rank_max={q_len_position_rank_max}");
+        println!("METRIC centered_direct_restoring_final_align_q_len_position_only_scratch_p99={q_len_position_only_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_align_q_len_position_only_scratch_max={q_len_position_only_scratch_max}");
+        println!("METRIC centered_direct_restoring_final_align_q_len_position_plus3_scratch_p99={q_len_position_plus_len_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_align_q_len_position_plus3_scratch_max={q_len_position_plus_len_scratch_max}");
+        println!("METRIC centered_direct_restoring_final_align_digit_len_mismatch_count_p99={digit_len_mismatch_count_p99}");
+        println!("METRIC centered_direct_restoring_final_align_digit_len_mismatch_count_max={digit_len_mismatch_count_max}");
+        println!("METRIC centered_direct_restoring_final_align_digit_len_position_rank_p99={digit_len_position_rank_p99}");
+        println!("METRIC centered_direct_restoring_final_align_digit_len_position_rank_max={digit_len_position_rank_max}");
+        println!("METRIC centered_direct_restoring_final_align_digit_len_position_only_scratch_p99={digit_len_position_only_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_align_digit_len_position_only_scratch_max={digit_len_position_only_scratch_max}");
+        println!("METRIC centered_direct_restoring_final_align_digit_len_position_plus3_scratch_p99={digit_len_position_plus_len_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_align_digit_len_position_plus3_scratch_max={digit_len_position_plus_len_scratch_max}");
+        println!("METRIC centered_direct_restoring_final_align_joint_len_mismatch_count_p99={joint_len_mismatch_count_p99}");
+        println!("METRIC centered_direct_restoring_final_align_joint_len_mismatch_count_max={joint_len_mismatch_count_max}");
+        println!("METRIC centered_direct_restoring_final_align_joint_len_position_rank_p99={joint_len_position_rank_p99}");
+        println!("METRIC centered_direct_restoring_final_align_joint_len_position_rank_max={joint_len_position_rank_max}");
+        println!("METRIC centered_direct_restoring_final_align_joint_len_position_only_scratch_p99={joint_len_position_only_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_align_joint_len_position_only_scratch_max={joint_len_position_only_scratch_max}");
+        println!("METRIC centered_direct_restoring_final_align_joint_len_position_plus3_scratch_p99={joint_len_position_plus_len_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_align_joint_len_position_plus3_scratch_max={joint_len_position_plus_len_scratch_max}");
         eprintln!(
-            "Direct-centered restoring-final public length predictor: variable_p99={variable_scratch_p99}, mismatches_p99={mismatch_count_p99}, rank_p99={mismatch_position_rank_p99}, position_only_p99={position_only_scratch_p99}, position_plus3_p99={position_plus_len_scratch_p99}"
+            "Direct-centered restoring-final public length predictor: variable_p99={variable_scratch_p99}, step_mismatches_p99={mismatch_count_p99}, step_only_p99={position_only_scratch_p99}, q_len_mismatches_p99={q_len_mismatch_count_p99}, q_len_only_p99={q_len_position_only_scratch_p99}, q_len_plus3_p99={q_len_position_plus_len_scratch_p99}, digit_len_mismatches_p99={digit_len_mismatch_count_p99}, digit_len_only_p99={digit_len_position_only_scratch_p99}, joint_mismatches_p99={joint_len_mismatch_count_p99}, joint_only_p99={joint_len_position_only_scratch_p99}"
         );
         assert!(
             position_only_scratch_p99 > 663,
             "public modal alignment lengths plus ideal mismatch positions fit; promote predictor parser"
+        );
+        assert!(
+            q_len_position_only_scratch_p99 > 663
+                && digit_len_position_only_scratch_p99 > 663
+                && joint_len_position_only_scratch_p99 > 663,
+            "observed quotient shape predicts alignment lengths cheaply enough; promote coupled parser"
         );
     }
 
