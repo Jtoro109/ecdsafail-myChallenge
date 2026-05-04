@@ -127,7 +127,7 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "direct_centered_restoring_final_stored_alignment",
             scratch_bits: 602,
             charged_toffoli: None,
-            blocker: "restoring-final select1 has phase-clean toy cleanup; stored alignment+branch decoder averages 2645270 with raw variable metadata p99 602 and ideal global/step entropy p99 627/622, but delimited/gamma/length-rank metadata is 719/809/748 and no exact reversible entropy/range parser is built",
+            blocker: "restoring-final select1 has phase-clean toy cleanup; stored alignment+branch decoder averages 2645270 with raw variable metadata p99 602 and ideal global/step entropy p99 627/622, but rounded prefix codes miss at 756/752 and no exact reversible range parser is built",
         },
         Candidate {
             name: "direct_centered_signnorm_rank_compressed_signs",
@@ -368,6 +368,10 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let direct_restoring_final_align_entropy_global_scratch_max = 650usize;
     let direct_restoring_final_align_entropy_step_scratch_p99 = 622usize;
     let direct_restoring_final_align_entropy_step_scratch_max = 640usize;
+    let direct_restoring_final_align_prefix_global_scratch_p99 = 756usize;
+    let direct_restoring_final_align_prefix_global_scratch_max = 781usize;
+    let direct_restoring_final_align_prefix_step_scratch_p99 = 752usize;
+    let direct_restoring_final_align_prefix_step_scratch_max = 771usize;
     let direct_restoring_final_align_entropy_branch_count_p99 = 117usize;
     let direct_restoring_final_align_entropy_branch_count_max = 125usize;
     let plusminus_raw_scratch = 564usize;
@@ -772,6 +776,10 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_restoring_final_align_entropy_global_scratch_max={direct_restoring_final_align_entropy_global_scratch_max}");
     println!("METRIC scratch600_direct_restoring_final_align_entropy_step_scratch_p99={direct_restoring_final_align_entropy_step_scratch_p99}");
     println!("METRIC scratch600_direct_restoring_final_align_entropy_step_scratch_max={direct_restoring_final_align_entropy_step_scratch_max}");
+    println!("METRIC scratch600_direct_restoring_final_align_prefix_global_scratch_p99={direct_restoring_final_align_prefix_global_scratch_p99}");
+    println!("METRIC scratch600_direct_restoring_final_align_prefix_global_scratch_max={direct_restoring_final_align_prefix_global_scratch_max}");
+    println!("METRIC scratch600_direct_restoring_final_align_prefix_step_scratch_p99={direct_restoring_final_align_prefix_step_scratch_p99}");
+    println!("METRIC scratch600_direct_restoring_final_align_prefix_step_scratch_max={direct_restoring_final_align_prefix_step_scratch_max}");
     println!("METRIC scratch600_direct_restoring_final_align_entropy_branch_count_p99={direct_restoring_final_align_entropy_branch_count_p99}");
     println!("METRIC scratch600_direct_restoring_final_align_entropy_branch_count_max={direct_restoring_final_align_entropy_branch_count_max}");
     println!("METRIC scratch600_plusminus_raw_scratch_bits={plusminus_raw_scratch}");
@@ -1139,9 +1147,13 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
                 <= GOOGLE_LOW_QUBIT_SCRATCH
             && direct_restoring_final_align_entropy_step_scratch_max
                 <= GOOGLE_LOW_QUBIT_SCRATCH
+            && direct_restoring_final_align_prefix_global_scratch_p99
+                > GOOGLE_LOW_QUBIT_SCRATCH
+            && direct_restoring_final_align_prefix_step_scratch_p99
+                > GOOGLE_LOW_QUBIT_SCRATCH
             && direct_restoring_final_align_entropy_branch_count_p99
                 == direct_restoring_final_stored_align_branch_count_p99,
-        "restoring-final ideal metadata entropy no longer fits; demote the parser route"
+        "restoring-final metadata coding frontier changed; revisit parser route"
     );
     assert!(halfgcd_tail_over_google > 0, "half-GCD checkpoint must be fused before it fits");
     assert!(

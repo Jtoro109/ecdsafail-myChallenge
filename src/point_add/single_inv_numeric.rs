@@ -19282,29 +19282,45 @@ mod tests {
             assert!(freq > 0 && total > 0, "entropy model missing a seen symbol");
             (total as f64).log2() - (freq as f64).log2()
         };
+        let prefix_len = |freq: usize, total: usize| -> usize {
+            let bits = code_len(freq, total).ceil() as usize;
+            if freq == total { 0 } else { bits.max(1) }
+        };
         let mut variable_scratches = Vec::with_capacity(samples);
         let mut global_entropy_scratches = Vec::with_capacity(samples);
         let mut step_entropy_scratches = Vec::with_capacity(samples);
+        let mut global_prefix_scratches = Vec::with_capacity(samples);
+        let mut step_prefix_scratches = Vec::with_capacity(samples);
         let mut branch_counts = Vec::with_capacity(samples);
         for (alignments, branches, variable_bits) in &traces {
             let variable_scratch = 256usize + *variable_bits + branches.len();
             let mut global_bits = 0.0f64;
             let mut step_bits = 0.0f64;
+            let mut global_prefix_bits = 0usize;
+            let mut step_prefix_bits = 0usize;
             for (step, &alignment) in alignments.iter().enumerate() {
-                global_bits += code_len(*align_global.get(&alignment).unwrap(), align_global_total);
+                let global_freq = *align_global.get(&alignment).unwrap();
+                global_bits += code_len(global_freq, align_global_total);
+                global_prefix_bits += prefix_len(global_freq, align_global_total);
                 let step_total = align_by_step[step].values().sum::<usize>();
-                step_bits += code_len(*align_by_step[step].get(&alignment).unwrap(), step_total);
+                let step_freq = *align_by_step[step].get(&alignment).unwrap();
+                step_bits += code_len(step_freq, step_total);
+                step_prefix_bits += prefix_len(step_freq, step_total);
             }
             let branch_total = branch_global.iter().sum::<usize>();
             for &(step, branch) in branches {
                 let bit = branch as usize;
                 global_bits += code_len(branch_global[bit], branch_total);
+                global_prefix_bits += prefix_len(branch_global[bit], branch_total);
                 let step_branch_total = branch_by_step[step].iter().sum::<usize>();
                 step_bits += code_len(branch_by_step[step][bit], step_branch_total);
+                step_prefix_bits += prefix_len(branch_by_step[step][bit], step_branch_total);
             }
             variable_scratches.push(variable_scratch);
             global_entropy_scratches.push(256.0 + global_bits.ceil());
             step_entropy_scratches.push(256.0 + step_bits.ceil());
+            global_prefix_scratches.push(256 + global_prefix_bits);
+            step_prefix_scratches.push(256 + step_prefix_bits);
             branch_counts.push(branches.len());
         }
         let p99_usize = |rows: &mut Vec<usize>| -> usize {
@@ -19323,8 +19339,12 @@ mod tests {
         let global_entropy_max = *global_entropy_scratches.last().unwrap();
         let step_entropy_p99 = p99_f64(&mut step_entropy_scratches);
         let step_entropy_max = *step_entropy_scratches.last().unwrap();
+        let global_prefix_p99 = p99_usize(&mut global_prefix_scratches);
+        let global_prefix_max = *global_prefix_scratches.last().unwrap();
+        let step_prefix_p99 = p99_usize(&mut step_prefix_scratches);
+        let step_prefix_max = *step_prefix_scratches.last().unwrap();
         eprintln!(
-            "Direct-centered restoring-final alignment entropy code: variable_p99={variable_p99}, global_entropy_p99={global_entropy_p99:.1}, step_entropy_p99={step_entropy_p99:.1}, branch_count_p99={branch_count_p99}"
+            "Direct-centered restoring-final alignment entropy code: variable_p99={variable_p99}, global_entropy_p99={global_entropy_p99:.1}, step_entropy_p99={step_entropy_p99:.1}, global_prefix_p99={global_prefix_p99}, step_prefix_p99={step_prefix_p99}, branch_count_p99={branch_count_p99}"
         );
         println!("METRIC centered_direct_restoring_final_align_entropy_variable_scratch_p99={variable_p99}");
         println!("METRIC centered_direct_restoring_final_align_entropy_variable_scratch_max={variable_max}");
@@ -19332,6 +19352,10 @@ mod tests {
         println!("METRIC centered_direct_restoring_final_align_entropy_global_scratch_max={global_entropy_max:.3}");
         println!("METRIC centered_direct_restoring_final_align_entropy_step_scratch_p99={step_entropy_p99:.3}");
         println!("METRIC centered_direct_restoring_final_align_entropy_step_scratch_max={step_entropy_max:.3}");
+        println!("METRIC centered_direct_restoring_final_align_prefix_global_scratch_p99={global_prefix_p99}");
+        println!("METRIC centered_direct_restoring_final_align_prefix_global_scratch_max={global_prefix_max}");
+        println!("METRIC centered_direct_restoring_final_align_prefix_step_scratch_p99={step_prefix_p99}");
+        println!("METRIC centered_direct_restoring_final_align_prefix_step_scratch_max={step_prefix_max}");
         println!("METRIC centered_direct_restoring_final_align_entropy_branch_count_p99={branch_count_p99}");
         println!("METRIC centered_direct_restoring_final_align_entropy_branch_count_max={branch_count_max}");
         assert!(
@@ -19341,6 +19365,10 @@ mod tests {
         assert!(
             global_entropy_p99 <= GOOGLE_SCRATCH && step_entropy_p99 <= GOOGLE_SCRATCH,
             "even an ideal alignment metadata entropy code misses Google scratch; demote restoring-final parser route"
+        );
+        assert!(
+            global_prefix_p99 as f64 > GOOGLE_SCRATCH && step_prefix_p99 as f64 > GOOGLE_SCRATCH,
+            "a simple rounded prefix code now fits; build the prefix parser before attempting range coding"
         );
     }
 
