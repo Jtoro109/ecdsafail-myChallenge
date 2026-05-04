@@ -121,7 +121,7 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "direct_centered_signnorm_logical_coeff_signs",
             scratch_bits: 765,
             charged_toffoli: Some(2_746_960),
-            blocker: "logical coefficient signs reduce exact cneg work, but split p99 is still 46960 over target and normalization-sign scratch remains 765 p99",
+            blocker: "logical coefficient signs keep rem-only direct cneg phase-clean in toy, but direct split p99 is still 46960 over target, exact-rem split is 94228 over, and normalization-sign scratch remains 765 p99",
         },
         Candidate {
             name: "direct_centered_restoring_final_stored_alignment",
@@ -248,10 +248,21 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
         direct_signnorm_exact_split_p99 as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
     let direct_signnorm_logsign_once_p99 = 2_723_992usize;
     let direct_signnorm_logsign_split_p99 = 2_746_960usize;
+    let direct_signnorm_logsign_direct_rem_toy_ccx = 148usize;
+    let direct_signnorm_logsign_direct_rem_toy_peak_q = 80usize;
+    let direct_signnorm_logsign_direct_rem_toy_phase_dirty_cases = 0usize;
+    let direct_signnorm_logsign_exact_cneg257 = 512usize;
+    let direct_signnorm_logsign_exact_rem_p99 = 26_712usize;
+    let direct_signnorm_logsign_exact_once_p99 = 2_746_960usize;
+    let direct_signnorm_logsign_exact_split_p99 = 2_794_228usize;
     let direct_signnorm_logsign_once_gap =
         direct_signnorm_logsign_once_p99 as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
     let direct_signnorm_logsign_split_gap =
         direct_signnorm_logsign_split_p99 as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let direct_signnorm_logsign_exact_once_gap =
+        direct_signnorm_logsign_exact_once_p99 as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let direct_signnorm_logsign_exact_split_gap =
+        direct_signnorm_logsign_exact_split_p99 as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
     let direct_signnorm_mbu_degree_n14 = 13usize;
     let direct_signnorm_mbu_density_n14 = 8_208usize;
     let direct_signnorm_mbu_max_count_n14 = 8usize;
@@ -730,8 +741,17 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_signnorm_exact_split_gap_to_2700k={direct_signnorm_exact_split_gap}");
     println!("METRIC scratch600_direct_signnorm_logsign_once_p99={direct_signnorm_logsign_once_p99}");
     println!("METRIC scratch600_direct_signnorm_logsign_split_p99={direct_signnorm_logsign_split_p99}");
+    println!("METRIC scratch600_direct_signnorm_logsign_direct_rem_toy_ccx={direct_signnorm_logsign_direct_rem_toy_ccx}");
+    println!("METRIC scratch600_direct_signnorm_logsign_direct_rem_toy_peak_q={direct_signnorm_logsign_direct_rem_toy_peak_q}");
+    println!("METRIC scratch600_direct_signnorm_logsign_direct_rem_toy_phase_dirty_cases={direct_signnorm_logsign_direct_rem_toy_phase_dirty_cases}");
+    println!("METRIC scratch600_direct_signnorm_logsign_exact_cneg257={direct_signnorm_logsign_exact_cneg257}");
+    println!("METRIC scratch600_direct_signnorm_logsign_exact_rem_p99={direct_signnorm_logsign_exact_rem_p99}");
+    println!("METRIC scratch600_direct_signnorm_logsign_exact_once_p99={direct_signnorm_logsign_exact_once_p99}");
+    println!("METRIC scratch600_direct_signnorm_logsign_exact_split_p99={direct_signnorm_logsign_exact_split_p99}");
     println!("METRIC scratch600_direct_signnorm_logsign_once_gap_to_2700k={direct_signnorm_logsign_once_gap}");
     println!("METRIC scratch600_direct_signnorm_logsign_split_gap_to_2700k={direct_signnorm_logsign_split_gap}");
+    println!("METRIC scratch600_direct_signnorm_logsign_exact_once_gap_to_2700k={direct_signnorm_logsign_exact_once_gap}");
+    println!("METRIC scratch600_direct_signnorm_logsign_exact_split_gap_to_2700k={direct_signnorm_logsign_exact_split_gap}");
     println!("METRIC scratch600_direct_signnorm_mbu_degree_n14={direct_signnorm_mbu_degree_n14}");
     println!("METRIC scratch600_direct_signnorm_mbu_density_n14={direct_signnorm_mbu_density_n14}");
     println!("METRIC scratch600_direct_signnorm_mbu_max_count_n14={direct_signnorm_mbu_max_count_n14}");
@@ -1121,6 +1141,16 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     assert!(
         direct_signnorm_logsign_once_gap > 0 && direct_signnorm_logsign_split_gap > 0,
         "logical coefficient signs now reach p99 low-qubit target; promote direct sign-normalized route"
+    );
+    assert!(
+        direct_signnorm_logsign_direct_rem_toy_ccx == 148
+            && direct_signnorm_logsign_direct_rem_toy_peak_q == 80
+            && direct_signnorm_logsign_direct_rem_toy_phase_dirty_cases == 0
+            && direct_signnorm_logsign_exact_cneg257 == 512
+            && direct_signnorm_logsign_exact_rem_p99 > 20_000
+            && direct_signnorm_logsign_exact_once_gap == direct_signnorm_logsign_split_gap
+            && direct_signnorm_logsign_exact_split_gap > direct_signnorm_logsign_split_gap,
+        "logical-sign rem-cneg phase/cost changed; revisit direct sign-normalized route"
     );
     assert!(
         direct_signnorm_mbu_degree_n14 + 1 >= 14

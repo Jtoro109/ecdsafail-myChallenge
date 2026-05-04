@@ -16101,6 +16101,144 @@ mod tests {
     }
 
     #[test]
+    fn direct_centered_logical_sign_direct_rem_cneg_is_phase_clean() {
+        // Keeping coefficient signs logically removes the coefficient-lane
+        // cneg, but the sign-normalized remainder still used the cheap direct
+        // two's-complement cneg.  Isolate that rem-only operation: unlike the
+        // physical coefficient-lane cneg, this rem-only version is phase-clean
+        // in the toy model.
+        use sha3::digest::{ExtendableOutput, Update};
+
+        const REM_W: usize = 11;
+        const DIV_W: usize = 4;
+        const COEFF_W: usize = 8;
+        const DIGITS: usize = 6;
+        let mut b = super::super::B::new();
+        let rem = b.alloc_qubits(REM_W);
+        let divisor = b.alloc_qubits(DIV_W);
+        let coeff_acc = b.alloc_qubits(COEFF_W);
+        let coeff_v = b.alloc_qubits(COEFF_W);
+        let digit_hist = b.alloc_qubits(DIGITS);
+        let final_negative = b.alloc_qubit();
+        let norm_negative = b.alloc_qubit();
+        let start = b.ops.len();
+        emit_toy_direct_centered_nonrestoring_inline_coeff_for_centered_test(
+            &mut b,
+            &rem,
+            &divisor,
+            &coeff_acc,
+            &coeff_v,
+            &digit_hist,
+            final_negative,
+            false,
+            true,
+            false,
+            false,
+            false,
+            true,
+        );
+        b.cx(rem[REM_W - 1], norm_negative);
+        emit_twos_cneg_direct_for_centered_test(&mut b, &rem, norm_negative);
+        let ccx = local_count_ccx_for_plusminus_cost(&b.ops[start..]);
+        let peak = b.peak_qubits;
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        let rem_mask = (1u64 << REM_W) - 1;
+        let coeff_mask = (1u64 << COEFF_W) - 1;
+        let raw_from_i64 = |x: i64, width: usize| -> u64 {
+            ((x as i128) & ((1i128 << width) - 1)) as u64
+        };
+        let i64_from_raw = |raw: u64, width: usize| -> i64 {
+            let mask = (1u64 << width) - 1;
+            let raw = raw & mask;
+            if (raw & (1u64 << (width - 1))) != 0 {
+                raw as i64 - (1i64 << width)
+            } else {
+                raw as i64
+            }
+        };
+        let mut normalized_cases = 0usize;
+        let mut phase_dirty_cases = 0usize;
+        for d in 1u64..(1u64 << DIV_W) {
+            for n in 0u64..49u64 {
+                for cu0 in -5i64..=5i64 {
+                    for cv0 in -2i64..=2i64 {
+                        let adjusted = n + (d >> 1);
+                        let expected_q = (adjusted / d) as i64;
+                        let expected_centered_rem = n as i64 - expected_q * d as i64;
+                        let expected_coeff_raw = cu0 - expected_q * cv0;
+                        let expected_norm = expected_centered_rem < 0;
+                        normalized_cases += expected_norm as usize;
+                        let expected_rem = if expected_norm {
+                            -expected_centered_rem
+                        } else {
+                            expected_centered_rem
+                        };
+                        assert!(
+                            (-128..128).contains(&expected_coeff_raw),
+                            "toy coefficient fixture overflowed"
+                        );
+                        let mut hasher = sha3::Shake128::default();
+                        hasher.update(b"direct-centered-logsign-rem-cneg-toy-v1");
+                        let mut xof = hasher.finalize_xof();
+                        let mut sim = crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+                        set_slice_u512_pm(&mut sim, &rem, U512::from(adjusted));
+                        set_slice_u512_pm(&mut sim, &divisor, U512::from(d));
+                        set_slice_u512_pm(
+                            &mut sim,
+                            &coeff_acc,
+                            U512::from(raw_from_i64(cu0, COEFF_W)),
+                        );
+                        set_slice_u512_pm(
+                            &mut sim,
+                            &coeff_v,
+                            U512::from(raw_from_i64(cv0, COEFF_W)),
+                        );
+                        sim.apply(&ops);
+
+                        let rem_out = i64_from_raw(
+                            get_slice_u512_pm(&sim, &rem).as_limbs()[0] & rem_mask,
+                            REM_W,
+                        );
+                        let coeff_out = i64_from_raw(
+                            get_slice_u512_pm(&sim, &coeff_acc).as_limbs()[0] & coeff_mask,
+                            COEFF_W,
+                        );
+                        let coeff_v_out = i64_from_raw(
+                            get_slice_u512_pm(&sim, &coeff_v).as_limbs()[0] & coeff_mask,
+                            COEFF_W,
+                        );
+                        assert_eq!(rem_out, expected_rem, "normalized remainder mismatch n={n} d={d}");
+                        assert_eq!(coeff_out, expected_coeff_raw, "logical raw coeff mismatch n={n} d={d}");
+                        assert_eq!(coeff_v_out, cv0, "coeff_v changed n={n} d={d}");
+                        assert_eq!(
+                            (sim.qubit(norm_negative) & 1) != 0,
+                            expected_norm,
+                            "normalization flag mismatch n={n} d={d}"
+                        );
+                        phase_dirty_cases += ((sim.global_phase() & 1) != 0) as usize;
+                    }
+                }
+            }
+        }
+        let expected_ccx = DIGITS * ((REM_W - 1) + (COEFF_W - 1))
+            + centered_final_half_fix_cost_for_centered_test(REM_W)
+            + (2 * COEFF_W - 1)
+            + twos_cneg_direct_cost_for_centered_test(REM_W);
+        println!("METRIC centered_direct_logsign_direct_rem_cneg_toy_ccx={ccx}");
+        println!("METRIC centered_direct_logsign_direct_rem_cneg_toy_peak_q={peak}");
+        println!("METRIC centered_direct_logsign_direct_rem_cneg_toy_norm_cases={normalized_cases}");
+        println!("METRIC centered_direct_logsign_direct_rem_cneg_toy_phase_dirty_cases={phase_dirty_cases}");
+        eprintln!(
+            "Centered direct logical-sign rem-cneg toy: ccx={ccx}, peak={peak}, expected_ccx={expected_ccx}, norm_cases={normalized_cases}, phase_dirty_cases={phase_dirty_cases}"
+        );
+        assert_eq!(ccx, expected_ccx, "logical-sign rem-cneg toy cost drifted");
+        assert!(normalized_cases > 0, "toy did not exercise rem normalization");
+        assert_eq!(phase_dirty_cases, 0, "direct rem-only cneg became phase-dirty");
+    }
+
+    #[test]
     fn direct_centered_sign_normalized_exact_cneg_centered_step_toy_is_phase_clean() {
         // Repair the dirty direct-cneg normalization by using the exact
         // constant-adder based two's-complement negation.  This is the circuit
@@ -17329,11 +17467,18 @@ mod tests {
         let cneg_costs = (0..=coeff_lane_width)
             .map(|w| if w == 0 { 0 } else { twos_cneg_direct_cost_for_centered_test(w) })
             .collect::<Vec<_>>();
+        let exact_cneg_costs = (0..=coeff_lane_width)
+            .map(|w| if w == 0 { 0 } else { twos_cneg_exact_cost_for_centered_test(w) })
+            .collect::<Vec<_>>();
         let cneg257 = cneg_costs[257];
+        let exact_cneg257 = exact_cneg_costs[257];
         let mut logical_split_static = Vec::with_capacity(samples);
         let mut logical_once_static = Vec::with_capacity(samples);
+        let mut exact_logical_split_static = Vec::with_capacity(samples);
+        let mut exact_logical_once_static = Vec::with_capacity(samples);
         let mut norm_counts = Vec::with_capacity(samples);
         let mut norm_rem_costs = Vec::with_capacity(samples);
+        let mut exact_norm_rem_costs = Vec::with_capacity(samples);
         let mut coeff_width_costs = Vec::with_capacity(samples);
         for _ in 0..samples {
             let mut x = rand_u256(&mut rng);
@@ -17351,6 +17496,7 @@ mod tests {
             let mut coeff_width_cost = 0usize;
             let mut norm_count = 0usize;
             let mut norm_rem_cost = 0usize;
+            let mut exact_norm_rem_cost = 0usize;
             while !v.is_zero() {
                 let public_bound = direct_centered_public_width_bound_for_step(n, count);
                 let adjusted = u + (v >> 1usize);
@@ -17413,6 +17559,7 @@ mod tests {
                 if r_neg {
                     norm_count += 1;
                     norm_rem_cost += cneg_costs[public_bound];
+                    exact_norm_rem_cost += exact_cneg_costs[public_bound];
                 }
                 let coeff_acc_sign = coeff_u_sign ^ r_neg;
                 coeff_u = coeff_v;
@@ -17451,42 +17598,68 @@ mod tests {
                 + 2 * (3 * coeff_width_cost + norm_rem_cost + 2 * extraction_oneway) as isize;
             let logical_split = 642_716isize
                 + 2 * (3 * coeff_width_cost + 2 * (extraction_oneway + norm_rem_cost)) as isize;
+            let exact_logical_once = 642_716isize
+                + 2 * (3 * coeff_width_cost + exact_norm_rem_cost + 2 * extraction_oneway) as isize;
+            let exact_logical_split = 642_716isize
+                + 2 * (3 * coeff_width_cost + 2 * (extraction_oneway + exact_norm_rem_cost)) as isize;
             logical_once_static.push(logical_once);
             logical_split_static.push(logical_split);
+            exact_logical_once_static.push(exact_logical_once);
+            exact_logical_split_static.push(exact_logical_split);
             norm_counts.push(norm_count);
             norm_rem_costs.push(norm_rem_cost);
+            exact_norm_rem_costs.push(exact_norm_rem_cost);
             coeff_width_costs.push(coeff_width_cost);
         }
         logical_once_static.sort_unstable();
         logical_split_static.sort_unstable();
+        exact_logical_once_static.sort_unstable();
+        exact_logical_split_static.sort_unstable();
         norm_counts.sort_unstable();
         norm_rem_costs.sort_unstable();
+        exact_norm_rem_costs.sort_unstable();
         coeff_width_costs.sort_unstable();
         let p99 = samples * 99 / 100;
         let logical_once_p99 = logical_once_static[p99];
         let logical_split_p99 = logical_split_static[p99];
+        let exact_logical_once_p99 = exact_logical_once_static[p99];
+        let exact_logical_split_p99 = exact_logical_split_static[p99];
         let norm_count_p99 = norm_counts[p99];
         let norm_count_max = *norm_counts.last().unwrap();
         let norm_rem_p99 = norm_rem_costs[p99];
+        let exact_norm_rem_p99 = exact_norm_rem_costs[p99];
         let coeff_width_p99 = coeff_width_costs[p99];
         let logical_once_gap = logical_once_p99 - 2_700_000isize;
         let logical_split_gap = logical_split_p99 - 2_700_000isize;
+        let exact_logical_once_gap = exact_logical_once_p99 - 2_700_000isize;
+        let exact_logical_split_gap = exact_logical_split_p99 - 2_700_000isize;
         println!("METRIC centered_direct_logsign_cneg257={cneg257}");
+        println!("METRIC centered_direct_logsign_exact_cneg257={exact_cneg257}");
         println!("METRIC centered_direct_logsign_coeff_width_p99={coeff_width_p99}");
         println!("METRIC centered_direct_logsign_norm_count_p99={norm_count_p99}");
         println!("METRIC centered_direct_logsign_norm_count_max={norm_count_max}");
         println!("METRIC centered_direct_logsign_rem_cost_p99={norm_rem_p99}");
+        println!("METRIC centered_direct_logsign_exact_rem_cost_p99={exact_norm_rem_p99}");
         println!("METRIC centered_direct_logsign_once_p99={logical_once_p99}");
         println!("METRIC centered_direct_logsign_split_p99={logical_split_p99}");
         println!("METRIC centered_direct_logsign_once_gap_to_2700k={logical_once_gap}");
         println!("METRIC centered_direct_logsign_split_gap_to_2700k={logical_split_gap}");
+        println!("METRIC centered_direct_logsign_exact_once_p99={exact_logical_once_p99}");
+        println!("METRIC centered_direct_logsign_exact_split_p99={exact_logical_split_p99}");
+        println!("METRIC centered_direct_logsign_exact_once_gap_to_2700k={exact_logical_once_gap}");
+        println!("METRIC centered_direct_logsign_exact_split_gap_to_2700k={exact_logical_split_gap}");
         eprintln!(
-            "Direct-centered logical coeff-sign budget: cneg257={cneg257}, coeff_width_p99={coeff_width_p99}, norm_count_p99={norm_count_p99}, norm_count_max={norm_count_max}, rem_p99={norm_rem_p99}, once_p99={logical_once_p99}, split_p99={logical_split_p99}, once_gap={logical_once_gap}, split_gap={logical_split_gap}"
+            "Direct-centered logical coeff-sign budget: cneg257={cneg257}, exact_cneg257={exact_cneg257}, coeff_width_p99={coeff_width_p99}, norm_count_p99={norm_count_p99}, norm_count_max={norm_count_max}, rem_p99={norm_rem_p99}, exact_rem_p99={exact_norm_rem_p99}, once_p99={logical_once_p99}, split_p99={logical_split_p99}, once_gap={logical_once_gap}, split_gap={logical_split_gap}, exact_once_p99={exact_logical_once_p99}, exact_split_p99={exact_logical_split_p99}, exact_once_gap={exact_logical_once_gap}, exact_split_gap={exact_logical_split_gap}"
         );
         assert!(norm_count_p99 > 0, "logical-sign normalization never fired");
         assert!(
             logical_once_gap > 0 && logical_split_gap > 0,
             "logical coefficient signs reach the low-qubit target; promote to implementation"
+        );
+        assert!(
+            exact_logical_once_gap > logical_once_gap
+                && exact_logical_split_gap > logical_split_gap,
+            "exact rem cneg no longer costs more than direct rem cneg; revisit logical-sign route"
         );
     }
 
