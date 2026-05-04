@@ -10396,6 +10396,49 @@ mod tests {
     }
 
     #[test]
+    fn half_gcd_full_block_endpoint_table_floor_needs_algorithmic_decoder() {
+        // Endpoint state reopens the full-block code, but only barely.  A
+        // generic coherent table over endpoint keys is already at the margin
+        // before charging key comparisons or output cleanup, so the remaining
+        // hard piece has to be an algorithmic local block-DP decoder.
+        const TARGET: usize = 2_700_000;
+        const ENDPOINT_PROJECTED: usize = 2_667_706;
+        const SAMPLE_ENDPOINT_KEYS: usize = 15_850;
+
+        let remaining_margin = TARGET - ENDPOINT_PROJECTED;
+        let one_roundtrip_row_floor = 2 * SAMPLE_ENDPOINT_KEYS;
+        let one_roundtrip_slack = remaining_margin as isize - one_roundtrip_row_floor as isize;
+        let two_app_row_floor = 4 * SAMPLE_ENDPOINT_KEYS;
+        let two_app_gap =
+            ENDPOINT_PROJECTED as isize + two_app_row_floor as isize - TARGET as isize;
+        println!("METRIC halfgcd_full_block_endpoint_table_remaining_margin={remaining_margin}");
+        println!(
+            "METRIC halfgcd_full_block_endpoint_table_sample_keys={SAMPLE_ENDPOINT_KEYS}"
+        );
+        println!(
+            "METRIC halfgcd_full_block_endpoint_table_one_roundtrip_row_floor={one_roundtrip_row_floor}"
+        );
+        println!(
+            "METRIC halfgcd_full_block_endpoint_table_one_roundtrip_slack={one_roundtrip_slack}"
+        );
+        println!(
+            "METRIC halfgcd_full_block_endpoint_table_two_app_row_floor={two_app_row_floor}"
+        );
+        println!("METRIC halfgcd_full_block_endpoint_table_two_app_gap={two_app_gap}");
+        eprintln!(
+            "half-GCD endpoint table floor: margin={remaining_margin}, keys={SAMPLE_ENDPOINT_KEYS}, one_roundtrip_floor={one_roundtrip_row_floor}, one_roundtrip_slack={one_roundtrip_slack}, two_app_gap={two_app_gap}"
+        );
+        assert!(
+            one_roundtrip_slack < 1_000,
+            "endpoint row-scan table has enough slack for payload cleanup; build table decoder"
+        );
+        assert!(
+            two_app_gap > 0,
+            "endpoint row-scan table now fits both applications; revisit table decoder"
+        );
+    }
+
+    #[test]
     fn half_gcd_second_column_fixed_depth_tail_bounded_barrel_needs_fallback() {
         // The sampled fixed-depth ledger only saw tail quotient widths that fit
         // a 5-bit selector.  Probe the full-domain failure mode directly:
