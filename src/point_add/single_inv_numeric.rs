@@ -27683,6 +27683,160 @@ mod tests {
         let selective_prefix_scratch_p99 = 256 + 2 * 13 + selective_prefix_bit_p99;
         let selective_flatten_steps =
             selected_flatten.iter().filter(|&&selected| selected).count();
+        let reverse_low_bits = |value: usize, len: usize| -> usize {
+            let mut reversed = 0usize;
+            for bit in 0..len {
+                reversed |= ((value >> (len - 1 - bit)) & 1) << bit;
+            }
+            reversed
+        };
+        let build_canonical_codebook =
+            |lens_by_symbol: &BTreeMap<usize, usize>| -> Vec<(usize, usize, usize)> {
+                let mut entries = lens_by_symbol
+                    .iter()
+                    .map(|(&symbol, &len)| (symbol, len))
+                    .collect::<Vec<_>>();
+                entries.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+                let mut codebook = Vec::with_capacity(entries.len());
+                let mut code = 0usize;
+                let mut previous_len = entries.first().map(|entry| entry.1).unwrap_or(0);
+                for (idx, (symbol, len)) in entries.iter().copied().enumerate() {
+                    assert!(
+                        len < usize::BITS as usize,
+                        "selective prefix code length exceeds word size"
+                    );
+                    if idx > 0 {
+                        code += 1;
+                        if len > previous_len {
+                            code <<= len - previous_len;
+                        }
+                    }
+                    previous_len = len;
+                    if len == 0 {
+                        assert_eq!(
+                            entries.len(),
+                            1,
+                            "zero-length code used for non-singleton support"
+                        );
+                        codebook.push((symbol, 0, 0));
+                    } else {
+                        assert!(
+                            code < (1usize << len),
+                            "canonical prefix code overflowed its length"
+                        );
+                        codebook.push((symbol, reverse_low_bits(code, len), len));
+                    }
+                }
+                codebook
+            };
+        let mut selective_codebooks = Vec::with_capacity(MAX_STEPS);
+        let mut selective_schedule_codebook_steps = 0usize;
+        let mut selective_schedule_prefix_collisions = 0usize;
+        let mut selective_schedule_max_code_len = 0usize;
+        let mut selective_schedule_max_len_classes = 0usize;
+        for step in 0..MAX_STEPS {
+            let lens_by_symbol = if selected_flatten[step] {
+                &balanced_code_lens_by_step[step]
+            } else {
+                &shannon_code_lens_by_step[step]
+            };
+            if !lens_by_symbol.is_empty() {
+                selective_schedule_codebook_steps += 1;
+            }
+            let codebook = build_canonical_codebook(lens_by_symbol);
+            let mut lens = codebook.iter().map(|&(_, _, len)| len).collect::<Vec<_>>();
+            lens.sort_unstable();
+            lens.dedup();
+            selective_schedule_max_len_classes =
+                selective_schedule_max_len_classes.max(lens.len());
+            selective_schedule_max_code_len =
+                selective_schedule_max_code_len.max(lens.iter().copied().max().unwrap_or(0));
+            for i in 0..codebook.len() {
+                for j in 0..codebook.len() {
+                    if i == j {
+                        continue;
+                    }
+                    let (_, bits_i, len_i) = codebook[i];
+                    let (_, bits_j, len_j) = codebook[j];
+                    if len_i > 0
+                        && len_i <= len_j
+                        && (bits_j & ((1usize << len_i) - 1)) == bits_i
+                    {
+                        selective_schedule_prefix_collisions += 1;
+                    }
+                }
+            }
+            selective_codebooks.push(codebook);
+        }
+        let decode_selective_symbol =
+            |step: usize, stream_bits: &[u8], cursor: usize| -> Option<(usize, usize)> {
+                let codebook = &selective_codebooks[step];
+                if codebook.is_empty() {
+                    return None;
+                }
+                for &(symbol, bits, len) in codebook {
+                    if cursor + len > stream_bits.len() {
+                        continue;
+                    }
+                    let mut got = 0usize;
+                    for bit in 0..len {
+                        got |= (stream_bits[cursor + bit] as usize) << bit;
+                    }
+                    if got == bits {
+                        return Some((symbol, len));
+                    }
+                }
+                None
+            };
+        let mut selective_schedule_bit_rows = Vec::with_capacity(SAMPLES);
+        let mut selective_schedule_decode_mismatches = 0usize;
+        let mut selective_schedule_cursor_mismatches = 0usize;
+        let mut selective_schedule_max_bits = 0usize;
+        let mut selective_schedule_decoded_symbols = 0usize;
+        for alignments in &traces {
+            let mut stream_bits = Vec::<u8>::new();
+            for (step, &alignment) in alignments.iter().enumerate() {
+                let codebook = &selective_codebooks[step];
+                let &(_, bits, len) = codebook
+                    .iter()
+                    .find(|&&(symbol, _, _)| symbol == alignment)
+                    .expect("selective schedule missing code for alignment");
+                for bit in 0..len {
+                    stream_bits.push(((bits >> bit) & 1) as u8);
+                }
+            }
+
+            let mut cursor = 0usize;
+            let mut pos = 0usize;
+            while pos < alignments.len() {
+                if let Some((symbol, len)) = decode_selective_symbol(pos, &stream_bits, cursor) {
+                    selective_schedule_decode_mismatches +=
+                        (symbol != alignments[pos]) as usize;
+                    cursor += len;
+                    selective_schedule_decoded_symbols += 1;
+                } else {
+                    selective_schedule_decode_mismatches += 1;
+                }
+                if pos + 1 < alignments.len() {
+                    if let Some((symbol, len)) =
+                        decode_selective_symbol(pos + 1, &stream_bits, cursor)
+                    {
+                        selective_schedule_decode_mismatches +=
+                            (symbol != alignments[pos + 1]) as usize;
+                        cursor += len;
+                        selective_schedule_decoded_symbols += 1;
+                    } else {
+                        selective_schedule_decode_mismatches += 1;
+                    }
+                }
+                pos += 2;
+            }
+            selective_schedule_cursor_mismatches += (cursor != stream_bits.len()) as usize;
+            selective_schedule_max_bits = selective_schedule_max_bits.max(stream_bits.len());
+            selective_schedule_bit_rows.push(stream_bits.len());
+        }
+        let selective_schedule_bit_mean = mean_usize(&selective_schedule_bit_rows);
+        let selective_schedule_bit_p99 = p99_usize(&mut selective_schedule_bit_rows);
         let mut selective_dynamic_even_rows = Vec::with_capacity(SAMPLES);
         let mut selective_variable_decode_rows = Vec::with_capacity(SAMPLES);
         for alignments in &traces {
@@ -27780,6 +27934,16 @@ mod tests {
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_prefix_bit_p99={selective_prefix_bit_p99}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_prefix_scratch_p99={selective_prefix_scratch_p99}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_flatten_steps={selective_flatten_steps}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_schedule_codebook_steps={selective_schedule_codebook_steps}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_schedule_max_code_len={selective_schedule_max_code_len}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_schedule_max_len_classes={selective_schedule_max_len_classes}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_schedule_bit_mean={selective_schedule_bit_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_schedule_bit_p99={selective_schedule_bit_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_schedule_max_bits={selective_schedule_max_bits}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_schedule_decoded_symbols={selective_schedule_decoded_symbols}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_schedule_prefix_collisions={selective_schedule_prefix_collisions}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_schedule_decode_mismatches={selective_schedule_decode_mismatches}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_schedule_cursor_mismatches={selective_schedule_cursor_mismatches}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_dynamic_even_mean={selective_dynamic_even_mean:.3}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_dynamic_even_p99={selective_dynamic_even_p99}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_variable_decode_mean={selective_variable_decode_mean:.3}");
@@ -27845,6 +28009,14 @@ mod tests {
                 && selective_prefix_scratch_p99 <= 663
                 && selective_total_over_node_roundtrip < RATIO_BUDGET,
             "selective length-flattened prefix parser no longer preserves the low-branch margin"
+        );
+        assert!(
+            selective_schedule_prefix_collisions == 0
+                && selective_schedule_decode_mismatches == 0
+                && selective_schedule_cursor_mismatches == 0
+                && selective_schedule_bit_p99 == selective_prefix_bit_p99
+                && selective_schedule_decoded_symbols > 800_000,
+            "selective schedule canonical codebook wiring failed"
         );
     }
 
