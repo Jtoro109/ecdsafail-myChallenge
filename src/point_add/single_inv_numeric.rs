@@ -20975,6 +20975,8 @@ mod tests {
         let mut traces = Vec::with_capacity(samples);
         let mut align_by_step = vec![BTreeMap::<usize, usize>::new(); MAX_STEPS];
         let mut branch_by_step = [[0usize; 2]; MAX_STEPS];
+        let mut branch_by_step_alignment =
+            vec![BTreeMap::<usize, [usize; 2]>::new(); MAX_STEPS];
         for _ in 0..samples {
             let (alignments, branches) = trace_alignment_metadata(&mut rng);
             assert!(alignments.len() < MAX_STEPS, "trace exceeded alignment model");
@@ -20983,6 +20985,9 @@ mod tests {
             }
             for &(step, branch) in &branches {
                 branch_by_step[step][branch as usize] += 1;
+                branch_by_step_alignment[step]
+                    .entry(alignments[step])
+                    .or_insert([0usize; 2])[branch as usize] += 1;
             }
             traces.push((alignments, branches));
         }
@@ -21013,25 +21018,38 @@ mod tests {
 
         let mut best: Option<(usize, f64, usize, usize, usize, usize, f64)> = None;
         let mut block32: Option<(f64, usize, usize, usize, usize, f64)> = None;
+        let mut best_cond_branch: Option<(usize, f64, usize, usize, usize, usize, f64)> = None;
         for &block_symbols in &[8usize, 12, 16, 24, 32, 48, 64, 96, 128] {
             let mut compressed_bits_rows = Vec::with_capacity(samples);
             let mut live_scratch_rows = Vec::with_capacity(samples);
             let mut symbol_count_rows = Vec::with_capacity(samples);
             let mut state_touch_floor_rows = Vec::with_capacity(samples);
+            let mut cond_branch_compressed_bits_rows = Vec::with_capacity(samples);
+            let mut cond_branch_live_scratch_rows = Vec::with_capacity(samples);
+            let mut cond_branch_state_touch_floor_rows = Vec::with_capacity(samples);
             for (alignments, branches) in &traces {
                 let mut branch_at_step = vec![None; alignments.len()];
                 for &(step, branch) in branches {
                     branch_at_step[step] = Some(branch);
                 }
                 let mut symbol_bits = Vec::with_capacity(alignments.len() + branches.len());
+                let mut cond_branch_symbol_bits =
+                    Vec::with_capacity(alignments.len() + branches.len());
                 for (step, &alignment) in alignments.iter().enumerate() {
                     let step_total = align_by_step[step].values().sum::<usize>();
                     let step_freq = *align_by_step[step].get(&alignment).unwrap();
-                    symbol_bits.push(code_len(step_freq, step_total));
+                    let alignment_bits = code_len(step_freq, step_total);
+                    symbol_bits.push(alignment_bits);
+                    cond_branch_symbol_bits.push(alignment_bits);
                     if let Some(branch) = branch_at_step[step] {
                         let bit = branch as usize;
                         let step_branch_total = branch_by_step[step].iter().sum::<usize>();
                         symbol_bits.push(code_len(branch_by_step[step][bit], step_branch_total));
+                        let branch_counts = branch_by_step_alignment[step]
+                            .get(&alignment)
+                            .expect("conditional branch model missing seen alignment");
+                        let branch_total = branch_counts.iter().sum::<usize>();
+                        cond_branch_symbol_bits.push(code_len(branch_counts[bit], branch_total));
                     }
                 }
                 let mut compressed_bits = 0usize;
@@ -21041,11 +21059,23 @@ mod tests {
                     compressed_bits += block_bits;
                     state_touch_floor += block_bits * block.len();
                 }
+                let mut cond_branch_compressed_bits = 0usize;
+                let mut cond_branch_state_touch_floor = 0usize;
+                for block in cond_branch_symbol_bits.chunks(block_symbols) {
+                    let block_bits = block.iter().sum::<f64>().ceil() as usize;
+                    cond_branch_compressed_bits += block_bits;
+                    cond_branch_state_touch_floor += block_bits * block.len();
+                }
                 let live_scratch = 256 + compressed_bits + 2 * model_precision_bits;
+                let cond_branch_live_scratch =
+                    256 + cond_branch_compressed_bits + 2 * model_precision_bits;
                 compressed_bits_rows.push(compressed_bits);
                 live_scratch_rows.push(live_scratch);
                 symbol_count_rows.push(symbol_bits.len());
                 state_touch_floor_rows.push(state_touch_floor);
+                cond_branch_compressed_bits_rows.push(cond_branch_compressed_bits);
+                cond_branch_live_scratch_rows.push(cond_branch_live_scratch);
+                cond_branch_state_touch_floor_rows.push(cond_branch_state_touch_floor);
             }
             let touch_mean = mean_usize(&state_touch_floor_rows);
             let touch_p99 = p99_usize(&mut state_touch_floor_rows);
@@ -21053,6 +21083,15 @@ mod tests {
             let scratch_p99 = p99_usize(&mut live_scratch_rows);
             let symbol_count_p99 = p99_usize(&mut symbol_count_rows);
             let augmented_gap = STORED_BRANCH_MEAN + 4.0 * touch_mean - TARGET;
+            let cond_branch_touch_mean = mean_usize(&cond_branch_state_touch_floor_rows);
+            let cond_branch_touch_p99 =
+                p99_usize(&mut cond_branch_state_touch_floor_rows);
+            let cond_branch_compressed_p99 =
+                p99_usize(&mut cond_branch_compressed_bits_rows);
+            let cond_branch_scratch_p99 =
+                p99_usize(&mut cond_branch_live_scratch_rows);
+            let cond_branch_augmented_gap =
+                STORED_BRANCH_MEAN + 4.0 * cond_branch_touch_mean - TARGET;
             if block_symbols == 32 {
                 block32 = Some((
                     touch_mean,
@@ -21086,6 +21125,29 @@ mod tests {
             {
                 best = Some(row);
             }
+            let cond_branch_scratch_fit = cond_branch_scratch_p99 <= GOOGLE_SCRATCH;
+            let cond_branch_row = (
+                block_symbols,
+                cond_branch_touch_mean,
+                cond_branch_touch_p99,
+                cond_branch_compressed_p99,
+                cond_branch_scratch_p99,
+                symbol_count_p99,
+                cond_branch_augmented_gap,
+            );
+            if best_cond_branch
+                .map(|old| {
+                    let old_fit = old.4 <= GOOGLE_SCRATCH;
+                    if cond_branch_scratch_fit != old_fit {
+                        cond_branch_scratch_fit
+                    } else {
+                        cond_branch_augmented_gap < old.6
+                    }
+                })
+                .unwrap_or(true)
+            {
+                best_cond_branch = Some(cond_branch_row);
+            }
         }
         let (
             best_block,
@@ -21104,6 +21166,15 @@ mod tests {
             block32_symbol_count_p99,
             block32_augmented_gap,
         ) = block32.unwrap();
+        let (
+            best_cond_branch_block,
+            best_cond_branch_touch_mean,
+            best_cond_branch_touch_p99,
+            best_cond_branch_compressed_p99,
+            best_cond_branch_scratch_p99,
+            best_cond_branch_symbol_count_p99,
+            best_cond_branch_augmented_gap,
+        ) = best_cond_branch.unwrap();
         let block_qrom_row_floor = |block_symbols: usize| -> (usize, usize, usize) {
             let mut block_patterns = Vec::<BTreeSet<Vec<(usize, usize)>>>::new();
             let mut block_counts = Vec::with_capacity(samples);
@@ -21152,6 +21223,7 @@ mod tests {
             if x <= 1 { 0 } else { usize_bit_len_for_payload_test(x - 1) }
         };
         let mut binary_lookup_floor_rows = Vec::with_capacity(samples);
+        let mut cond_branch_binary_lookup_floor_rows = Vec::with_capacity(samples);
         let mut align_support_noncontig_steps = 0usize;
         let mut align_support_offset_steps = 0usize;
         let mut align_support_max_span = 0usize;
@@ -21173,10 +21245,13 @@ mod tests {
             }
             let mut lookup_scan_floor = 0usize;
             let mut binary_lookup_floor = 0usize;
+            let mut cond_branch_binary_lookup_floor = 0usize;
             for (step, _) in alignments.iter().enumerate() {
                 let alignment_support = align_by_step[step].len();
                 lookup_scan_floor += model_precision_bits * alignment_support.saturating_sub(1);
                 binary_lookup_floor += model_precision_bits * ceil_log2(alignment_support);
+                cond_branch_binary_lookup_floor +=
+                    model_precision_bits * ceil_log2(alignment_support);
                 if branch_at_step[step].is_some() {
                     let branch_support = branch_by_step[step]
                         .iter()
@@ -21184,10 +21259,20 @@ mod tests {
                         .count();
                     lookup_scan_floor += model_precision_bits * branch_support.saturating_sub(1);
                     binary_lookup_floor += model_precision_bits * ceil_log2(branch_support);
+                    let alignment = alignments[step];
+                    let cond_branch_support = branch_by_step_alignment[step]
+                        .get(&alignment)
+                        .expect("conditional branch lookup missing seen alignment")
+                        .iter()
+                        .filter(|&&count| count > 0)
+                        .count();
+                    cond_branch_binary_lookup_floor +=
+                        model_precision_bits * ceil_log2(cond_branch_support);
                 }
             }
             lookup_scan_floor_rows.push(lookup_scan_floor);
             binary_lookup_floor_rows.push(binary_lookup_floor);
+            cond_branch_binary_lookup_floor_rows.push(cond_branch_binary_lookup_floor);
         }
         let lookup_scan_floor_mean = mean_usize(&lookup_scan_floor_rows);
         let lookup_scan_floor_p99 = p99_usize(&mut lookup_scan_floor_rows);
@@ -21195,6 +21280,10 @@ mod tests {
         let best_with_lookup_gap = STORED_BRANCH_MEAN + 4.0 * best_with_lookup_mean - TARGET;
         let binary_lookup_floor_mean = mean_usize(&binary_lookup_floor_rows);
         let binary_lookup_floor_p99 = p99_usize(&mut binary_lookup_floor_rows);
+        let cond_branch_binary_lookup_floor_mean =
+            mean_usize(&cond_branch_binary_lookup_floor_rows);
+        let cond_branch_binary_lookup_floor_p99 =
+            p99_usize(&mut cond_branch_binary_lookup_floor_rows);
         let best_with_binary_lookup_mean = best_touch_mean + binary_lookup_floor_mean;
         let best_with_binary_lookup_2x_mean =
             best_touch_mean + 2.0 * binary_lookup_floor_mean;
@@ -21202,6 +21291,14 @@ mod tests {
             STORED_BRANCH_MEAN + 4.0 * best_with_binary_lookup_mean - TARGET;
         let best_with_binary_lookup_2x_gap =
             STORED_BRANCH_MEAN + 4.0 * best_with_binary_lookup_2x_mean - TARGET;
+        let best_cond_branch_with_binary_lookup_mean =
+            best_cond_branch_touch_mean + cond_branch_binary_lookup_floor_mean;
+        let best_cond_branch_with_binary_lookup_2x_mean =
+            best_cond_branch_touch_mean + 2.0 * cond_branch_binary_lookup_floor_mean;
+        let best_cond_branch_with_binary_lookup_gap =
+            STORED_BRANCH_MEAN + 4.0 * best_cond_branch_with_binary_lookup_mean - TARGET;
+        let best_cond_branch_with_binary_lookup_2x_gap =
+            STORED_BRANCH_MEAN + 4.0 * best_cond_branch_with_binary_lookup_2x_mean - TARGET;
         let oneway_parser_budget = (TARGET - STORED_BRANCH_MEAN) / 4.0;
         println!("METRIC centered_direct_restoring_final_block_parser_model_precision_bits={model_precision_bits}");
         println!("METRIC centered_direct_restoring_final_block_parser_oneway_budget={oneway_parser_budget:.3}");
@@ -21218,6 +21315,13 @@ mod tests {
         println!("METRIC centered_direct_restoring_final_block32_live_scratch_p99={block32_scratch_p99}");
         println!("METRIC centered_direct_restoring_final_block32_symbol_count_p99={block32_symbol_count_p99}");
         println!("METRIC centered_direct_restoring_final_block32_augmented_gap_to_2700k={block32_augmented_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_block_parser_cond_branch_best_block_symbols={best_cond_branch_block}");
+        println!("METRIC centered_direct_restoring_final_block_parser_cond_branch_best_touch_floor_mean={best_cond_branch_touch_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_block_parser_cond_branch_best_touch_floor_p99={best_cond_branch_touch_p99}");
+        println!("METRIC centered_direct_restoring_final_block_parser_cond_branch_best_compressed_bits_p99={best_cond_branch_compressed_p99}");
+        println!("METRIC centered_direct_restoring_final_block_parser_cond_branch_best_live_scratch_p99={best_cond_branch_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_block_parser_cond_branch_best_symbol_count_p99={best_cond_branch_symbol_count_p99}");
+        println!("METRIC centered_direct_restoring_final_block_parser_cond_branch_best_augmented_gap_to_2700k={best_cond_branch_augmented_gap:.3}");
         println!("METRIC centered_direct_restoring_final_block_parser_best_qrom_row_floor={best_qrom_row_floor}");
         println!("METRIC centered_direct_restoring_final_block_parser_best_qrom_max_rows_in_block={best_qrom_max_rows_in_block}");
         println!("METRIC centered_direct_restoring_final_block_parser_best_qrom_block_count_p99={best_qrom_block_count_p99}");
@@ -21235,11 +21339,17 @@ mod tests {
         println!("METRIC centered_direct_restoring_final_block_parser_best_with_binary_lookup_gap_to_2700k={best_with_binary_lookup_gap:.3}");
         println!("METRIC centered_direct_restoring_final_block_parser_best_with_binary_lookup_2x_mean={best_with_binary_lookup_2x_mean:.3}");
         println!("METRIC centered_direct_restoring_final_block_parser_best_with_binary_lookup_2x_gap_to_2700k={best_with_binary_lookup_2x_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_block_parser_cond_branch_binary_lookup_floor_mean={cond_branch_binary_lookup_floor_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_block_parser_cond_branch_binary_lookup_floor_p99={cond_branch_binary_lookup_floor_p99}");
+        println!("METRIC centered_direct_restoring_final_block_parser_cond_branch_best_with_binary_lookup_mean={best_cond_branch_with_binary_lookup_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_block_parser_cond_branch_best_with_binary_lookup_gap_to_2700k={best_cond_branch_with_binary_lookup_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_block_parser_cond_branch_best_with_binary_lookup_2x_mean={best_cond_branch_with_binary_lookup_2x_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_block_parser_cond_branch_best_with_binary_lookup_2x_gap_to_2700k={best_cond_branch_with_binary_lookup_2x_gap:.3}");
         println!("METRIC centered_direct_restoring_final_block_parser_align_support_noncontig_steps={align_support_noncontig_steps}");
         println!("METRIC centered_direct_restoring_final_block_parser_align_support_offset_steps={align_support_offset_steps}");
         println!("METRIC centered_direct_restoring_final_block_parser_align_support_max_span={align_support_max_span}");
         eprintln!(
-            "Direct-centered restoring-final block parser floor: best_block={best_block}, touch_mean={best_touch_mean:.1}, qrom_rows={best_qrom_row_floor}, lookup_mean={lookup_scan_floor_mean:.1}, binary_lookup={binary_lookup_floor_mean:.1}, binary2x_gap={best_with_binary_lookup_2x_gap:.1}, noncontig_steps={align_support_noncontig_steps}, touch_plus_lookup={best_with_lookup_mean:.1}, scratch_p99={best_scratch_p99}, compressed_p99={best_compressed_p99}, augmented_gap={best_augmented_gap:.1}, qrom_gap={best_qrom_gap:.1}, lookup_gap={best_with_lookup_gap:.1}, block32_touch={block32_touch_mean:.1}, block32_qrom_rows={block32_qrom_row_floor}, block32_scratch={block32_scratch_p99}"
+            "Direct-centered restoring-final block parser floor: best_block={best_block}, touch_mean={best_touch_mean:.1}, cond_branch_block={best_cond_branch_block}, cond_touch={best_cond_branch_touch_mean:.1}, cond_scratch={best_cond_branch_scratch_p99}, cond_binary2x_gap={best_cond_branch_with_binary_lookup_2x_gap:.1}, qrom_rows={best_qrom_row_floor}, lookup_mean={lookup_scan_floor_mean:.1}, binary_lookup={binary_lookup_floor_mean:.1}, binary2x_gap={best_with_binary_lookup_2x_gap:.1}, noncontig_steps={align_support_noncontig_steps}, touch_plus_lookup={best_with_lookup_mean:.1}, scratch_p99={best_scratch_p99}, compressed_p99={best_compressed_p99}, augmented_gap={best_augmented_gap:.1}, qrom_gap={best_qrom_gap:.1}, lookup_gap={best_with_lookup_gap:.1}, block32_touch={block32_touch_mean:.1}, block32_qrom_rows={block32_qrom_row_floor}, block32_scratch={block32_scratch_p99}"
         );
         assert!(
             best_scratch_p99 <= GOOGLE_SCRATCH,
@@ -21256,6 +21366,17 @@ mod tests {
         assert!(
             align_support_noncontig_steps > 0 && best_with_binary_lookup_2x_gap > 0.0,
             "binary-threshold parser now has a contiguous-support compare/subtract opening; build a toy parser"
+        );
+        assert!(
+            best_cond_branch_touch_mean <= best_touch_mean
+                && best_cond_branch_scratch_p99 <= best_scratch_p99
+                && cond_branch_binary_lookup_floor_mean <= binary_lookup_floor_mean,
+            "conditioning branch bits on alignment stopped improving the parser floor"
+        );
+        assert!(
+            best_cond_branch_scratch_p99 > 600
+                || best_cond_branch_with_binary_lookup_2x_gap > 0.0,
+            "conditional-branch block parser now fits strict scratch and binary lookup budget; build a toy parser"
         );
         assert!(
             best_qrom_row_floor as f64 > oneway_parser_budget
