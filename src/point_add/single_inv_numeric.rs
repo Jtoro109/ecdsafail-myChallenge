@@ -11792,24 +11792,56 @@ mod tests {
             patterns
         }
 
+        let mask_from_pattern = |pattern: u128, block: usize| -> u128 {
+            let mut mask = 0u128;
+            for offset in 0..block {
+                let d0 = (pattern >> (4 * offset)) & 3;
+                let d1 = (pattern >> (4 * offset + 2)) & 3;
+                if d0 != 0 {
+                    mask |= 1u128 << (2 * offset);
+                }
+                if d1 != 0 {
+                    mask |= 1u128 << (2 * offset + 1);
+                }
+            }
+            mask
+        };
         let compare = |x0: SignedMagU512ForHalfGcdTest,
                        x1: SignedMagU512ForHalfGcdTest,
                        block: usize|
-         -> (usize, usize, usize) {
-            let (_, _, _, _, _, _, _, trace_patterns, _) =
+         -> (usize, usize, usize, usize, usize) {
+            let (_, _, _, _, _, _, trace_masks, trace_patterns, _) =
                 halfgcd_signed_two_coeff_apply_block_active_trace_for_test(x0, x1, block);
             let jsf_patterns = jsf_digit_patterns(x0.mag, x1.mag, block, trace_patterns.len());
+            let jsf_masks = jsf_patterns
+                .iter()
+                .map(|&pattern| mask_from_pattern(pattern, block))
+                .collect::<Vec<_>>();
             let mut active_blocks = 0usize;
+            let mut mismatched_active_masks = 0usize;
             let mut mismatched_active_blocks = 0usize;
+            let mut mismatched_mask_traces = 0usize;
             let mut mismatched_traces = 0usize;
-            for (&trace, &jsf) in trace_patterns.iter().zip(jsf_patterns.iter()) {
+            for ((&trace, &jsf), (&trace_mask, &jsf_mask)) in trace_patterns
+                .iter()
+                .zip(jsf_patterns.iter())
+                .zip(trace_masks.iter().zip(jsf_masks.iter()))
+            {
                 if trace != 0 {
                     active_blocks += 1;
+                    mismatched_active_masks += (trace_mask != jsf_mask) as usize;
                     mismatched_active_blocks += (trace != jsf) as usize;
                 }
             }
+            mismatched_mask_traces += (trace_masks != jsf_masks) as usize;
             mismatched_traces += (trace_patterns != jsf_patterns) as usize;
-            (active_blocks, mismatched_active_blocks, mismatched_traces)
+            (
+                active_blocks,
+                mismatched_active_masks,
+                mismatched_active_blocks,
+                mismatched_mask_traces,
+                mismatched_traces,
+            )
         };
 
         const DEPTH: usize = 64;
@@ -11817,7 +11849,9 @@ mod tests {
         const SAMPLES: usize = 4096;
         let mut rng = 0x10ca_1dec_0de5_ec5u64;
         let mut sample_active_blocks = 0usize;
+        let mut sample_mismatched_active_masks = 0usize;
         let mut sample_mismatched_active_blocks = 0usize;
+        let mut sample_mismatched_mask_traces = 0usize;
         let mut sample_mismatched_traces = 0usize;
         for _ in 0..SAMPLES {
             let mut x = rand_u256(&mut rng);
@@ -11826,16 +11860,30 @@ mod tests {
             }
             let (b, d) =
                 halfgcd_second_column_after_fixed_depth_for_test(x, SECP256K1_P, DEPTH);
-            let (active, mismatched_blocks, mismatched_trace) = compare(b, d, BLOCK);
+            let (
+                active,
+                mismatched_masks,
+                mismatched_blocks,
+                mismatched_mask_trace,
+                mismatched_trace,
+            ) = compare(b, d, BLOCK);
             sample_active_blocks += active;
+            sample_mismatched_active_masks += mismatched_masks;
             sample_mismatched_active_blocks += mismatched_blocks;
+            sample_mismatched_mask_traces += mismatched_mask_trace;
             sample_mismatched_traces += mismatched_trace;
         }
         println!(
             "METRIC halfgcd_full_block_endpoint_dp_jsf_sample_active_blocks={sample_active_blocks}"
         );
         println!(
+            "METRIC halfgcd_full_block_endpoint_dp_jsf_sample_mismatched_active_masks={sample_mismatched_active_masks}"
+        );
+        println!(
             "METRIC halfgcd_full_block_endpoint_dp_jsf_sample_mismatched_active_blocks={sample_mismatched_active_blocks}"
+        );
+        println!(
+            "METRIC halfgcd_full_block_endpoint_dp_jsf_sample_mismatched_mask_traces={sample_mismatched_mask_traces}"
         );
         println!(
             "METRIC halfgcd_full_block_endpoint_dp_jsf_sample_mismatched_traces={sample_mismatched_traces}"
@@ -11849,12 +11897,16 @@ mod tests {
             (17usize, 65_537u32, 5usize),
         ];
         let mut toy_active_blocks = 0usize;
+        let mut toy_mismatched_active_masks = 0usize;
         let mut toy_mismatched_active_blocks = 0usize;
+        let mut toy_mismatched_mask_traces = 0usize;
         let mut toy_mismatched_traces = 0usize;
         for &(toy_n, toy_p, toy_block) in &cases {
             let toy_depth = (toy_n / 4).max(1);
             let mut active_blocks = 0usize;
+            let mut mismatched_active_masks = 0usize;
             let mut mismatched_active_blocks = 0usize;
+            let mut mismatched_mask_traces = 0usize;
             let mut mismatched_traces = 0usize;
             for x in 1..toy_p {
                 let (b, d) = halfgcd_second_column_after_fixed_depth_for_test(
@@ -11862,35 +11914,57 @@ mod tests {
                     U256::from(toy_p as u64),
                     toy_depth,
                 );
-                let (active, mismatched_blocks, mismatched_trace) = compare(b, d, toy_block);
+                let (
+                    active,
+                    mismatched_masks,
+                    mismatched_blocks,
+                    mismatched_mask_trace,
+                    mismatched_trace,
+                ) = compare(b, d, toy_block);
                 active_blocks += active;
+                mismatched_active_masks += mismatched_masks;
                 mismatched_active_blocks += mismatched_blocks;
+                mismatched_mask_traces += mismatched_mask_trace;
                 mismatched_traces += mismatched_trace;
             }
             println!(
                 "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_n{toy_n}_active_blocks={active_blocks}"
             );
             println!(
+                "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_n{toy_n}_mismatched_active_masks={mismatched_active_masks}"
+            );
+            println!(
                 "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_n{toy_n}_mismatched_active_blocks={mismatched_active_blocks}"
+            );
+            println!(
+                "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_n{toy_n}_mismatched_mask_traces={mismatched_mask_traces}"
             );
             println!(
                 "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_n{toy_n}_mismatched_traces={mismatched_traces}"
             );
             toy_active_blocks += active_blocks;
+            toy_mismatched_active_masks += mismatched_active_masks;
             toy_mismatched_active_blocks += mismatched_active_blocks;
+            toy_mismatched_mask_traces += mismatched_mask_traces;
             toy_mismatched_traces += mismatched_traces;
         }
         println!(
             "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_active_blocks={toy_active_blocks}"
         );
         println!(
+            "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_mismatched_active_masks={toy_mismatched_active_masks}"
+        );
+        println!(
             "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_mismatched_active_blocks={toy_mismatched_active_blocks}"
+        );
+        println!(
+            "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_mismatched_mask_traces={toy_mismatched_mask_traces}"
         );
         println!(
             "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_mismatched_traces={toy_mismatched_traces}"
         );
         eprintln!(
-            "half-GCD endpoint DP standard-JSF shortcut: sample_mismatched_blocks={sample_mismatched_active_blocks}/{sample_active_blocks}, toy_mismatched_blocks={toy_mismatched_active_blocks}/{toy_active_blocks}, toy_mismatched_traces={toy_mismatched_traces}"
+            "half-GCD endpoint DP standard-JSF shortcut: sample_mismatched_masks={sample_mismatched_active_masks}/{sample_active_blocks}, sample_mismatched_blocks={sample_mismatched_active_blocks}/{sample_active_blocks}, toy_mismatched_masks={toy_mismatched_active_masks}/{toy_active_blocks}, toy_mismatched_blocks={toy_mismatched_active_blocks}/{toy_active_blocks}, toy_mismatched_traces={toy_mismatched_traces}"
         );
 
         assert_eq!(
@@ -11898,8 +11972,16 @@ mod tests {
             "JSF shortcut sample active-block count changed; update endpoint parser ledger"
         );
         assert_eq!(
+            sample_mismatched_active_masks, 12_599,
+            "standard JSF active-mask mismatch profile changed; revisit endpoint parser shortcut"
+        );
+        assert_eq!(
             sample_mismatched_active_blocks, 12_701,
             "standard JSF no longer has the sampled mismatch profile; revisit endpoint parser shortcut"
+        );
+        assert_eq!(
+            sample_mismatched_mask_traces, 4_088,
+            "standard JSF sampled mask-trace mismatch count changed; update endpoint parser ledger"
         );
         assert_eq!(
             sample_mismatched_traces, 4_088,
@@ -11910,8 +11992,16 @@ mod tests {
             "JSF shortcut toy active-block count changed; update endpoint parser ledger"
         );
         assert_eq!(
+            toy_mismatched_active_masks, 55_834,
+            "standard JSF active-mask mismatch profile changed on exact toys; revisit endpoint parser shortcut"
+        );
+        assert_eq!(
             toy_mismatched_active_blocks, 59_445,
             "standard JSF no longer fails exact toys at the recorded rate; revisit endpoint parser shortcut"
+        );
+        assert_eq!(
+            toy_mismatched_mask_traces, 42_881,
+            "standard JSF exact toy mask-trace mismatch count changed; update endpoint parser ledger"
         );
         assert_eq!(
             toy_mismatched_traces, 42_881,
