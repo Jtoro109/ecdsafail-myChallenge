@@ -32135,6 +32135,57 @@ mod tests {
     }
 
     #[test]
+    fn direct_centered_signnorm_logical_coeff_signs_break_det_low2_cleanup() {
+        // The det-low2 recovery proof above is for physically sign-normalized
+        // coefficient rows.  The average-shaped logical-sign ledger keeps the
+        // coefficient cneg as a separate sign bit instead.  In that frame,
+        // v*next_coeff - next_v*coeff_v is often not +/-p, and the same
+        // det-low2 xor coeff_v_sign predicate no longer recovers the
+        // normalization sign.  Keep this pinned so the physical-row proof is
+        // not accidentally promoted as a logical-sign cleanup.
+        let cases = [(8usize, 251u16), (10, 1021), (12, 4093), (14, 16381)];
+        for &(n, p) in &cases {
+            let (
+                formula_collisions,
+                formula_states,
+                formula_max_mult,
+                total_steps,
+                bad_det_cases,
+                low2_mismatches,
+                formula_mismatches,
+            ) = direct_centered_signnorm_logical_coeff_sign_det_low2_stats(p);
+            eprintln!(
+                "direct-centered signnorm logical-coeff det-low2 recovery: n={n}, formula_collisions={formula_collisions}, formula_states={formula_states}, formula_max_mult={formula_max_mult}, total_steps={total_steps}, bad_det_cases={bad_det_cases}, low2_mismatches={low2_mismatches}, formula_mismatches={formula_mismatches}"
+            );
+            if n == 14 {
+                println!("METRIC centered_direct_logsign_det_coeffsign_reverse_collisions_n14={formula_collisions}");
+                println!("METRIC centered_direct_logsign_det_coeffsign_reverse_states_n14={formula_states}");
+                println!("METRIC centered_direct_logsign_det_coeffsign_reverse_total_steps_n14={total_steps}");
+                println!("METRIC centered_direct_logsign_det_coeffsign_reverse_max_mult_n14={formula_max_mult}");
+                println!("METRIC centered_direct_logsign_det_coeffsign_bad_det_cases_n14={bad_det_cases}");
+                println!("METRIC centered_direct_logsign_det_coeffsign_low2_mismatches_n14={low2_mismatches}");
+                println!("METRIC centered_direct_logsign_det_coeffsign_formula_mismatches_n14={formula_mismatches}");
+            }
+            assert!(
+                bad_det_cases > 0,
+                "logical coefficient signs unexpectedly preserved the +/-p determinant"
+            );
+            assert_eq!(
+                low2_mismatches, 0,
+                "logical-sign determinant low bits changed; revisit the recovery formula"
+            );
+            assert!(
+                formula_mismatches > 0,
+                "det-low2 xor coeff_v_sign unexpectedly recovers logical-sign normalization"
+            );
+            assert!(
+                formula_collisions > 0 && formula_max_mult == 2,
+                "logical-sign formula image no longer documents the cleanup collision"
+            );
+        }
+    }
+
+    #[test]
     fn direct_centered_signnorm_det_low2_coeff_sign_predicate_toy_is_phase_clean() {
         // Circuit reality check for the recovery predicate above.  Under the
         // row invariant, det = v*next_coeff - next_v*coeff_v is +/-p, so its
@@ -33626,6 +33677,102 @@ mod tests {
             det_collisions,
             det_image.len(),
             det_max_mult,
+            formula_collisions,
+            formula_image.len(),
+            formula_max_mult,
+            total_steps,
+            bad_det_cases,
+            low2_mismatches,
+            formula_mismatches,
+        )
+    }
+
+    fn direct_centered_signnorm_logical_coeff_sign_det_low2_stats(
+        p: u16,
+    ) -> (usize, usize, usize, usize, usize, usize, usize) {
+        use std::collections::BTreeMap;
+        let mut formula_image: BTreeMap<(usize, i128, i128, i128, bool, bool), u8> =
+            BTreeMap::new();
+        let mut total_steps = 0usize;
+        let mut bad_det_cases = 0usize;
+        let mut low2_mismatches = 0usize;
+        let mut formula_mismatches = 0usize;
+        let p_i = p as i128;
+        let p_low2 = p_i.rem_euclid(4);
+        let neg_p_low2 = (-p_i).rem_euclid(4);
+        assert_ne!(p_low2, neg_p_low2, "odd modulus should distinguish +/-p mod 4");
+        for x in 1..p {
+            let mut u = p as i128;
+            let mut v = x as i128;
+            let mut coeff_u = 0i128;
+            let mut coeff_v = 1i128;
+            let mut coeff_u_sign = false;
+            let mut coeff_v_sign = false;
+            let mut step = 0usize;
+            while v != 0 {
+                let adjusted = u + (v >> 1);
+                let q = adjusted / v;
+                let rem = u - q * v;
+                let sign = rem < 0;
+                let next_v = rem.abs();
+                let next_coeff = if coeff_u_sign ^ coeff_v_sign {
+                    coeff_u + q * coeff_v
+                } else {
+                    coeff_u - q * coeff_v
+                };
+                let next_coeff_sign = coeff_u_sign ^ sign;
+                let logical_u = if coeff_u_sign { -coeff_u } else { coeff_u };
+                let logical_v = if coeff_v_sign { -coeff_v } else { coeff_v };
+                let logical_next_raw = logical_u - q * logical_v;
+                let logical_next_norm = if sign {
+                    -logical_next_raw
+                } else {
+                    logical_next_raw
+                };
+                let next_coeff_logical = if next_coeff_sign {
+                    -next_coeff
+                } else {
+                    next_coeff
+                };
+                assert_eq!(
+                    next_coeff_logical, logical_next_norm,
+                    "logical coefficient-sign update drifted"
+                );
+                if next_v != 0 {
+                    let det = v * next_coeff - next_v * coeff_v;
+                    let det_low2 = det.rem_euclid(4);
+                    let det_positive = det_low2 == p_low2;
+                    bad_det_cases += (det.abs() != p_i) as usize;
+                    low2_mismatches +=
+                        (det_low2 != p_low2 && det_low2 != neg_p_low2) as usize;
+                    formula_mismatches += ((det_positive ^ coeff_v_sign) != sign) as usize;
+                    let formula_entry = formula_image
+                        .entry((step, v, next_v, q, det_positive, coeff_v_sign))
+                        .or_insert(0);
+                    *formula_entry |= 1u8 << (sign as u8);
+                    total_steps += 1;
+                }
+                let old_coeff_u_sign = coeff_u_sign;
+                u = v;
+                v = next_v;
+                coeff_u = coeff_v;
+                coeff_u_sign = coeff_v_sign;
+                coeff_v = next_coeff;
+                coeff_v_sign = old_coeff_u_sign ^ sign;
+                assert_eq!(
+                    coeff_v_sign, next_coeff_sign,
+                    "logical coefficient-sign state update drifted"
+                );
+                step += 1;
+            }
+        }
+        let formula_collisions = formula_image.values().filter(|&&mask| mask == 0b11).count();
+        let formula_max_mult = formula_image
+            .values()
+            .map(|mask| mask.count_ones() as usize)
+            .max()
+            .unwrap_or(0);
+        (
             formula_collisions,
             formula_image.len(),
             formula_max_mult,

@@ -145,7 +145,7 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "direct_centered_signnorm_logical_coeff_signs",
             scratch_bits: 657,
             charged_toffoli: None,
-            blocker: "det-low2 xor coeff_v_sign removes the normalization-sign sidecar in exact toys, and the local predicate toy is phase-clean at 14 CCX. Exact-rem logical-sign accounting clears the average harness metric before cleanup at 2575314 mean / 2574268 first64; the former predicate-roundtrip estimate was 2581169 mean / 2580122 first64 with p99 2753624. A paired remainder+coefficient cneg followed by raw-remainder-sign latch clear restores raw rows, clears the latch, and is phase-clean on exact p13 rows (32 CCX, 0/16 dirty), reducing the recovery estimate to 2578241 mean / 2577195 first64 while p99 remains 2750292. A stronger no-history local normalization roundtrip also cleans both forward and reverse latches while copying the normalized row (64 CCX, 0/16 dirty, phase-clean). Promotion now needs the full direct-centered extractor, exact normalized-rem cneg, coefficient-sign recovery, no-history latch cleanup, and reverse cleanup wired into the production point-add; p99 is still above 2.7M in the conservative ledger, but the measured objective is average",
+            blocker: "exact-rem logical-sign accounting clears the average harness metric before cleanup at 2575314 mean / 2574268 first64, but the det-low2 xor coeff_v_sign cleanup only applies to physically sign-normalized coefficient rows. In the actual logical-sign frame the determinant is not +/-p for 42656/89008 n14 toy steps and the predicate has 39897 formula mismatches, so the paired-cneg/no-history proof is not wireable without either paying the physical coefficient cneg or finding a new logical-sign recovery invariant",
         },
         Candidate {
             name: "direct_centered_restoring_final_stored_alignment",
@@ -514,6 +514,13 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let direct_signnorm_det_coeffsign_bad_det_cases_n14 = 0usize;
     let direct_signnorm_det_coeffsign_low2_mismatches_n14 = 0usize;
     let direct_signnorm_det_coeffsign_formula_mismatches_n14 = 0usize;
+    let direct_signnorm_logsign_det_coeffsign_reverse_collisions_n14 = 2_410usize;
+    let direct_signnorm_logsign_det_coeffsign_reverse_states_n14 = 71_870usize;
+    let direct_signnorm_logsign_det_coeffsign_reverse_total_steps_n14 = 89_008usize;
+    let direct_signnorm_logsign_det_coeffsign_reverse_max_mult_n14 = 2usize;
+    let direct_signnorm_logsign_det_coeffsign_bad_det_cases_n14 = 42_656usize;
+    let direct_signnorm_logsign_det_coeffsign_low2_mismatches_n14 = 0usize;
+    let direct_signnorm_logsign_det_coeffsign_formula_mismatches_n14 = 39_897usize;
     let direct_signnorm_det_coeffsign_predicate_p1_ccx = 14usize;
     let direct_signnorm_det_coeffsign_predicate_p1_peak_q = 18usize;
     let direct_signnorm_det_coeffsign_predicate_p1_valid_odd_det_cases = 3_072usize;
@@ -2074,6 +2081,13 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_signnorm_det_coeffsign_bad_det_cases_n14={direct_signnorm_det_coeffsign_bad_det_cases_n14}");
     println!("METRIC scratch600_direct_signnorm_det_coeffsign_low2_mismatches_n14={direct_signnorm_det_coeffsign_low2_mismatches_n14}");
     println!("METRIC scratch600_direct_signnorm_det_coeffsign_formula_mismatches_n14={direct_signnorm_det_coeffsign_formula_mismatches_n14}");
+    println!("METRIC scratch600_direct_signnorm_logsign_det_coeffsign_reverse_collisions_n14={direct_signnorm_logsign_det_coeffsign_reverse_collisions_n14}");
+    println!("METRIC scratch600_direct_signnorm_logsign_det_coeffsign_reverse_states_n14={direct_signnorm_logsign_det_coeffsign_reverse_states_n14}");
+    println!("METRIC scratch600_direct_signnorm_logsign_det_coeffsign_reverse_total_steps_n14={direct_signnorm_logsign_det_coeffsign_reverse_total_steps_n14}");
+    println!("METRIC scratch600_direct_signnorm_logsign_det_coeffsign_reverse_max_mult_n14={direct_signnorm_logsign_det_coeffsign_reverse_max_mult_n14}");
+    println!("METRIC scratch600_direct_signnorm_logsign_det_coeffsign_bad_det_cases_n14={direct_signnorm_logsign_det_coeffsign_bad_det_cases_n14}");
+    println!("METRIC scratch600_direct_signnorm_logsign_det_coeffsign_low2_mismatches_n14={direct_signnorm_logsign_det_coeffsign_low2_mismatches_n14}");
+    println!("METRIC scratch600_direct_signnorm_logsign_det_coeffsign_formula_mismatches_n14={direct_signnorm_logsign_det_coeffsign_formula_mismatches_n14}");
     println!("METRIC scratch600_direct_signnorm_det_coeffsign_predicate_p1_ccx={direct_signnorm_det_coeffsign_predicate_p1_ccx}");
     println!("METRIC scratch600_direct_signnorm_det_coeffsign_predicate_p1_peak_q={direct_signnorm_det_coeffsign_predicate_p1_peak_q}");
     println!("METRIC scratch600_direct_signnorm_det_coeffsign_predicate_p1_valid_odd_det_cases={direct_signnorm_det_coeffsign_predicate_p1_valid_odd_det_cases}");
@@ -3349,6 +3363,17 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && direct_signnorm_det_coeffsign_low2_mismatches_n14 == 0
             && direct_signnorm_det_coeffsign_formula_mismatches_n14 == 0,
         "det-low2 xor coeff_v_sign stopped recovering sign-normalized norm signs"
+    );
+    assert!(
+        direct_signnorm_logsign_det_coeffsign_reverse_collisions_n14 > 2_000
+            && direct_signnorm_logsign_det_coeffsign_reverse_states_n14 > 70_000
+            && direct_signnorm_logsign_det_coeffsign_reverse_total_steps_n14
+                == direct_signnorm_reverse_total_steps_n14
+            && direct_signnorm_logsign_det_coeffsign_reverse_max_mult_n14 == 2
+            && direct_signnorm_logsign_det_coeffsign_bad_det_cases_n14 > 40_000
+            && direct_signnorm_logsign_det_coeffsign_low2_mismatches_n14 == 0
+            && direct_signnorm_logsign_det_coeffsign_formula_mismatches_n14 > 35_000,
+        "logical coefficient signs no longer block det-low2 cleanup; revisit direct signnorm promotion"
     );
     assert!(
         direct_signnorm_det_coeffsign_predicate_p1_ccx == 14
