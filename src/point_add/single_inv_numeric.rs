@@ -20904,6 +20904,7 @@ mod tests {
         const STORED_BRANCH_MEAN: f64 = 2_645_270.0;
         const MIXED4TO8_TOUCH_MEAN: f64 = 2_260.848;
         const COND_BRANCH_BINARY_LOOKUP_MEAN: f64 = 6_795.760;
+        const COND_BRANCH_SCAN_LOOKUP_MEAN: f64 = 18_855.902;
         let p = SECP256K1_P;
         let samples = 8192usize;
         let mut rng = 0xd1ce_c0ef_a119_0001u64;
@@ -21075,10 +21076,33 @@ mod tests {
         let current_mixed4to8_gap = STORED_BRANCH_MEAN
             + 4.0 * (MIXED4TO8_TOUCH_MEAN + 2.0 * COND_BRANCH_BINARY_LOOKUP_MEAN)
             - TARGET;
+        let current_scan_mixed4to8_gap = STORED_BRANCH_MEAN
+            + 4.0 * (MIXED4TO8_TOUCH_MEAN + 2.0 * COND_BRANCH_SCAN_LOOKUP_MEAN)
+            - TARGET;
+        let oneway_parser_budget = (TARGET - STORED_BRANCH_MEAN) / 4.0;
+        let selected_width_lookup_target =
+            (oneway_parser_budget + selected_width_saving_mean - MIXED4TO8_TOUCH_MEAN) / 2.0;
+        let low_path_width_lookup_target =
+            (oneway_parser_budget + low_path_width_saving_mean - MIXED4TO8_TOUCH_MEAN) / 2.0;
+        let low_path_width_minus1_lookup_target =
+            (oneway_parser_budget + low_path_width_minus1_saving_mean - MIXED4TO8_TOUCH_MEAN)
+                / 2.0;
+        let selected_width_lookup_multiplier_budget =
+            selected_width_lookup_target / COND_BRANCH_BINARY_LOOKUP_MEAN;
+        let low_path_width_lookup_multiplier_budget =
+            low_path_width_lookup_target / COND_BRANCH_BINARY_LOOKUP_MEAN;
+        let low_path_width_minus1_lookup_multiplier_budget =
+            low_path_width_minus1_lookup_target / COND_BRANCH_BINARY_LOOKUP_MEAN;
         let selected_width_gap = current_mixed4to8_gap - 4.0 * selected_width_saving_mean;
         let low_path_width_gap = current_mixed4to8_gap - 4.0 * low_path_width_saving_mean;
         let low_path_width_minus1_gap =
             current_mixed4to8_gap - 4.0 * low_path_width_minus1_saving_mean;
+        let selected_width_scan_gap =
+            current_scan_mixed4to8_gap - 4.0 * selected_width_saving_mean;
+        let low_path_width_scan_gap =
+            current_scan_mixed4to8_gap - 4.0 * low_path_width_saving_mean;
+        let low_path_width_minus1_scan_gap =
+            current_scan_mixed4to8_gap - 4.0 * low_path_width_minus1_saving_mean;
 
         println!("METRIC centered_direct_restoring_final_branch_final_current_branch_select_mean={branch_select_mean:.3}");
         println!("METRIC centered_direct_restoring_final_branch_final_current_branch_select_p99={branch_select_p99}");
@@ -21097,11 +21121,21 @@ mod tests {
         println!("METRIC centered_direct_restoring_final_branch_final_digit_len_diff_p99={digit_len_diff_p99}");
         println!("METRIC centered_direct_restoring_final_branch_final_high_adjacent_violations={high_adjacent_violations}");
         println!("METRIC centered_direct_restoring_final_branch_final_current_mixed4to8_gap_to_2700k={current_mixed4to8_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_branch_final_current_scan_mixed4to8_gap_to_2700k={current_scan_mixed4to8_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_branch_final_selected_width_lookup_target_mean={selected_width_lookup_target:.3}");
+        println!("METRIC centered_direct_restoring_final_branch_final_low_path_width_lookup_target_mean={low_path_width_lookup_target:.3}");
+        println!("METRIC centered_direct_restoring_final_branch_final_low_path_width_minus1_lookup_target_mean={low_path_width_minus1_lookup_target:.3}");
+        println!("METRIC centered_direct_restoring_final_branch_final_selected_width_lookup_multiplier_budget={selected_width_lookup_multiplier_budget:.6}");
+        println!("METRIC centered_direct_restoring_final_branch_final_low_path_width_lookup_multiplier_budget={low_path_width_lookup_multiplier_budget:.6}");
+        println!("METRIC centered_direct_restoring_final_branch_final_low_path_width_minus1_lookup_multiplier_budget={low_path_width_minus1_lookup_multiplier_budget:.6}");
         println!("METRIC centered_direct_restoring_final_branch_final_selected_width_mixed4to8_gap_to_2700k={selected_width_gap:.3}");
         println!("METRIC centered_direct_restoring_final_branch_final_low_path_width_mixed4to8_gap_to_2700k={low_path_width_gap:.3}");
         println!("METRIC centered_direct_restoring_final_branch_final_low_path_width_minus1_mixed4to8_gap_to_2700k={low_path_width_minus1_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_branch_final_selected_width_scan_mixed4to8_gap_to_2700k={selected_width_scan_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_branch_final_low_path_width_scan_mixed4to8_gap_to_2700k={low_path_width_scan_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_branch_final_low_path_width_minus1_scan_mixed4to8_gap_to_2700k={low_path_width_minus1_scan_gap:.3}");
         eprintln!(
-            "Direct-centered restoring-final branch final-digit probe: current_branch={branch_select_mean:.1}, final_width={branch_final_width_mean:.1}, selected_saving={selected_width_saving_mean:.1}, low_path_saving={low_path_width_saving_mean:.1}, gaps=({selected_width_gap:.1},{low_path_width_gap:.1}), branch_count_p99={branch_count_p99}, high_adjacent_violations={high_adjacent_violations}"
+            "Direct-centered restoring-final branch final-digit probe: current_branch={branch_select_mean:.1}, final_width={branch_final_width_mean:.1}, selected_saving={selected_width_saving_mean:.1}, low_path_saving={low_path_width_saving_mean:.1}, binary_gaps=({selected_width_gap:.1},{low_path_width_gap:.1}), scan_gaps=({selected_width_scan_gap:.1},{low_path_width_scan_gap:.1}), low_lookup_budget={low_path_width_lookup_multiplier_budget:.3}x, branch_count_p99={branch_count_p99}, high_adjacent_violations={high_adjacent_violations}"
         );
 
         assert_eq!(
@@ -21111,6 +21145,12 @@ mod tests {
         assert!(
             selected_width_gap < 0.0 && low_path_width_gap < 0.0,
             "branch-as-final-digit lower bound no longer clears the mixed 4..8 parser budget"
+        );
+        assert!(
+            low_path_width_scan_gap > 0.0
+                && low_path_width_lookup_multiplier_budget > 2.0
+                && low_path_width_lookup_multiplier_budget < 2.1,
+            "full-scan lookup now fits or the parser lookup budget changed; revisit parser blocker"
         );
     }
 
