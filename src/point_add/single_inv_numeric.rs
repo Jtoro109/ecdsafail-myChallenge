@@ -26450,15 +26450,48 @@ mod tests {
             rows.sort_unstable();
             rows[rows.len() * 99 / 100]
         };
+        let code_len = |freq: usize, total: usize| -> f64 {
+            assert!(freq > 0 && total > 0, "entropy model missing a seen symbol");
+            (total as f64).log2() - (freq as f64).log2()
+        };
+        let prefix_len = |freq: usize, total: usize| -> usize {
+            let bits = code_len(freq, total).ceil() as usize;
+            if freq == total { 0 } else { bits.max(1) }
+        };
+        let tree_oneway_ccx =
+            |support: usize| -> usize { 2 * support.saturating_sub(2) };
 
         let mut prefix_node_rows = Vec::with_capacity(SAMPLES);
         let mut materialized_digit_rows = Vec::with_capacity(SAMPLES);
+        let mut tree_decode_rows = Vec::with_capacity(SAMPLES);
+        let mut dynamic_even_rows = Vec::with_capacity(SAMPLES);
+        let mut dynamic_odd_rows = Vec::with_capacity(SAMPLES);
+        let mut variable_decode_rows = Vec::with_capacity(SAMPLES);
+        let mut variable_offset1_decode_rows = Vec::with_capacity(SAMPLES);
+        let mut shannon_prefix_bit_rows = Vec::with_capacity(SAMPLES);
+        let mut balanced_prefix_bit_rows = Vec::with_capacity(SAMPLES);
+        let mut balanced_dynamic_even_rows = Vec::with_capacity(SAMPLES);
+        let mut balanced_variable_decode_rows = Vec::with_capacity(SAMPLES);
         let mut span24_symbol_rows = Vec::with_capacity(SAMPLES);
         let mut support_noncontig_steps = 0usize;
         let mut support_max_span = 0usize;
         let mut support_max_symbols = 0usize;
+        let mut shannon_code_lens_by_step =
+            Vec::<BTreeMap<usize, usize>>::with_capacity(MAX_STEPS);
+        let mut code_len_sets = Vec::with_capacity(MAX_STEPS);
+        let mut max_code_lens = Vec::with_capacity(MAX_STEPS);
+        let mut balanced_code_lens_by_step =
+            Vec::<BTreeMap<usize, usize>>::with_capacity(MAX_STEPS);
+        let mut balanced_code_len_sets = Vec::with_capacity(MAX_STEPS);
+        let mut balanced_max_code_lens = Vec::with_capacity(MAX_STEPS);
         for counts in &align_by_step {
             if counts.is_empty() {
+                shannon_code_lens_by_step.push(BTreeMap::new());
+                code_len_sets.push(Vec::<usize>::new());
+                max_code_lens.push(0usize);
+                balanced_code_lens_by_step.push(BTreeMap::new());
+                balanced_code_len_sets.push(Vec::<usize>::new());
+                balanced_max_code_lens.push(0usize);
                 continue;
             }
             let min_symbol = *counts.keys().next().unwrap();
@@ -26467,12 +26500,67 @@ mod tests {
             support_max_span = support_max_span.max(span);
             support_max_symbols = support_max_symbols.max(counts.len());
             support_noncontig_steps += (span != counts.len()) as usize;
+            let total = counts.values().sum::<usize>();
+            let mut shannon_lens = BTreeMap::new();
+            for (&symbol, &freq) in counts {
+                shannon_lens.insert(symbol, prefix_len(freq, total));
+            }
+            let mut lens = shannon_lens.values().copied().collect::<Vec<_>>();
+            lens.sort_unstable();
+            lens.dedup();
+            max_code_lens.push(lens.iter().copied().max().unwrap_or(0));
+            code_len_sets.push(lens);
+            shannon_code_lens_by_step.push(shannon_lens);
+
+            let support = counts.len();
+            let max_len = if support <= 1 {
+                0
+            } else {
+                usize_bit_len_for_payload_test(support - 1)
+            };
+            let short_count = if support <= 1 {
+                1
+            } else {
+                (1usize << max_len) - support
+            };
+            let short_len = max_len.saturating_sub(1);
+            let mut symbols_by_freq = counts
+                .iter()
+                .map(|(&symbol, &freq)| (symbol, freq))
+                .collect::<Vec<_>>();
+            symbols_by_freq.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            let mut balanced_lens = BTreeMap::new();
+            for (idx, (symbol, _)) in symbols_by_freq.iter().copied().enumerate() {
+                let len = if support <= 1 {
+                    0
+                } else if idx < short_count {
+                    short_len
+                } else {
+                    max_len
+                };
+                balanced_lens.insert(symbol, len);
+            }
+            let mut balanced_set = balanced_lens.values().copied().collect::<Vec<_>>();
+            balanced_set.sort_unstable();
+            balanced_set.dedup();
+            balanced_max_code_lens.push(balanced_set.iter().copied().max().unwrap_or(0));
+            balanced_code_len_sets.push(balanced_set);
+            balanced_code_lens_by_step.push(balanced_lens);
         }
         for alignments in &traces {
             let mut prefix_nodes = 0usize;
             let mut materialized_digits = 0usize;
+            let mut tree_decode = 0usize;
+            let mut dynamic_even = 0usize;
+            let mut dynamic_odd = 0usize;
+            let mut variable_decode = 0usize;
+            let mut variable_offset1_decode = 0usize;
+            let mut shannon_prefix_bits = 0usize;
+            let mut balanced_prefix_bits = 0usize;
+            let mut balanced_dynamic_even = 0usize;
+            let mut balanced_variable_decode = 0usize;
             let mut span24_symbols = 0usize;
-            for (step, _) in alignments.iter().enumerate() {
+            for (step, &alignment) in alignments.iter().enumerate() {
                 let counts = &align_by_step[step];
                 let support = counts.len();
                 if support <= 1 {
@@ -26480,39 +26568,327 @@ mod tests {
                 }
                 let max_symbol = *counts.keys().next_back().unwrap();
                 prefix_nodes += support - 1;
+                tree_decode += tree_oneway_ccx(support);
                 materialized_digits += 2 * support * COEFF_W + max_symbol + COEFF_W - 1;
+                shannon_prefix_bits += shannon_code_lens_by_step[step]
+                    .get(&alignment)
+                    .copied()
+                    .unwrap_or(0);
+                balanced_prefix_bits += balanced_code_lens_by_step[step]
+                    .get(&alignment)
+                    .copied()
+                    .unwrap_or(0);
                 span24_symbols += (max_symbol + 1 == support_max_span) as usize;
+            }
+            let mut pos = 0usize;
+            while pos < alignments.len() {
+                let support0 = align_by_step[pos].len();
+                variable_decode += tree_oneway_ccx(support0);
+                if pos + 1 < alignments.len() {
+                    let len_choices = code_len_sets[pos].len();
+                    if len_choices > 1 {
+                        let dynamic_read = len_choices * max_code_lens[pos + 1];
+                        dynamic_even += dynamic_read;
+                        variable_decode += dynamic_read;
+                    }
+                    variable_decode += tree_oneway_ccx(align_by_step[pos + 1].len());
+                }
+                pos += 2;
+            }
+            if !alignments.is_empty() {
+                variable_offset1_decode += tree_oneway_ccx(align_by_step[0].len());
+            }
+            let mut pos = 1usize;
+            while pos < alignments.len() {
+                let support0 = align_by_step[pos].len();
+                variable_offset1_decode += tree_oneway_ccx(support0);
+                if pos + 1 < alignments.len() {
+                    let len_choices = code_len_sets[pos].len();
+                    if len_choices > 1 {
+                        let dynamic_read = len_choices * max_code_lens[pos + 1];
+                        dynamic_odd += dynamic_read;
+                        variable_offset1_decode += dynamic_read;
+                    }
+                    variable_offset1_decode += tree_oneway_ccx(align_by_step[pos + 1].len());
+                }
+                pos += 2;
+            }
+            let mut pos = 0usize;
+            while pos < alignments.len() {
+                let support0 = align_by_step[pos].len();
+                balanced_variable_decode += tree_oneway_ccx(support0);
+                if pos + 1 < alignments.len() {
+                    let len_choices = balanced_code_len_sets[pos].len();
+                    if len_choices > 1 {
+                        let dynamic_read = len_choices * balanced_max_code_lens[pos + 1];
+                        balanced_dynamic_even += dynamic_read;
+                        balanced_variable_decode += dynamic_read;
+                    }
+                    balanced_variable_decode += tree_oneway_ccx(align_by_step[pos + 1].len());
+                }
+                pos += 2;
             }
             prefix_node_rows.push(prefix_nodes);
             materialized_digit_rows.push(materialized_digits);
+            tree_decode_rows.push(tree_decode);
+            dynamic_even_rows.push(dynamic_even);
+            dynamic_odd_rows.push(dynamic_odd);
+            variable_decode_rows.push(variable_decode);
+            variable_offset1_decode_rows.push(variable_offset1_decode);
+            shannon_prefix_bit_rows.push(shannon_prefix_bits);
+            balanced_prefix_bit_rows.push(balanced_prefix_bits);
+            balanced_dynamic_even_rows.push(balanced_dynamic_even);
+            balanced_variable_decode_rows.push(balanced_variable_decode);
             span24_symbol_rows.push(span24_symbols);
         }
 
         let prefix_node_mean = mean_usize(&prefix_node_rows);
         let materialized_digit_mean = mean_usize(&materialized_digit_rows);
+        let tree_decode_mean = mean_usize(&tree_decode_rows);
+        let dynamic_even_mean = mean_usize(&dynamic_even_rows);
+        let dynamic_odd_mean = mean_usize(&dynamic_odd_rows);
+        let variable_decode_mean = mean_usize(&variable_decode_rows);
+        let variable_offset1_decode_mean = mean_usize(&variable_offset1_decode_rows);
+        let shannon_prefix_bit_mean = mean_usize(&shannon_prefix_bit_rows);
+        let balanced_prefix_bit_mean = mean_usize(&balanced_prefix_bit_rows);
+        let balanced_dynamic_even_mean = mean_usize(&balanced_dynamic_even_rows);
+        let balanced_variable_decode_mean = mean_usize(&balanced_variable_decode_rows);
         let span24_symbol_mean = mean_usize(&span24_symbol_rows);
+        let shannon_prefix_bit_rows_for_selective = shannon_prefix_bit_rows.clone();
         let prefix_node_p99 = p99_usize(&mut prefix_node_rows);
         let materialized_digit_p99 = p99_usize(&mut materialized_digit_rows);
+        let tree_decode_p99 = p99_usize(&mut tree_decode_rows);
+        let dynamic_even_p99 = p99_usize(&mut dynamic_even_rows);
+        let dynamic_odd_p99 = p99_usize(&mut dynamic_odd_rows);
+        let variable_decode_p99 = p99_usize(&mut variable_decode_rows);
+        let variable_offset1_decode_p99 = p99_usize(&mut variable_offset1_decode_rows);
+        let shannon_prefix_bit_p99 = p99_usize(&mut shannon_prefix_bit_rows);
+        let balanced_prefix_bit_p99 = p99_usize(&mut balanced_prefix_bit_rows);
+        let balanced_dynamic_even_p99 = p99_usize(&mut balanced_dynamic_even_rows);
+        let balanced_variable_decode_p99 = p99_usize(&mut balanced_variable_decode_rows);
         let span24_symbol_p99 = p99_usize(&mut span24_symbol_rows);
+        let p99_isize = |rows: &[isize]| -> isize {
+            let mut rows = rows.to_vec();
+            rows.sort_unstable();
+            rows[rows.len() * 99 / 100]
+        };
+        let dynamic_cost = |len_choices: usize, max_len: usize| -> usize {
+            if len_choices > 1 {
+                len_choices * max_len
+            } else {
+                0
+            }
+        };
+        const GOOGLE_PREFIX_BIT_BUDGET: isize = 663 - 256 - 2 * 13;
+        const STRICT_PREFIX_BIT_BUDGET: isize = 600 - 256 - 2 * 13;
+        let mut pair_active_counts = vec![0usize; MAX_STEPS];
+        for alignments in &traces {
+            for step in 0..alignments.len().saturating_sub(1) {
+                pair_active_counts[step] += 1;
+            }
+        }
+        let mut step_bit_delta_rows = Vec::with_capacity(MAX_STEPS);
+        let mut candidates = Vec::<(usize, f64, f64)>::new();
+        for step in 0..MAX_STEPS {
+            let mut delta_rows = Vec::with_capacity(SAMPLES);
+            let mut delta_sum = 0isize;
+            for alignments in &traces {
+                let delta = if step < alignments.len() {
+                    let alignment = alignments[step];
+                    balanced_code_lens_by_step[step]
+                        .get(&alignment)
+                        .copied()
+                        .unwrap_or(0) as isize
+                        - shannon_code_lens_by_step[step]
+                            .get(&alignment)
+                            .copied()
+                            .unwrap_or(0) as isize
+                } else {
+                    0
+                };
+                delta_sum += delta;
+                delta_rows.push(delta);
+            }
+            let mut benefit_sum = 0isize;
+            if step % 2 == 0 && step + 1 < MAX_STEPS {
+                let old = dynamic_cost(code_len_sets[step].len(), max_code_lens[step + 1]);
+                let new =
+                    dynamic_cost(balanced_code_len_sets[step].len(), max_code_lens[step + 1]);
+                benefit_sum +=
+                    ((old as isize) - (new as isize)) * pair_active_counts[step] as isize;
+            }
+            if step > 0 && (step - 1) % 2 == 0 {
+                let old = dynamic_cost(code_len_sets[step - 1].len(), max_code_lens[step]);
+                let new =
+                    dynamic_cost(code_len_sets[step - 1].len(), balanced_max_code_lens[step]);
+                benefit_sum +=
+                    ((old as isize) - (new as isize)) * pair_active_counts[step - 1] as isize;
+            }
+            let mean_delta = delta_sum as f64 / SAMPLES as f64;
+            let mean_benefit = benefit_sum as f64 / SAMPLES as f64;
+            if mean_benefit > 0.0 || mean_delta < 0.0 {
+                candidates.push((step, mean_benefit, mean_delta));
+            }
+            step_bit_delta_rows.push(delta_rows);
+        }
+        candidates.sort_by(|a, b| {
+            let score = |benefit: f64, delta: f64| {
+                if delta <= 0.0 {
+                    f64::INFINITY
+                } else {
+                    benefit / delta
+                }
+            };
+            score(b.1, b.2).partial_cmp(&score(a.1, a.2)).unwrap()
+        });
+        let mut selected_flatten = vec![false; MAX_STEPS];
+        let mut selective_prefix_bit_rows = shannon_prefix_bit_rows_for_selective
+            .iter()
+            .map(|&bits| bits as isize)
+            .collect::<Vec<_>>();
+        for (step, _, _) in candidates {
+            let mut trial = selective_prefix_bit_rows.clone();
+            for (value, delta) in trial.iter_mut().zip(step_bit_delta_rows[step].iter()) {
+                *value += *delta;
+            }
+            if p99_isize(&trial) <= GOOGLE_PREFIX_BIT_BUDGET {
+                selected_flatten[step] = true;
+                selective_prefix_bit_rows = trial;
+            }
+        }
+        let selective_prefix_bit_mean = selective_prefix_bit_rows
+            .iter()
+            .map(|&bits| bits as f64)
+            .sum::<f64>()
+            / SAMPLES as f64;
+        let selective_prefix_bit_p99 = p99_isize(&selective_prefix_bit_rows) as usize;
+        let selective_prefix_scratch_p99 = 256 + 2 * 13 + selective_prefix_bit_p99;
+        let selective_flatten_steps =
+            selected_flatten.iter().filter(|&&selected| selected).count();
+        let mut selective_dynamic_even_rows = Vec::with_capacity(SAMPLES);
+        let mut selective_variable_decode_rows = Vec::with_capacity(SAMPLES);
+        for alignments in &traces {
+            let mut selective_dynamic_even = 0usize;
+            let mut selective_variable_decode = 0usize;
+            let mut pos = 0usize;
+            while pos < alignments.len() {
+                selective_variable_decode += tree_oneway_ccx(align_by_step[pos].len());
+                if pos + 1 < alignments.len() {
+                    let len_choices = if selected_flatten[pos] {
+                        balanced_code_len_sets[pos].len()
+                    } else {
+                        code_len_sets[pos].len()
+                    };
+                    let max_len_next = if selected_flatten[pos + 1] {
+                        balanced_max_code_lens[pos + 1]
+                    } else {
+                        max_code_lens[pos + 1]
+                    };
+                    let dynamic_read = dynamic_cost(len_choices, max_len_next);
+                    selective_dynamic_even += dynamic_read;
+                    selective_variable_decode += dynamic_read;
+                    selective_variable_decode += tree_oneway_ccx(align_by_step[pos + 1].len());
+                }
+                pos += 2;
+            }
+            selective_dynamic_even_rows.push(selective_dynamic_even);
+            selective_variable_decode_rows.push(selective_variable_decode);
+        }
+        let selective_dynamic_even_mean = mean_usize(&selective_dynamic_even_rows);
+        let selective_variable_decode_mean = mean_usize(&selective_variable_decode_rows);
+        let selective_dynamic_even_p99 = p99_usize(&mut selective_dynamic_even_rows);
+        let selective_variable_decode_p99 = p99_usize(&mut selective_variable_decode_rows);
         let arithmetic_over_node_roundtrip =
             materialized_digit_mean / (2.0 * prefix_node_mean);
         let weighted_total_over_node_roundtrip =
             PARSER_OVER_NODE_ROUNDTRIP + arithmetic_over_node_roundtrip;
+        let variable_parser_over_node_roundtrip =
+            variable_decode_mean / prefix_node_mean;
+        let variable_total_over_node_roundtrip =
+            variable_parser_over_node_roundtrip + arithmetic_over_node_roundtrip;
+        let variable_offset1_parser_over_node_roundtrip =
+            variable_offset1_decode_mean / prefix_node_mean;
+        let variable_offset1_total_over_node_roundtrip =
+            variable_offset1_parser_over_node_roundtrip + arithmetic_over_node_roundtrip;
+        let balanced_parser_over_node_roundtrip =
+            balanced_variable_decode_mean / prefix_node_mean;
+        let balanced_total_over_node_roundtrip =
+            balanced_parser_over_node_roundtrip + arithmetic_over_node_roundtrip;
+        let selective_parser_over_node_roundtrip =
+            selective_variable_decode_mean / prefix_node_mean;
+        let selective_total_over_node_roundtrip =
+            selective_parser_over_node_roundtrip + arithmetic_over_node_roundtrip;
         let weighted_scaled_gap = PREFIX_TREE_GAP_TO_2700K
             + 8.0 * prefix_node_mean * (weighted_total_over_node_roundtrip - 1.0);
+        let variable_scaled_gap = PREFIX_TREE_GAP_TO_2700K
+            + 8.0 * prefix_node_mean * (variable_total_over_node_roundtrip - 1.0);
+        let variable_offset1_scaled_gap = PREFIX_TREE_GAP_TO_2700K
+            + 8.0 * prefix_node_mean * (variable_offset1_total_over_node_roundtrip - 1.0);
+        let balanced_scaled_gap = PREFIX_TREE_GAP_TO_2700K
+            + 8.0 * prefix_node_mean * (balanced_total_over_node_roundtrip - 1.0);
+        let selective_scaled_gap = PREFIX_TREE_GAP_TO_2700K
+            + 8.0 * prefix_node_mean * (selective_total_over_node_roundtrip - 1.0);
         let span24_scaled_gap = PREFIX_TREE_GAP_TO_2700K
             + 8.0 * prefix_node_mean * (SPAN24_TOY_RATIO - 1.0);
         let weighted_projection = 2_700_000.0 + weighted_scaled_gap;
+        let variable_projection = 2_700_000.0 + variable_scaled_gap;
+        let variable_offset1_projection = 2_700_000.0 + variable_offset1_scaled_gap;
+        let balanced_projection = 2_700_000.0 + balanced_scaled_gap;
+        let selective_projection = 2_700_000.0 + selective_scaled_gap;
 
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_prefix_node_mean={prefix_node_mean:.3}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_prefix_node_p99={prefix_node_p99}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_materialized_digit_mean={materialized_digit_mean:.3}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_materialized_digit_p99={materialized_digit_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_tree_decode_mean={tree_decode_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_tree_decode_p99={tree_decode_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_dynamic_even_mean={dynamic_even_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_dynamic_even_p99={dynamic_even_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_dynamic_odd_mean={dynamic_odd_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_dynamic_odd_p99={dynamic_odd_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_variable_decode_mean={variable_decode_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_variable_decode_p99={variable_decode_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_decode_mean={variable_offset1_decode_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_decode_p99={variable_offset1_decode_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_shannon_prefix_bit_mean={shannon_prefix_bit_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_shannon_prefix_bit_p99={shannon_prefix_bit_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_balanced_prefix_bit_mean={balanced_prefix_bit_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_balanced_prefix_bit_p99={balanced_prefix_bit_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_balanced_dynamic_even_mean={balanced_dynamic_even_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_balanced_dynamic_even_p99={balanced_dynamic_even_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_balanced_variable_decode_mean={balanced_variable_decode_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_balanced_variable_decode_p99={balanced_variable_decode_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_prefix_bit_mean={selective_prefix_bit_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_prefix_bit_p99={selective_prefix_bit_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_prefix_scratch_p99={selective_prefix_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_flatten_steps={selective_flatten_steps}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_dynamic_even_mean={selective_dynamic_even_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_dynamic_even_p99={selective_dynamic_even_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_variable_decode_mean={selective_variable_decode_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_variable_decode_p99={selective_variable_decode_p99}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_arithmetic_over_node_roundtrip={arithmetic_over_node_roundtrip:.6}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_total_over_node_roundtrip={weighted_total_over_node_roundtrip:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_variable_parser_over_node_roundtrip={variable_parser_over_node_roundtrip:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_variable_total_over_node_roundtrip={variable_total_over_node_roundtrip:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_parser_over_node_roundtrip={variable_offset1_parser_over_node_roundtrip:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_total_over_node_roundtrip={variable_offset1_total_over_node_roundtrip:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_balanced_parser_over_node_roundtrip={balanced_parser_over_node_roundtrip:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_balanced_total_over_node_roundtrip={balanced_total_over_node_roundtrip:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_parser_over_node_roundtrip={selective_parser_over_node_roundtrip:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_total_over_node_roundtrip={selective_total_over_node_roundtrip:.6}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_ratio_budget={RATIO_BUDGET:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_strict_prefix_bit_budget={STRICT_PREFIX_BIT_BUDGET}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_google_prefix_bit_budget={GOOGLE_PREFIX_BIT_BUDGET}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_gap_to_2700k={weighted_scaled_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_variable_gap_to_2700k={variable_scaled_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_gap_to_2700k={variable_offset1_scaled_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_balanced_gap_to_2700k={balanced_scaled_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_gap_to_2700k={selective_scaled_gap:.3}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_projected_toffoli={weighted_projection:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_variable_projected_toffoli={variable_projection:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_projected_toffoli={variable_offset1_projection:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_balanced_projected_toffoli={balanced_projection:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_selective_projected_toffoli={selective_projection:.3}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_span24_uniform_gap_to_2700k={span24_scaled_gap:.3}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_span24_symbol_mean={span24_symbol_mean:.3}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_span24_symbol_p99={span24_symbol_p99}");
@@ -26520,7 +26896,7 @@ mod tests {
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_support_max_span={support_max_span}");
         println!("METRIC centered_direct_restoring_final_low_branch_prefix_support_weighted_support_max_symbols={support_max_symbols}");
         eprintln!(
-            "Direct-centered low-branch weighted prefix span floor: prefix_nodes={prefix_node_mean:.1}, materialized={materialized_digit_mean:.1}, ratio={weighted_total_over_node_roundtrip:.3}x, budget={RATIO_BUDGET:.3}x, gap={weighted_scaled_gap:.1}, span24_uniform_gap={span24_scaled_gap:.1}, span24_symbols={span24_symbol_mean:.1}/{span24_symbol_p99}"
+            "Direct-centered low-branch weighted prefix span floor: prefix_nodes={prefix_node_mean:.1}, materialized={materialized_digit_mean:.1}, tree_decode={tree_decode_mean:.1}, dyn_even/odd=({dynamic_even_mean:.1},{dynamic_odd_mean:.1}), shannon_bits_p99={shannon_prefix_bit_p99}, balanced_bits_p99={balanced_prefix_bit_p99}, selective_bits_p99={selective_prefix_bit_p99}, selective_scratch={selective_prefix_scratch_p99}, balanced_dyn={balanced_dynamic_even_mean:.1}, selective_dyn={selective_dynamic_even_mean:.1}, flat_ratio={weighted_total_over_node_roundtrip:.3}x, variable_ratio={variable_total_over_node_roundtrip:.3}x, offset1_ratio={variable_offset1_total_over_node_roundtrip:.3}x, balanced_ratio={balanced_total_over_node_roundtrip:.3}x, selective_ratio={selective_total_over_node_roundtrip:.3}x, budget={RATIO_BUDGET:.3}x, gaps=({weighted_scaled_gap:.1},{variable_scaled_gap:.1},{variable_offset1_scaled_gap:.1},{balanced_scaled_gap:.1},{selective_scaled_gap:.1}), span24_uniform_gap={span24_scaled_gap:.1}, span24_symbols={span24_symbol_mean:.1}/{span24_symbol_p99}"
         );
 
         assert!(
@@ -26536,6 +26912,21 @@ mod tests {
             weighted_scaled_gap < -20_000.0
                 && weighted_total_over_node_roundtrip < RATIO_BUDGET,
             "support-weighted selected-add/sub floor no longer preserves the low-branch margin"
+        );
+        assert!(
+            variable_scaled_gap > 0.0 && variable_offset1_scaled_gap > 0.0,
+            "plain Shannon-style variable block2 parser no longer blocks the low-branch row"
+        );
+        assert!(
+            balanced_scaled_gap < -40_000.0
+                && balanced_prefix_bit_p99 as isize > GOOGLE_PREFIX_BIT_BUDGET,
+            "all-balanced code no longer exposes the scratch tradeoff"
+        );
+        assert!(
+            selective_scaled_gap < -40_000.0
+                && selective_prefix_scratch_p99 <= 663
+                && selective_total_over_node_roundtrip < RATIO_BUDGET,
+            "selective length-flattened prefix parser no longer preserves the low-branch margin"
         );
     }
 

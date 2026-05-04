@@ -169,7 +169,13 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "direct_centered_restoring_final_low_branch_weighted_prefix_span_floor",
             scratch_bits: 580,
             charged_toffoli: None,
-            blocker: "support-weighted selected add/sub raises the low-branch prefix projection to 2666583 with 33417 margin; uniform span24 still misses by 1685 if charged globally, so promotion needs a phase-clean variable-support prefix decoder and full reverse integration",
+            blocker: "support-weighted selected add/sub raises the low-branch prefix projection to 2666583 with 33417 margin, but a Shannon-style variable block2 decoder misses by 6303 and offset-1 pairing still misses by 5674; superseded by selective length-flattening at 663 scratch",
+        },
+        Candidate {
+            name: "direct_centered_restoring_final_low_branch_selective_prefix_flatten_floor",
+            scratch_bits: 663,
+            charged_toffoli: None,
+            blocker: "selective length-flattening spends the 381 prefix-bit p99 budget exactly, fits 663 scratch, and projects 2657019 with 42981 margin; promotion still needs a phase-clean selective canonical-prefix decoder and full reverse integration",
         },
         Candidate {
             name: "direct_centered_restoring_final_mixed4to8_joint_binary_floor",
@@ -739,14 +745,56 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
         10_990.740f64;
     let direct_restoring_final_low_branch_prefix_support_weighted_materialized_digit_p99 =
         12_023usize;
+    let direct_restoring_final_low_branch_prefix_support_weighted_tree_decode_mean =
+        2_665.870f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_dynamic_even_mean =
+        7_330.417f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_variable_decode_mean =
+        9_996.286f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_decode_mean =
+        9_917.655f64;
     let direct_restoring_final_low_branch_prefix_support_weighted_arithmetic_over_node_roundtrip =
         3.822_784f64;
     let direct_restoring_final_low_branch_prefix_support_weighted_total_over_node_roundtrip =
         7.322_784f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_variable_total_over_node_roundtrip =
+        10.776_573f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_total_over_node_roundtrip =
+        10.721_874f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_balanced_total_over_node_roundtrip =
+        5.916_745f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_selective_total_over_node_roundtrip =
+        6.491_114f64;
     let direct_restoring_final_low_branch_prefix_support_weighted_ratio_budget = 10.228_508f64;
     let direct_restoring_final_low_branch_prefix_support_weighted_gap = -33_416.553f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_variable_gap = 6_302.872f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_gap =
+        5_673.821f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_balanced_gap = -49_586.352f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_selective_gap = -42_980.963f64;
     let direct_restoring_final_low_branch_prefix_support_weighted_projected_toffoli =
         2_666_583.447f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_variable_projected_toffoli =
+        2_706_302.872f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_projected_toffoli =
+        2_705_673.821f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_balanced_projected_toffoli =
+        2_650_413.648f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_selective_projected_toffoli =
+        2_657_019.037f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_shannon_prefix_bit_p99 =
+        322usize;
+    let direct_restoring_final_low_branch_prefix_support_weighted_balanced_prefix_bit_p99 =
+        415usize;
+    let direct_restoring_final_low_branch_prefix_support_weighted_selective_prefix_bit_p99 =
+        381usize;
+    let direct_restoring_final_low_branch_prefix_support_weighted_selective_prefix_scratch_p99 =
+        663usize;
+    let direct_restoring_final_low_branch_prefix_support_weighted_selective_flatten_steps = 92usize;
+    let direct_restoring_final_low_branch_prefix_support_weighted_selective_dynamic_even_mean =
+        1_169.937f64;
+    let direct_restoring_final_low_branch_prefix_support_weighted_selective_variable_decode_mean =
+        3_835.807f64;
     let direct_restoring_final_low_branch_prefix_support_weighted_span24_uniform_gap =
         1_684.686f64;
     let direct_restoring_final_low_branch_prefix_support_weighted_span24_symbol_mean = 1.000f64;
@@ -1756,11 +1804,34 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_prefix_node_p99={direct_restoring_final_low_branch_prefix_support_weighted_prefix_node_p99}");
     println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_materialized_digit_mean={direct_restoring_final_low_branch_prefix_support_weighted_materialized_digit_mean:.3}");
     println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_materialized_digit_p99={direct_restoring_final_low_branch_prefix_support_weighted_materialized_digit_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_tree_decode_mean={direct_restoring_final_low_branch_prefix_support_weighted_tree_decode_mean:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_dynamic_even_mean={direct_restoring_final_low_branch_prefix_support_weighted_dynamic_even_mean:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_variable_decode_mean={direct_restoring_final_low_branch_prefix_support_weighted_variable_decode_mean:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_decode_mean={direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_decode_mean:.3}");
     println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_arithmetic_over_node_roundtrip={direct_restoring_final_low_branch_prefix_support_weighted_arithmetic_over_node_roundtrip:.6}");
     println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_total_over_node_roundtrip={direct_restoring_final_low_branch_prefix_support_weighted_total_over_node_roundtrip:.6}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_variable_total_over_node_roundtrip={direct_restoring_final_low_branch_prefix_support_weighted_variable_total_over_node_roundtrip:.6}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_total_over_node_roundtrip={direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_total_over_node_roundtrip:.6}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_balanced_total_over_node_roundtrip={direct_restoring_final_low_branch_prefix_support_weighted_balanced_total_over_node_roundtrip:.6}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_selective_total_over_node_roundtrip={direct_restoring_final_low_branch_prefix_support_weighted_selective_total_over_node_roundtrip:.6}");
     println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_ratio_budget={direct_restoring_final_low_branch_prefix_support_weighted_ratio_budget:.6}");
     println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_gap_to_2700k={direct_restoring_final_low_branch_prefix_support_weighted_gap:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_variable_gap_to_2700k={direct_restoring_final_low_branch_prefix_support_weighted_variable_gap:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_gap_to_2700k={direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_gap:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_balanced_gap_to_2700k={direct_restoring_final_low_branch_prefix_support_weighted_balanced_gap:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_selective_gap_to_2700k={direct_restoring_final_low_branch_prefix_support_weighted_selective_gap:.3}");
     println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_projected_toffoli={direct_restoring_final_low_branch_prefix_support_weighted_projected_toffoli:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_variable_projected_toffoli={direct_restoring_final_low_branch_prefix_support_weighted_variable_projected_toffoli:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_projected_toffoli={direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_projected_toffoli:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_balanced_projected_toffoli={direct_restoring_final_low_branch_prefix_support_weighted_balanced_projected_toffoli:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_selective_projected_toffoli={direct_restoring_final_low_branch_prefix_support_weighted_selective_projected_toffoli:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_shannon_prefix_bit_p99={direct_restoring_final_low_branch_prefix_support_weighted_shannon_prefix_bit_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_balanced_prefix_bit_p99={direct_restoring_final_low_branch_prefix_support_weighted_balanced_prefix_bit_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_selective_prefix_bit_p99={direct_restoring_final_low_branch_prefix_support_weighted_selective_prefix_bit_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_selective_prefix_scratch_p99={direct_restoring_final_low_branch_prefix_support_weighted_selective_prefix_scratch_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_selective_flatten_steps={direct_restoring_final_low_branch_prefix_support_weighted_selective_flatten_steps}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_selective_dynamic_even_mean={direct_restoring_final_low_branch_prefix_support_weighted_selective_dynamic_even_mean:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_selective_variable_decode_mean={direct_restoring_final_low_branch_prefix_support_weighted_selective_variable_decode_mean:.3}");
     println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_span24_uniform_gap_to_2700k={direct_restoring_final_low_branch_prefix_support_weighted_span24_uniform_gap:.3}");
     println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_span24_symbol_mean={direct_restoring_final_low_branch_prefix_support_weighted_span24_symbol_mean:.3}");
     println!("METRIC scratch600_direct_restoring_final_low_branch_prefix_support_weighted_span24_symbol_p99={direct_restoring_final_low_branch_prefix_support_weighted_span24_symbol_p99}");
@@ -2685,6 +2756,23 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && direct_restoring_final_low_branch_prefix_support_weighted_gap < -30_000.0
             && direct_restoring_final_low_branch_prefix_support_weighted_projected_toffoli
                 < 2_670_000.0
+            && direct_restoring_final_low_branch_prefix_support_weighted_variable_gap > 0.0
+            && direct_restoring_final_low_branch_prefix_support_weighted_variable_offset1_gap
+                > 0.0
+            && direct_restoring_final_low_branch_prefix_support_weighted_balanced_gap < -40_000.0
+            && direct_restoring_final_low_branch_prefix_support_weighted_balanced_prefix_bit_p99
+                > 381
+            && direct_restoring_final_low_branch_prefix_support_weighted_selective_prefix_bit_p99
+                == 381
+            && direct_restoring_final_low_branch_prefix_support_weighted_selective_prefix_scratch_p99
+                == GOOGLE_LOW_QUBIT_SCRATCH
+            && direct_restoring_final_low_branch_prefix_support_weighted_selective_flatten_steps
+                > 80
+            && direct_restoring_final_low_branch_prefix_support_weighted_selective_total_over_node_roundtrip
+                < direct_restoring_final_low_branch_prefix_support_weighted_ratio_budget
+            && direct_restoring_final_low_branch_prefix_support_weighted_selective_gap < -40_000.0
+            && direct_restoring_final_low_branch_prefix_support_weighted_selective_projected_toffoli
+                < 2_660_000.0
             && direct_restoring_final_low_branch_prefix_support_weighted_span24_uniform_gap > 0.0
             && direct_restoring_final_low_branch_prefix_support_weighted_span24_symbol_p99 == 1
             && direct_restoring_final_low_branch_prefix_support_weighted_support_noncontig_steps
