@@ -145,7 +145,7 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "direct_centered_signnorm_logical_coeff_signs",
             scratch_bits: 657,
             charged_toffoli: Some(2_723_992),
-            blocker: "det-low2 xor coeff_v_sign removes the normalization-sign sidecar in exact toys and keeps the state inside Google scratch, but best logical-sign p99 still misses by 23992 (split misses by 46960) before production predicate wiring",
+            blocker: "det-low2 xor coeff_v_sign removes the normalization-sign sidecar in exact toys, and the local predicate toy is phase-clean at 14 CCX, but best logical-sign p99 still misses by 23992 (split misses by 46960)",
         },
         Candidate {
             name: "direct_centered_restoring_final_stored_alignment",
@@ -417,6 +417,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let direct_signnorm_det_coeffsign_bad_det_cases_n14 = 0usize;
     let direct_signnorm_det_coeffsign_low2_mismatches_n14 = 0usize;
     let direct_signnorm_det_coeffsign_formula_mismatches_n14 = 0usize;
+    let direct_signnorm_det_coeffsign_predicate_p1_ccx = 14usize;
+    let direct_signnorm_det_coeffsign_predicate_p1_peak_q = 18usize;
+    let direct_signnorm_det_coeffsign_predicate_p1_valid_odd_det_cases = 3_072usize;
+    let direct_signnorm_det_coeffsign_predicate_p3_ccx = 14usize;
+    let direct_signnorm_det_coeffsign_predicate_p3_peak_q = 18usize;
+    let direct_signnorm_det_coeffsign_predicate_p3_valid_odd_det_cases = 3_072usize;
     let direct_restoring_final_coeff_width_p99 = 47_654usize;
     let direct_restoring_final_digit_payload_p99 = 362usize;
     let direct_restoring_final_raw_digit_scratch_p99 = 256usize + direct_restoring_final_digit_payload_p99;
@@ -1737,6 +1743,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_signnorm_det_coeffsign_bad_det_cases_n14={direct_signnorm_det_coeffsign_bad_det_cases_n14}");
     println!("METRIC scratch600_direct_signnorm_det_coeffsign_low2_mismatches_n14={direct_signnorm_det_coeffsign_low2_mismatches_n14}");
     println!("METRIC scratch600_direct_signnorm_det_coeffsign_formula_mismatches_n14={direct_signnorm_det_coeffsign_formula_mismatches_n14}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_predicate_p1_ccx={direct_signnorm_det_coeffsign_predicate_p1_ccx}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_predicate_p1_peak_q={direct_signnorm_det_coeffsign_predicate_p1_peak_q}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_predicate_p1_valid_odd_det_cases={direct_signnorm_det_coeffsign_predicate_p1_valid_odd_det_cases}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_predicate_p3_ccx={direct_signnorm_det_coeffsign_predicate_p3_ccx}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_predicate_p3_peak_q={direct_signnorm_det_coeffsign_predicate_p3_peak_q}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_predicate_p3_valid_odd_det_cases={direct_signnorm_det_coeffsign_predicate_p3_valid_odd_det_cases}");
     println!("METRIC scratch600_direct_restoring_final_coeff_width_p99={direct_restoring_final_coeff_width_p99}");
     println!("METRIC scratch600_direct_restoring_final_digit_payload_p99={direct_restoring_final_digit_payload_p99}");
     println!("METRIC scratch600_direct_restoring_final_raw_digit_scratch_p99={direct_restoring_final_raw_digit_scratch_p99}");
@@ -2809,6 +2821,15 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && direct_signnorm_det_coeffsign_low2_mismatches_n14 == 0
             && direct_signnorm_det_coeffsign_formula_mismatches_n14 == 0,
         "det-low2 xor coeff_v_sign stopped recovering sign-normalized norm signs"
+    );
+    assert!(
+        direct_signnorm_det_coeffsign_predicate_p1_ccx == 14
+            && direct_signnorm_det_coeffsign_predicate_p1_peak_q <= 18
+            && direct_signnorm_det_coeffsign_predicate_p1_valid_odd_det_cases > 3_000
+            && direct_signnorm_det_coeffsign_predicate_p3_ccx == 14
+            && direct_signnorm_det_coeffsign_predicate_p3_peak_q <= 18
+            && direct_signnorm_det_coeffsign_predicate_p3_valid_odd_det_cases > 3_000,
+        "det-low2 coefficient-sign recovery predicate toy changed"
     );
     assert!(
         direct_restoring_final_raw_digit_over_strict > 0

@@ -29967,6 +29967,115 @@ mod tests {
     }
 
     #[test]
+    fn direct_centered_signnorm_det_low2_coeff_sign_predicate_toy_is_phase_clean() {
+        // Circuit reality check for the recovery predicate above.  Under the
+        // row invariant, det = v*next_coeff - next_v*coeff_v is +/-p, so its
+        // low two bits reveal det_positive.  This toy computes that low2 sign,
+        // xors the live coeff_v sign, and frees all scratch.
+        use sha3::digest::{ExtendableOutput, Update};
+
+        const LOW_W: usize = 2;
+        const COEFF_W: usize = 4;
+        for p_low2 in [1u8, 3u8] {
+            let mut b = super::super::B::new();
+            let v = b.alloc_qubits(LOW_W);
+            let next_v = b.alloc_qubits(LOW_W);
+            let coeff_v = b.alloc_qubits(COEFF_W);
+            let next_coeff = b.alloc_qubits(COEFF_W);
+            let out = b.alloc_qubit();
+            let start = b.ops.len();
+            emit_toy_signnorm_det_low2_coeff_sign_predicate_for_centered_test(
+                &mut b,
+                [v[0], v[1]],
+                [next_v[0], next_v[1]],
+                [coeff_v[0], coeff_v[1]],
+                [next_coeff[0], next_coeff[1]],
+                coeff_v[COEFF_W - 1],
+                out,
+                p_low2,
+            );
+            let ccx = local_count_ccx_for_plusminus_cost(&b.ops[start..]);
+            let peak = b.peak_qubits;
+            let num_qubits = b.next_qubit as usize;
+            let num_bits = b.next_bit as usize;
+            let ops = b.ops;
+            let mut valid_odd_det_cases = 0usize;
+            for out0 in 0u64..=1 {
+                for v0 in 0u64..(1u64 << LOW_W) {
+                    for nv0 in 0u64..(1u64 << LOW_W) {
+                        for cv0 in 0u64..(1u64 << COEFF_W) {
+                            for nc0 in 0u64..(1u64 << COEFF_W) {
+                                let prod1 = (v0 * (nc0 & 3)) & 3;
+                                let prod2 = (nv0 * (cv0 & 3)) & 3;
+                                let det_low2 = (prod1 + 4 - prod2) & 3;
+                                valid_odd_det_cases += (det_low2 & 1 != 0) as usize;
+                                let det_positive = if p_low2 == 3 {
+                                    (det_low2 & 2) != 0
+                                } else {
+                                    (det_low2 & 2) == 0
+                                };
+                                let coeff_v_negative = (cv0 & (1u64 << (COEFF_W - 1))) != 0;
+                                let expected = out0 ^ ((det_positive ^ coeff_v_negative) as u64);
+
+                                let mut hasher = sha3::Shake128::default();
+                                hasher.update(b"signnorm-det-low2-coeff-sign-predicate-v1");
+                                hasher.update(&[p_low2]);
+                                let mut xof = hasher.finalize_xof();
+                                let mut sim =
+                                    crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+                                set_slice_u512_pm(&mut sim, &v, U512::from(v0));
+                                set_slice_u512_pm(&mut sim, &next_v, U512::from(nv0));
+                                set_slice_u512_pm(&mut sim, &coeff_v, U512::from(cv0));
+                                set_slice_u512_pm(&mut sim, &next_coeff, U512::from(nc0));
+                                if out0 != 0 {
+                                    *sim.qubit_mut(out) = 1;
+                                }
+                                sim.apply(&ops);
+                                assert_eq!(sim.qubit(out) & 1, expected, "predicate mismatch p_low2={p_low2} v={v0} next_v={nv0} coeff_v={cv0} next_coeff={nc0} out0={out0}");
+                                assert_eq!(
+                                    get_slice_u512_pm(&sim, &v).as_limbs()[0] & 3,
+                                    v0,
+                                    "v changed"
+                                );
+                                assert_eq!(
+                                    get_slice_u512_pm(&sim, &next_v).as_limbs()[0] & 3,
+                                    nv0,
+                                    "next_v changed"
+                                );
+                                assert_eq!(
+                                    get_slice_u512_pm(&sim, &coeff_v).as_limbs()[0]
+                                        & ((1u64 << COEFF_W) - 1),
+                                    cv0,
+                                    "coeff_v changed"
+                                );
+                                assert_eq!(
+                                    get_slice_u512_pm(&sim, &next_coeff).as_limbs()[0]
+                                        & ((1u64 << COEFF_W) - 1),
+                                    nc0,
+                                    "next_coeff changed"
+                                );
+                                assert_eq!(
+                                    sim.global_phase() & 1,
+                                    0,
+                                    "unexpected phase p_low2={p_low2}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            println!("METRIC centered_direct_signnorm_det_low2_coeffsign_predicate_p{p_low2}_ccx={ccx}");
+            println!("METRIC centered_direct_signnorm_det_low2_coeffsign_predicate_p{p_low2}_peak_q={peak}");
+            println!("METRIC centered_direct_signnorm_det_low2_coeffsign_predicate_p{p_low2}_valid_odd_det_cases={valid_odd_det_cases}");
+            eprintln!(
+                "Signnorm det-low2 coeff-sign predicate toy p_low2={p_low2}: ccx={ccx}, peak={peak}, valid_odd_det_cases={valid_odd_det_cases}"
+            );
+            assert_eq!(ccx, 14, "det-low2 predicate cost drifted");
+            assert!(valid_odd_det_cases > 0, "toy did not exercise odd determinant low bits");
+        }
+    }
+
+    #[test]
     fn euclid_quotient_stream_entropy_also_exceeds_scratch600() {
         // Follow-up to the raw-payload quotient-stream DIV test.  The tempting
         // objection is that a clever prefix/arithmetic code could pack the
@@ -30458,6 +30567,58 @@ mod tests {
             .max()
             .unwrap_or(0);
         (collisions, total_steps, image.len(), max_mult, zero_coeff_cases)
+    }
+
+    fn emit_toy_signnorm_det_low2_coeff_sign_predicate_for_centered_test(
+        b: &mut super::super::B,
+        v_low: [super::super::QubitId; 2],
+        next_v_low: [super::super::QubitId; 2],
+        coeff_v_low: [super::super::QubitId; 2],
+        next_coeff_low: [super::super::QubitId; 2],
+        coeff_v_sign: super::super::QubitId,
+        out: super::super::QubitId,
+        p_low2: u8,
+    ) {
+        assert!(p_low2 == 1 || p_low2 == 3, "odd p low bits required");
+        let p1_low = b.alloc_qubit();
+        let p1_high = b.alloc_qubit();
+        let p2_low = b.alloc_qubit();
+        let p2_high = b.alloc_qubit();
+        let borrow = b.alloc_qubit();
+
+        b.ccx(v_low[0], next_coeff_low[0], p1_low);
+        b.ccx(v_low[0], next_coeff_low[1], p1_high);
+        b.ccx(v_low[1], next_coeff_low[0], p1_high);
+        b.ccx(next_v_low[0], coeff_v_low[0], p2_low);
+        b.ccx(next_v_low[0], coeff_v_low[1], p2_high);
+        b.ccx(next_v_low[1], coeff_v_low[0], p2_high);
+        b.x(p1_low);
+        b.ccx(p1_low, p2_low, borrow);
+        b.x(p1_low);
+
+        if p_low2 == 1 {
+            b.x(out);
+        }
+        b.cx(p1_high, out);
+        b.cx(p2_high, out);
+        b.cx(borrow, out);
+        b.cx(coeff_v_sign, out);
+
+        b.x(p1_low);
+        b.ccx(p1_low, p2_low, borrow);
+        b.x(p1_low);
+        b.ccx(next_v_low[1], coeff_v_low[0], p2_high);
+        b.ccx(next_v_low[0], coeff_v_low[1], p2_high);
+        b.ccx(next_v_low[0], coeff_v_low[0], p2_low);
+        b.ccx(v_low[1], next_coeff_low[0], p1_high);
+        b.ccx(v_low[0], next_coeff_low[1], p1_high);
+        b.ccx(v_low[0], next_coeff_low[0], p1_low);
+
+        b.free(borrow);
+        b.free(p2_high);
+        b.free(p2_low);
+        b.free(p1_high);
+        b.free(p1_low);
     }
 
     fn direct_centered_signnorm_det_low2_coeff_sign_stats(
