@@ -7044,8 +7044,12 @@ fn kaliski_iteration_bulk_prefix3_backward(
         for i in 0..transform_width {
             b.cx(r[i], u[i]);
         }
-        let tmp_add_slice: Vec<QubitId> = tmp[0..n].to_vec();
-        let v_w_slice: Vec<QubitId> = v_w[0..n].to_vec();
+        // After transforming tmp from r to u, high bits of tmp above the
+        // late-iter denominator width are known zero.  Truncate the reverse
+        // add into v_w just like the generic backward iteration does.
+        let add_width = if iter_idx < n { n } else { 2 * n - iter_idx };
+        let tmp_add_slice: Vec<QubitId> = tmp[0..add_width].to_vec();
+        let v_w_slice: Vec<QubitId> = v_w[0..add_width].to_vec();
         if std::env::var("KAL_VENT_MODADD").ok().as_deref() == Some("1") {
             add_nbit_qq(b, &tmp_add_slice, &v_w_slice);
         } else {
@@ -7084,7 +7088,11 @@ fn kaliski_iteration_bulk_prefix3_backward(
         b.ccx(l_gt, b_f, t);
         b.cx(t, m_i);
         b.cx(t, a_f);
-        b.ccx(l_gt, b_f, t);
+        // Measurement-uncompute t = l_gt & !b_f.  This mirrors the forward
+        // bulk step and saves one CCX per reversed bulk iteration.
+        let tm = b.alloc_bit();
+        b.hmr(t, tm);
+        b.cz_if(l_gt, b_f, tm);
         b.free(t);
         b.x(b_f);
     });

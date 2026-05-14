@@ -1,1 +1,1 @@
-try R_SMALL_THRESHOLD=262 with bulk prefix backed off to 377
+bulk backward step4 truncation plus HMR t uncompute
