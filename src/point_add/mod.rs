@@ -104,6 +104,7 @@ struct B {
     pub peak_phase: &'static str,
     pub phase: &'static str,
     pub peak_log: Vec<(u32, &'static str, usize)>,
+    pub phase_local_peaks: std::collections::BTreeMap<&'static str, (u32, usize)>,
     // (ops_len_at_transition, new_phase)
     pub phase_transitions: Vec<(usize, &'static str)>,
 }
@@ -122,6 +123,7 @@ impl B {
             peak_phase: "",
             phase: "init",
             peak_log: Vec::new(),
+            phase_local_peaks: std::collections::BTreeMap::new(),
             phase_transitions: Vec::new(),
         }
     }
@@ -148,6 +150,17 @@ impl B {
         if std::env::var("TRACE_PEAK").is_ok() && self.active_qubits + 10 >= self.peak_qubits {
             self.peak_log
                 .push((self.active_qubits, self.phase, self.ops.len()));
+        }
+        if let Ok(prefix) = std::env::var("TRACE_PHASE_LOCAL_PEAK") {
+            if !prefix.is_empty() && self.phase.starts_with(prefix.as_str()) {
+                let entry = self
+                    .phase_local_peaks
+                    .entry(self.phase)
+                    .or_insert((self.active_qubits, self.ops.len()));
+                if self.active_qubits > entry.0 {
+                    *entry = (self.active_qubits, self.ops.len());
+                }
+            }
         }
         if let Some(q) = self.free_qubits.pop() {
             QubitId(q)
@@ -8975,6 +8988,83 @@ fn with_kal_inv_raw_prescaled_kind<F: FnOnce(&mut B, &[QubitId])>(
     free_kaliski_state(b, st);
 }
 
+// H193 PAIR1 INVKEEP CLEANUP NO-BULK PHASE LOCATOR:
+// The cleanup Kaliski inside `kaliski_xor_inv_raw_into_keep_alias_vw` reuses the
+// bulk-prefix3 forward+backward pair on the same classical `tx` that the first
+// Kaliski already exercised. The H192 strict scaffold phase-fails despite the
+// classical state being correct; the bulk-prefix3 cliff (validated only at
+// pair1=378 in the single-call schedule) has never been validated against this
+// second-call shape. Override only the cleanup helper's bulk caps via a fresh
+// env knob; the first Kaliski continues to use `bulk_prefix_caps(pair)` (378
+// by default on Pair1). Defaults to 0 when KAL_PAIR1_INVKEEP_OUTSIDE_LAMBDA=1
+// to deliberately disable the suspected phase-batch source for the cleanup.
+fn cleanup_bulk_prefix_caps(pair: KalPair) -> BulkPrefixCaps {
+    let invkeep_active =
+        env_flag_enabled("KAL_PAIR1_INVKEEP_OUTSIDE_LAMBDA", false) && matches!(pair, KalPair::Pair1);
+    if !invkeep_active {
+        // Outside the INVKEEP path callers don't use this helper.  Fall through
+        // to the normal bulk prefix caps for safety.
+        return bulk_prefix_caps(pair);
+    }
+    // H193: default cleanup bulk caps to 0 when INVKEEP is enabled, so the
+    // cleanup Kaliski runs only the generic (non-bulk-prefix3) iteration on
+    // both forward and backward.  Explicit env override wins.
+    let override_val = env_usize("KAL_PAIR1_INVKEEP_CLEANUP_BULK_ITERS").unwrap_or(0);
+    BulkPrefixCaps {
+        forward: override_val,
+        backward: override_val,
+    }
+}
+
+fn kaliski_xor_inv_raw_into_keep_alias_vw(
+    b: &mut B,
+    v_in: &[QubitId],
+    alias_v_w: &[QubitId],
+    p: U256,
+    iters: usize,
+    pair: KalPair,
+    inv_keep: &[QubitId],
+) {
+    let n = v_in.len();
+    assert_eq!(alias_v_w.len(), n);
+    assert_eq!(inv_keep.len(), n);
+    let st = KaliskiState {
+        u: b.alloc_qubits(n),
+        v_w: alias_v_w.to_vec(),
+        r: b.alloc_qubits(n),
+        s: b.alloc_qubits(n),
+        m_hist: b.alloc_qubits(iters),
+        f_flag: b.alloc_qubit(),
+    };
+    let bulk_caps = cleanup_bulk_prefix_caps(pair);
+    if std::env::var("TRACE_PHASE_LOCAL_PEAK")
+        .ok()
+        .map(|v| v.starts_with("pair1_invkeep") || v.starts_with("pair1_outside"))
+        .unwrap_or(false)
+    {
+        eprintln!(
+            "INVKEEP_CLEANUP_BULK_CAPS forward={} backward={}",
+            bulk_caps.forward, bulk_caps.backward
+        );
+    }
+    kaliski_forward_with_coeff_caps(b, v_in, &st, p, iters, None, bulk_caps);
+    for i in 0..n {
+        b.cx(st.r[i], inv_keep[i]);
+    }
+    if std::env::var("KAL_BULK3_GENERALIZED_REVERSE").is_ok() {
+        emit_inverse_hmr_safe(b, |b| {
+            kaliski_forward_with_coeff_caps(b, v_in, &st, p, iters, None, bulk_caps)
+        });
+    } else {
+        kaliski_backward_caps(b, v_in, &st, p, iters, bulk_caps);
+    }
+    b.free(st.f_flag);
+    b.free_vec(&st.m_hist);
+    b.free_vec(&st.s);
+    b.free_vec(&st.r);
+    b.free_vec(&st.u);
+}
+
 fn with_kal_inv_raw_coeff<F: FnOnce(&mut B, &[QubitId])>(
     b: &mut B,
     v_in: &[QubitId],
@@ -9396,6 +9486,14 @@ fn build_standard_point_add(
     p: U256,
 ) {
     let pair2_branch_inv = std::env::var("KAL_PAIR2_BRANCH_INV_ROLL").ok().as_deref() == Some("1");
+    let kal_pair1_invkeep_outside_lambda =
+        env_flag_enabled("KAL_PAIR1_INVKEEP_OUTSIDE_LAMBDA", false);
+    let kal_pair1_invkeep_skip_second_cleanup =
+        env_flag_enabled("KAL_PAIR1_INVKEEP_SKIP_SECOND_CLEANUP", false);
+    let kal_pair1_invkeep_cleanup_alias_ty = env_flag_enabled(
+        "KAL_PAIR1_INVKEEP_CLEANUP_ALIAS_TY",
+        kal_pair1_invkeep_outside_lambda,
+    );
     let prescale_pair1 = std::env::var("KAL_PRESCALE_PAIR1_SAFE").ok().as_deref() == Some("1");
     let prescale_pair1_mixed =
         std::env::var("KAL_PRESCALE_PAIR1_MIXED").ok().as_deref() == Some("1");
@@ -9475,6 +9573,7 @@ fn build_standard_point_add(
         && !prescale_pair1_chunked
         && !prescale_pair1_folded
         && !prescale_pair1_folded_chunked
+        && !kal_pair1_invkeep_outside_lambda
         && !prescale_pair2
         && !prescale_pair2_mixed
         && !prescale_pair2_chunked
@@ -9675,6 +9774,57 @@ fn build_standard_point_add(
             }
             b.free_vec(&scaled_tx);
         }
+    } else if kal_pair1_invkeep_outside_lambda {
+        if tagged_div_validate
+            || prescale_pair1
+            || prescale_pair1_mixed
+            || prescale_pair1_chunked
+            || prescale_pair1_folded
+            || prescale_pair1_folded_chunked
+        {
+            panic!("KAL_PAIR1_INVKEEP_OUTSIDE_LAMBDA is only implemented for the normal pair1 path");
+        }
+        if affine_combined_y || env_flag_enabled("POINT_ADD_AFFINE_COMBINED_Y", true) {
+            panic!("KAL_PAIR1_INVKEEP_OUTSIDE_LAMBDA requires POINT_ADD_AFFINE_COMBINED_Y=0 so ty is zero before cleanup aliasing");
+        }
+        if !kal_pair1_invkeep_skip_second_cleanup && !kal_pair1_invkeep_cleanup_alias_ty {
+            panic!("strict KAL_PAIR1_INVKEEP_OUTSIDE_LAMBDA requires KAL_PAIR1_INVKEEP_CLEANUP_ALIAS_TY=1");
+        }
+        let inv_keep = b.alloc_qubits(N);
+        b.set_phase("pair1_invkeep_first_kal");
+        with_kal_inv_raw_pair(b, &tx, p, pair1_iters, KalPair::Pair1, |b, inv_raw| {
+            b.set_phase("pair1_invkeep_copy");
+            for i in 0..N {
+                b.cx(inv_raw[i], inv_keep[i]);
+            }
+            b.set_phase("pair1_invkeep_first_kal_backward");
+        });
+        let lam_inner = b.alloc_qubits(N);
+        b.set_phase("pair1_outside_mul1");
+        pair1_mul1_write_into_zero_acc(b, &lam_inner, &ty, &inv_keep, p);
+        b.set_phase("pair1_outside_halve");
+        for _ in 0..pair1_iters {
+            mod_halve_inplace_fast(b, &lam_inner, p);
+        }
+        b.set_phase("pair1_outside_mul2");
+        pair1_mul2_add_into_acc(b, &ty, &lam_inner, &tx, p);
+        if kal_pair1_invkeep_skip_second_cleanup {
+            eprintln!("KAL_PAIR1_INVKEEP_SKIP_SECOND_CLEANUP=1 leaves inv_keep dirty for peak-only diagnostics");
+        } else {
+            b.set_phase("pair1_invkeep_second_kal_alias_ty");
+            kaliski_xor_inv_raw_into_keep_alias_vw(
+                b,
+                &tx,
+                &ty,
+                p,
+                pair1_iters,
+                KalPair::Pair1,
+                &inv_keep,
+            );
+            b.set_phase("pair1_invkeep_free");
+            b.free_vec(&inv_keep);
+        }
+        *lam_cell.borrow_mut() = Some(lam_inner);
     } else {
         b.set_phase("pair1_kaliski_forward");
         with_kal_inv_raw_pair(b, &tx, p, pair1_iters, KalPair::Pair1, |b, inv_raw| {
@@ -9996,6 +10146,12 @@ pub fn build() -> Vec<Op> {
 
     if std::env::var("BY_TEST").is_ok() {
         by::run_classical_test();
+    }
+
+    if std::env::var("TRACE_PHASE_LOCAL_PEAK").is_ok() {
+        for (ph, (a, op)) in b.phase_local_peaks.iter() {
+            eprintln!("LOCAL_PHASE_PEAK phase='{}' active={} ops_idx={}", ph, a, op);
+        }
     }
 
     run_alt_seed_checks(&b.ops);
