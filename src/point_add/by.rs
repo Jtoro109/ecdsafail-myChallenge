@@ -1582,7 +1582,17 @@ mod tests {
         hasher.update(b"by-jump-matrix-popcount-v1");
         let mut reader = hasher.finalize_xof();
         let mut buf = [0u8; 24];
-        for &w in &[4usize, 8, 12, 16] {
+        // H198 (iter-198): include w=2 to print the BY jump intensity at the
+        // tightest window matching the Kaliski t=2 moonshot probe in
+        // `selected_matrix_variable_coeff_lower_bound_kills_hybrid_kaliski_windows`.
+        // For w=2, matrix entries are bounded by 2^w=4, so per-window
+        // row-popcount terms stay small (measured mean ≈1.0). The window count
+        // grows to ceil(742/2)=371, and mean_terms_per_pair ≈370 is actually
+        // below the larger-w values — meaning the popcount-only floor is not
+        // what kills w=2; the variable-coefficient quantum apply cost is. See
+        // the kaliski_jump test for the matching CCX lower bound (~5M for t=2
+        // ≫ 0.9M budget) that decisively closes the moonshot.
+        for &w in &[2usize, 4, 8, 12, 16] {
             let mut total = 0usize;
             let mut max_cost = 0usize;
             let mut costs = Vec::with_capacity(samples);
@@ -1603,13 +1613,24 @@ mod tests {
             let exact_windows = safegcd_iters(256).div_ceil(w);
             let mean_terms_per_pair = mean * exact_windows as f64;
             eprintln!(
-                "BY jump w={w}: mean row-add terms/window={mean:.2}, p90={p90}, max={max_cost}, exact_windows={}, mean_terms_per_pair={mean_terms_per_pair:.1}",
-                exact_windows
+                "BY jump w={w}: mean row-add terms/window={mean:.2}, p90={p90}, max={max_cost}, exact_windows={}, mean_terms_per_pair={mean_terms_per_pair:.1}"
+                , exact_windows
             );
             assert!(
                 mean_terms_per_pair < 600.0,
                 "BY row-add intensity unexpectedly high"
             );
+            if w == 2 {
+                // Sanity-check the analytical bound on popcount adds for w=2:
+                // each row has at most 2 magnitude bits, so a 2x2 matrix has
+                // at most 4 row-popcount terms minus 2 for the per-row "-1",
+                // i.e. ≤2 mean. Empirically ~1.0; this is the lever the t=2
+                // Kaliski lower bound also tests.
+                assert!(
+                    mean <= 4.0,
+                    "w=2 BY matrix popcount exceeds |entries|≤2^w bound: {mean}"
+                );
+            }
         }
     }
 

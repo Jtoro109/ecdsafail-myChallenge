@@ -595,8 +595,16 @@ mod tests {
         const INPUTS: usize = 5_000;
         let mask = (U256::from(1u64) << W).wrapping_sub(U256::from(1u64));
         let mut sampler = Sampler::new(b"window-hint-bits-v1", SECP256K1_P);
-        for &t in &[4usize, 8, 16] {
+        // H198 (iter-198): include t=2 to expose the qubit-side scaling of
+        // the windowed-Kaliski moonshot. For t=2 we expect ~2 hint bits per
+        // window with ~204 windows ⇒ ~408 history bits, i.e. essentially the
+        // same as the 407-bit m_hist baseline, confirming that even the
+        // tightest practical window does not save history. Also report the
+        // mean row-popcount cost via matrix_popcount_adds so the qubit and
+        // arithmetic-intensity numbers live in one place.
+        for &t in &[2usize, 4, 8, 16] {
             let mut by_key: BTreeMap<(u16, u16, bool), BTreeSet<(Mat2, Mat2)>> = BTreeMap::new();
+            let mut total_popcount = 0usize;
             let mut windows = 0usize;
             for _ in 0..INPUTS {
                 let mut u = SECP256K1_P;
@@ -607,6 +615,8 @@ mod tests {
                     }
                     let key = ((u & mask).to::<u16>(), (v & mask).to::<u16>(), u > v);
                     let (nu, nv, obs) = observe_window(u, v, W, t);
+                    total_popcount +=
+                        matrix_popcount_adds(obs.uv_mat) + matrix_popcount_adds(obs.rs_mat);
                     by_key
                         .entry(key)
                         .or_default()
@@ -622,14 +632,26 @@ mod tests {
             let hint_bits = usize::BITS as usize - (max_per_key - 1).leading_zeros() as usize;
             let n_windows = (407 + t - 1) / t;
             let history_bits = hint_bits * n_windows;
+            let mean_popcount = total_popcount as f64 / windows as f64;
             eprintln!(
-                "t={t} w={W}+gt: windows={} keys={} mean_mats/key={mean_per_key:.2} max_mats/key={} hint_bits/window={} total_hint_bits={}",
+                "t={t} w={W}+gt: windows={} keys={} mean_mats/key={mean_per_key:.2} max_mats/key={} hint_bits/window={} total_hint_bits={} mean_row_popcount_adds={mean_popcount:.3}",
                 windows, by_key.len(), max_per_key, hint_bits, history_bits
             );
             if t == 16 {
                 assert!(
                     history_bits < 407,
                     "t=16 hints did not beat m_hist: {history_bits}"
+                );
+            }
+            if t == 2 {
+                // Confirms the upper bound on popcount cost from the |entries|≤2^t
+                // theoretical bound: each row has at most 2 magnitude bits so the
+                // mean row-popcount adds (4 rows total) is bounded by 4. This is
+                // the analytical scaling that justifies the lower-bound number
+                // in selected_matrix_variable_coeff_lower_bound_kills_hybrid_kaliski_windows.
+                assert!(
+                    mean_popcount <= 4.0,
+                    "t=2 mean popcount unexpectedly large: {mean_popcount}"
                 );
             }
         }
@@ -773,7 +795,17 @@ mod tests {
         // and denominator/coefficient old-register cleanup, quantum-selected
         // row formation is already at/above the required per-window budget.
         const WIDTH: usize = 257;
-        for &(t, coeff_bits) in &[(4usize, 5usize), (8, 9), (16, 17)] {
+        // H198 (iter-198): add t=2 row. For Kaliski microsteps, the per-step
+        // (u,v) and (r,s) matrices have entries bounded by 2^t in absolute
+        // value, so t=2 needs at most 3 coeff bits (sign + 2 magnitude). The
+        // expected outcome is that even the tightest possible window (t=2)
+        // already exceeds the ~0.9M per-invocation budget, decisively closing
+        // the windowed-Kaliski moonshot rather than only extrapolating from
+        // t∈{4,8,16}. Number of windows scales as ceil(407/t), so t=2 doubles
+        // the window count vs t=4 while window_ccx only roughly halves
+        // (coeff_bits 5→3), giving a strictly larger per-invocation lower
+        // bound.
+        for &(t, coeff_bits) in &[(2usize, 3usize), (4, 5), (8, 9), (16, 17)] {
             let mut b = super::super::B::new();
             let src0 = b.alloc_qubits(WIDTH);
             let src1 = b.alloc_qubits(WIDTH);
