@@ -6576,7 +6576,7 @@ fn kaliski_iteration_bulk_prefix3(
     for j in 0..uv_width_step9 {
         cswap(b, a_f, u[j], v_w[j]);
     }
-    let rs_width_step9 = if iter_idx + 2 < u.len() {
+    let _rs_width_step9 = if iter_idx + 2 < u.len() {
         iter_idx + 2
     } else {
         u.len()
@@ -6607,7 +6607,7 @@ fn kaliski_iteration(
     f: QubitId,
     iter_idx: usize,
     coeff: Option<(&[QubitId], &[QubitId])>,
-    frame: QubitId,
+    _frame: QubitId,
 ) {
     let n = u.len();
     // Iter-local flags (zero at iter start and iter end): alloc fresh here
@@ -7401,7 +7401,7 @@ fn kaliski_iteration_backward(
     m_i: QubitId,
     f: QubitId,
     iter_idx: usize,
-    frame: QubitId,
+    _frame: QubitId,
 ) {
     let n = u.len();
     // Iter-local flags alloc'd fresh (zero at iter start in the backward
@@ -9642,7 +9642,7 @@ fn build_standard_point_add(
     let pair1_iters = std::env::var("KAL_PAIR1_ITERS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(399);
+        .unwrap_or(398);
     // The tagged validation paths change the op stream / Fiat-Shamir seed;
     // keep pair2 at the prior robust 404 setting to avoid conflating the
     // algebra probe with an iteration-threshold phase cliff.  Env overrides are

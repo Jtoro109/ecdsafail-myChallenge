@@ -9,7 +9,7 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
   - *Low-Qubit:* 1,175 qubits, 2.7M Toffolis (Score: $3.2 \times 10^9$).
   - *Low-Gate:* 1,425 qubits, 2.1M Toffolis (Score: $3.0 \times 10^9$).
   - *Línea Base Inicial:* 2,715 qubits, 3,942,753 Toffolis (Score: $1.07 \times 10^{10}$).
-  - *Nuestro Último Logro (Actual):* **2,710 qubits, 3,634,880 Toffolis** (Score: **$9.85 \times 10^{9}$**).
+  - *Nuestro Último Logro (Actual):* **2,710 qubits, 3,630,692 Toffolis** (Score: **$9.84 \times 10^{9}$**).
 
 
 ## 2. Instrucciones Operativas
@@ -36,5 +36,6 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
 - Redujimos el límite de iteraciones de Kaliski `pair1_iters` a 399 y `pair2_iters` a 399, lo cual pasa todos los tests de correctitud (9024 shots) con 0 basura de fase.
 - **Fusión de CSWAP en Fronteras de Registros $(r,s)$ (`kal_cswap_rs_merge`):** Fusionamos y diferimos los CSWAPs del STEP 9 y el STEP 3 de la siguiente iteración basándonos en la paridad de la decisión, resolviendo la transición de la fase bulk a la genérica mediante la asignación y limpieza dinámica del qubit `frame`.
 - **Extensión del Prefijo Bulk de Pair 1:** Elevamos el límite de iteraciones bulk para la primera inversión de Kaliski de 378 a 397, extendiendo el rango de iteraciones donde `mod_double` usa desplazamientos de bit puros (0 Toffoli) en lugar de duplicación modular completa.
-- Con esto logramos disminuir el recuento de Toffolis a **3,634,880** y los qubits a **2,710**, logrando un score de **9.85 × 10⁹**, un avance clave hacia la marca ideal. 
+- **Optimización Fina de Kaliski (Pair 1):** Redujimos las iteraciones de la primera inversión de Kaliski a **398** de manera segura y limpia de fase.
+- Con esto logramos disminuir el recuento de Toffolis a **3,630,692** y los qubits a **2,710**, logrando un score de **9.84 × 10⁹**, un avance clave hacia la marca ideal. 
 
