@@ -9,6 +9,8 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
   - *Low-Qubit:* 1,175 qubits, 2.7M Toffolis (Score: $3.2 \times 10^9$).
   - *Low-Gate:* 1,425 qubits, 2.1M Toffolis (Score: $3.0 \times 10^9$).
   - *Línea Base Inicial:* 2,715 qubits, 3,942,753 Toffolis (Score: $1.07 \times 10^{10}$).
+  - *Nuestro Último Logro (Actual):* **2,711 qubits, 3,921,993 Toffolis** (Score: **$1.06 \times 10^{10}$**).
+
 
 ## 2. Instrucciones Operativas
 - **Lectura obligatoria:** Revisar el [README.md](file:///home/emanuel/Documents/Universidad/Cripto/ellipticCurve/README.md) si se pierde el contexto.
