@@ -496,6 +496,98 @@ fn uma(b: &mut B, x: QubitId, y: QubitId, w: QubitId) {
 /// Fast Cuccaro add using carry ancillae + measurement-based UMA.
 /// Same interface as `cuccaro_add` but uses n-1 carry ancillae so the
 /// UMA sweep costs 0 Toffoli (measurement only). NOT emit_inverse-safe.
+fn cuccaro_add_fast_borrowed(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId, carries: &[QubitId]) {
+    let n = a.len();
+    assert_eq!(n, acc.len());
+    assert_eq!(carries.len(), n - 1);
+    if n == 0 {
+        return;
+    }
+    if n == 1 {
+        b.cx(c_in, acc[0]);
+        b.cx(a[0], acc[0]);
+        return;
+    }
+
+    // Forward MAJ sweep with carry ancillae.
+    b.cx(a[0], acc[0]);
+    b.cx(a[0], c_in);
+    b.ccx(c_in, acc[0], carries[0]);
+    b.cx(carries[0], a[0]);
+    for i in 1..n - 1 {
+        b.cx(a[i], acc[i]);
+        b.cx(a[i], a[i - 1]);
+        b.ccx(a[i - 1], acc[i], carries[i]);
+        b.cx(carries[i], a[i]);
+    }
+
+    // Final sum bit
+    b.cx(a[n - 2], acc[n - 1]);
+    b.cx(a[n - 1], acc[n - 1]);
+
+    // Backward UMA sweep with measurement-based carry uncompute (0 Toffoli).
+    for i in (1..n - 1).rev() {
+        b.cx(carries[i], a[i]);
+        let m = b.alloc_bit();
+        b.hmr(carries[i], m);
+        b.cz_if(a[i - 1], acc[i], m);
+        b.cx(a[i], a[i - 1]);
+        b.cx(a[i - 1], acc[i]);
+    }
+    b.cx(carries[0], a[0]);
+    let m0 = b.alloc_bit();
+    b.hmr(carries[0], m0);
+    b.cz_if(c_in, acc[0], m0);
+    b.cx(a[0], c_in);
+    b.cx(c_in, acc[0]);
+}
+
+fn cuccaro_sub_fast_borrowed(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId, carries: &[QubitId]) {
+    let n = a.len();
+    assert_eq!(n, acc.len());
+    assert_eq!(carries.len(), n - 1);
+    if n == 0 {
+        return;
+    }
+    if n == 1 {
+        b.cx(a[0], acc[0]);
+        b.cx(c_in, acc[0]);
+        return;
+    }
+
+    // Forward inv_UMA sweep with carry ancillae (reversed UMA from cuccaro_sub).
+    b.cx(c_in, acc[0]);
+    b.cx(a[0], c_in);
+    b.ccx(c_in, acc[0], carries[0]);
+    b.cx(carries[0], a[0]);
+    for i in 1..n - 1 {
+        b.cx(a[i - 1], acc[i]);
+        b.cx(a[i], a[i - 1]);
+        b.ccx(a[i - 1], acc[i], carries[i]);
+        b.cx(carries[i], a[i]);
+    }
+
+    // Final sum bit (reversed from cuccaro_add)
+    b.cx(a[n - 1], acc[n - 1]);
+    b.cx(a[n - 2], acc[n - 1]);
+
+    // Backward inv_MAJ sweep with measurement.
+    for i in (1..n - 1).rev() {
+        b.cx(carries[i], a[i]);
+        let m = b.alloc_bit();
+        b.hmr(carries[i], m);
+        b.cz_if(a[i - 1], acc[i], m);
+        b.cx(a[i], a[i - 1]);
+        b.cx(a[i], acc[i]);
+    }
+    b.cx(carries[0], a[0]);
+    let m0 = b.alloc_bit();
+    b.hmr(carries[0], m0);
+    b.cz_if(c_in, acc[0], m0);
+    b.cx(a[0], c_in);
+    b.cx(a[0], acc[0]);
+}
+
 fn cuccaro_add_fast(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
     let n = a.len();
     assert_eq!(n, acc.len());
@@ -916,6 +1008,20 @@ fn cuccaro_sub_fast(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
     b.cx(a[0], acc[0]);
 
     b.free_vec(&carries);
+}
+
+fn add_nbit_qq_fast_borrowed(b: &mut B, a: &[QubitId], acc: &[QubitId], carries: &[QubitId]) {
+    assert_eq!(a.len(), acc.len());
+    let c_in = b.alloc_qubit();
+    cuccaro_add_fast_borrowed(b, a, acc, c_in, carries);
+    b.free(c_in);
+}
+
+fn sub_nbit_qq_fast_borrowed(b: &mut B, a: &[QubitId], acc: &[QubitId], carries: &[QubitId]) {
+    assert_eq!(a.len(), acc.len());
+    let c_in = b.alloc_qubit();
+    cuccaro_sub_fast_borrowed(b, a, acc, c_in, carries);
+    b.free(c_in);
 }
 
 /// Fast `acc += a mod 2^n` using measurement-based Cuccaro.
@@ -6596,6 +6702,29 @@ fn kaliski_iteration_bulk_prefix3(
     b.set_phase(_kal_saved_phase);
 }
 
+fn borrow_carries(b: &mut B, _u: &[QubitId], _v_w: &[QubitId], m_hist_suffix: &[QubitId], _iter_idx: usize, carries_needed: usize) -> (Vec<QubitId>, usize) {
+    if carries_needed == 0 {
+        return (Vec::new(), 0);
+    }
+    let mut clean_pool = Vec::new();
+    if m_hist_suffix.len() > 1 {
+        clean_pool.extend_from_slice(&m_hist_suffix[1..]);
+    }
+    let num_borrowed = std::cmp::min(carries_needed, clean_pool.len());
+    let mut carries = clean_pool[0..num_borrowed].to_vec();
+    if num_borrowed < carries_needed {
+        let extra = b.alloc_qubits(carries_needed - num_borrowed);
+        carries.extend(extra);
+    }
+    (carries, num_borrowed)
+}
+
+fn free_borrowed_carries(b: &mut B, carries: Vec<QubitId>, num_borrowed: usize) {
+    if num_borrowed < carries.len() {
+        b.free_vec(&carries[num_borrowed..]);
+    }
+}
+
 fn kaliski_iteration(
     b: &mut B,
     p: U256,
@@ -6603,12 +6732,13 @@ fn kaliski_iteration(
     v_w: &[QubitId],
     r: &[QubitId],
     s: &[QubitId],
-    m_i: QubitId,
+    m_hist_suffix: &[QubitId],
     f: QubitId,
     iter_idx: usize,
     coeff: Option<(&[QubitId], &[QubitId])>,
     _frame: QubitId,
 ) {
+    let m_i = m_hist_suffix[0];
     let n = u.len();
     // Iter-local flags (zero at iter start and iter end): alloc fresh here
     // so they don't live during body (which sees lower peak by -3 qubits).
@@ -6720,7 +6850,14 @@ fn kaliski_iteration(
         // Sub v_w -= tmp. Late-iter: both high bits 0, truncate to load_width.
         let tmp_sub_slice: Vec<QubitId> = tmp[0..load_width].to_vec();
         let v_w_sub_slice: Vec<QubitId> = v_w[0..load_width].to_vec();
-        sub_nbit_qq_fast(b, &tmp_sub_slice, &v_w_sub_slice);
+        if load_width > 1 {
+            let carries_needed = load_width - 1;
+            let (carries, num_borrowed) = borrow_carries(b, u, v_w, m_hist_suffix, iter_idx, carries_needed);
+            sub_nbit_qq_fast_borrowed(b, &tmp_sub_slice, &v_w_sub_slice, &carries);
+            free_borrowed_carries(b, carries, num_borrowed);
+        } else if load_width == 1 {
+            sub_nbit_qq_fast(b, &tmp_sub_slice, &v_w_sub_slice);
+        }
         // Transform tmp from "add_f AND u" to "add_f AND r".
         // Small-iter: only the low iter+1 bits of r can be nonzero; the
         // carry slot for s += r is handled by an explicit 0 pad instead of a
@@ -6749,7 +6886,14 @@ fn kaliski_iteration(
             None
         };
         let s_slice: Vec<QubitId> = s[0..add_width].to_vec();
-        add_nbit_qq_fast(b, &tmp_slice, &s_slice);
+        if add_width > 1 {
+            let carries_needed = add_width - 1;
+            let (carries, num_borrowed) = borrow_carries(b, u, v_w, m_hist_suffix, iter_idx, carries_needed);
+            add_nbit_qq_fast_borrowed(b, &tmp_slice, &s_slice, &carries);
+            free_borrowed_carries(b, carries, num_borrowed);
+        } else if add_width == 1 {
+            add_nbit_qq_fast(b, &tmp_slice, &s_slice);
+        }
         if let Some(q) = tmp_pad {
             b.free(q);
         }
@@ -7134,7 +7278,7 @@ fn kaliski_forward_with_coeff_caps(
                 &st.v_w,
                 &st.r,
                 &st.s,
-                st.m_hist[i],
+                &st.m_hist[i..],
                 st.f_flag,
                 i,
                 coeff,
@@ -7398,11 +7542,12 @@ fn kaliski_iteration_backward(
     v_w: &[QubitId],
     r: &[QubitId],
     s: &[QubitId],
-    m_i: QubitId,
+    m_hist_suffix: &[QubitId],
     f: QubitId,
     iter_idx: usize,
     _frame: QubitId,
 ) {
+    let m_i = m_hist_suffix[0];
     let n = u.len();
     // Iter-local flags alloc'd fresh (zero at iter start in the backward
     // direction). They are zeroed and freed at iter end to match forward.
@@ -7469,7 +7614,14 @@ fn kaliski_iteration_backward(
         if std::env::var("KAL_VENT_MODADD").ok().as_deref() == Some("1") {
             sub_nbit_qq(b, &tmp_sub_slice, &s_slice);
         } else {
-            sub_nbit_qq_fast(b, &tmp_sub_slice, &s_slice);
+            if sub_width > 1 {
+                let carries_needed = sub_width - 1;
+                let (carries, num_borrowed) = borrow_carries(b, u, v_w, m_hist_suffix, iter_idx, carries_needed);
+                sub_nbit_qq_fast_borrowed(b, &tmp_sub_slice, &s_slice, &carries);
+                free_borrowed_carries(b, carries, num_borrowed);
+            } else if sub_width == 1 {
+                sub_nbit_qq_fast(b, &tmp_sub_slice, &s_slice);
+            }
         }
         // Reversed (E): transform tmp from AND(add_f,r) → AND(add_f,u).
         // Late-iter: u high bits 0, so transform at those bits: cx(r,u=0)→u=r,
@@ -7492,7 +7644,14 @@ fn kaliski_iteration_backward(
         if std::env::var("KAL_VENT_MODADD").ok().as_deref() == Some("1") {
             add_nbit_qq(b, &tmp_add_slice, &v_w_slice);
         } else {
-            add_nbit_qq_fast(b, &tmp_add_slice, &v_w_slice);
+            if add_width > 1 {
+                let carries_needed = add_width - 1;
+                let (carries, num_borrowed) = borrow_carries(b, u, v_w, m_hist_suffix, iter_idx, carries_needed);
+                add_nbit_qq_fast_borrowed(b, &tmp_add_slice, &v_w_slice, &carries);
+                free_borrowed_carries(b, carries, num_borrowed);
+            } else if add_width == 1 {
+                add_nbit_qq_fast(b, &tmp_add_slice, &v_w_slice);
+            }
         }
         // Unload: bits < min(load_width, transform_width) both apply (tmp = add_f AND u after transform).
         // For bits where transform was applied, tmp = add_f AND u. For bits where transform skipped
@@ -7669,7 +7828,7 @@ fn kaliski_backward_caps(
                 &st.v_w,
                 &st.r,
                 &st.s,
-                st.m_hist[i],
+                &st.m_hist[i..],
                 st.f_flag,
                 i,
                 frame_opt.unwrap_or(dummy_frame),
@@ -8768,7 +8927,7 @@ fn kaliski_forward_alias_v_w_caps(
                 &st.v_w,
                 &st.r,
                 &st.s,
-                st.m_hist[i],
+                &st.m_hist[i..],
                 st.f_flag,
                 i,
                 None,
@@ -8834,7 +8993,7 @@ fn kaliski_backward_alias_v_w_caps(
                 &st.v_w,
                 &st.r,
                 &st.s,
-                st.m_hist[i],
+                &st.m_hist[i..],
                 st.f_flag,
                 i,
                 frame_opt.unwrap_or(dummy_frame),
@@ -9009,7 +9168,7 @@ fn kaliski_forward_prescaled_kind(
                 &st.v_w,
                 &st.r,
                 &st.s,
-                st.m_hist[i],
+                &st.m_hist[i..],
                 st.f_flag,
                 i,
                 None,
@@ -9100,7 +9259,7 @@ fn kaliski_backward_prescaled_kind(
                 &st.v_w,
                 &st.r,
                 &st.s,
-                st.m_hist[i],
+                &st.m_hist[i..],
                 st.f_flag,
                 i,
                 frame_opt.unwrap_or(dummy_frame),
