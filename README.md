@@ -66,7 +66,7 @@ run fail, not faster.
 | | Toffoli (avg/shot) | Peak qubits | Score |
 |---|---|---|---|
 | Current `main` | 3,942,753 | 2,715 | 1.07 × 10¹⁰ |
-| **Our Optimized myCircuit** | **3,630,692** | **2,710** | **9.84 × 10⁹** |
+| **Our Optimized myCircuit** | **3,624,680** | **2,710** | **9.82 × 10⁹** |
 | Google's private low-qubit Pareto point | 2,700,000 | 1,175 | 3.2 × 10⁹ |
 | Google's private low-gate Pareto point | 2,100,000 | 1,425 | 3.0 × 10⁹ |
 

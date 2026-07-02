@@ -9,7 +9,7 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
   - *Low-Qubit:* 1,175 qubits, 2.7M Toffolis (Score: $3.2 \times 10^9$).
   - *Low-Gate:* 1,425 qubits, 2.1M Toffolis (Score: $3.0 \times 10^9$).
   - *Línea Base Inicial:* 2,715 qubits, 3,942,753 Toffolis (Score: $1.07 \times 10^{10}$).
-  - *Nuestro Último Logro (Actual):* **2,710 qubits, 3,630,692 Toffolis** (Score: **$9.84 \times 10^{9}$**).
+  - *Nuestro Último Logro (Actual):* **2,710 qubits, 3,624,680 Toffolis** (Score: **$9.82 \times 10^{9}$**).
 
 
 ## 2. Instrucciones Operativas
@@ -37,5 +37,7 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
 - **Fusión de CSWAP en Fronteras de Registros $(r,s)$ (`kal_cswap_rs_merge`):** Fusionamos y diferimos los CSWAPs del STEP 9 y el STEP 3 de la siguiente iteración basándonos en la paridad de la decisión, resolviendo la transición de la fase bulk a la genérica mediante la asignación y limpieza dinámica del qubit `frame`.
 - **Extensión del Prefijo Bulk de Pair 1:** Elevamos el límite de iteraciones bulk para la primera inversión de Kaliski de 378 a 397, extendiendo el rango de iteraciones donde `mod_double` usa desplazamientos de bit puros (0 Toffoli) en lugar de duplicación modular completa.
 - **Optimización Fina de Kaliski (Pair 1):** Redujimos las iteraciones de la primera inversión de Kaliski a **398** de manera segura y limpia de fase.
-- Con esto logramos disminuir el recuento de Toffolis a **3,630,692** y los qubits a **2,710**, logrando un score de **9.84 × 10⁹**, un avance clave hacia la marca ideal. 
+- **Reutilización de Acarreos en Kaliski (Gouzien):** Reutilizamos dinámicamente los bits futuros de la historia de medición `m_hist` como acarreos limpios para las sumas/restas de Kaliski, liberando picos ancilares locales.
+- **Solinas de Bajo Scratch para Shift22 (Gouzien):** Reemplazamos los sumadores constantes basados en carga en registros por sumadores directos a nivel de puerta (`add_nbit_const_direct_fast` y `sub_nbit_const_direct_fast`), eliminando un registro completo de constantes de 257 bits en el Solinas-fold.
+- Con esto logramos disminuir el recuento de Toffolis a **3,624,680** y los qubits a **2,710**, logrando un score de **9.82 × 10⁹**, un avance clave hacia la marca ideal. 
 
