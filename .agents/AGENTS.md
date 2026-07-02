@@ -9,8 +9,7 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
   - *Low-Qubit:* 1,175 qubits, 2.7M Toffolis (Score: $3.2 \times 10^9$).
   - *Low-Gate:* 1,425 qubits, 2.1M Toffolis (Score: $3.0 \times 10^9$).
   - *Línea Base Inicial:* 2,715 qubits, 3,942,753 Toffolis (Score: $1.07 \times 10^{10}$).
-  - *Nuestro Último Logro (Actual):* **2,710 qubits, 3,624,680 Toffolis** (Score: **$9.82 \times 10^{9}$**).
-
+  - *Nuestro Último Logro (Actual):* **2,310 qubits, 3,063,680 Toffolis** (Score: **$7.08 \times 10^{9}$**).
 
 ## 2. Instrucciones Operativas
 - **Lectura obligatoria:** Revisar el [README.md](file:///home/emanuel/Documents/Universidad/Cripto/ellipticCurve/README.md) si se pierde el contexto.
@@ -26,18 +25,16 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
 - **Documentar:** Actualizar la tabla comparativa de puntajes en el [README.md](file:///home/emanuel/Documents/Universidad/Cripto/ellipticCurve/README.md).
 
 ## 3. Estrategias de Optimización Estructural (Roadmap)
-- **Ruta A (Eliminación de `m_hist`):** Reemplazar el vector de 407 qubits con un qubit ancila local. *Nota: Nuestros tests clásicos de deterministmo del estado final revelaron que la información del bit menos significativo (LSB) se pierde en el desplazamiento a la derecha (Step 6) cuando add_f=0, haciendo que la recuperación de m_i en backward requiera pebbling de Bennett o información adicional.*
-- **Ruta B (Reutilización de Registro de Multiplicación):** Compartir los qubits auxiliares liberados de Kaliski con el multiplicador adyacente para ahorrar ~512 qubits transitorios.
+- **Ruta A (Eliminación de `m_hist`):** Reemplazar el vector de ~400 qubits con un qubit ancila local o cálculo on-the-fly. *Nota: Nuestros tests clásicos de determinismo del estado final revelaron que la información del bit menos significativo (LSB) se pierde en el desplazamiento a la derecha (Step 6) cuando add_f=0, haciendo que la recuperación de m_i en backward requiera pebbling de Bennett o información adicional.*
+- **Ruta B (Reutilización de Registros):** Reutilizar los registros `tx` como `v_w` en Kaliski (Gouzien trick) ya implementado. Necesitamos buscar formas de no asignar 256 qubits en `tmp` durante `step4`.
 - **Ruta C (Suma de Inversión Única):** Invertir una sola vez $w = dx^3$ y reconstruir $(Rx, Ry)$ mediante álgebra cerrada para ahorrar 1.8M Toffolis.
+- **Ruta D (Reducción W-TRUNC):** El margen actual de truncación está en 32. Bajar a 16 causó fallos de CLASSICAL MISMATCH, por lo que 32 es el margen seguro actual.
 
-
-## Logros Actuales (Ruta B: Low-Scratch Mod-Add & CSWAP Boundary-Merge)
-- Hemos implementado la versión final y robusta del sumador de constantes directas (`add_nbit_const_direct_fast`) utilizando una nueva compuerta base `z_if` añadida a la interfaz de Qrisp para garantizar la limpieza de fase cuántica sin utilizar qubits temporales.
-- Redujimos el límite de iteraciones de Kaliski `pair1_iters` a 399 y `pair2_iters` a 399, lo cual pasa todos los tests de correctitud (9024 shots) con 0 basura de fase.
-- **Fusión de CSWAP en Fronteras de Registros $(r,s)$ (`kal_cswap_rs_merge`):** Fusionamos y diferimos los CSWAPs del STEP 9 y el STEP 3 de la siguiente iteración basándonos en la paridad de la decisión, resolviendo la transición de la fase bulk a la genérica mediante la asignación y limpieza dinámica del qubit `frame`.
-- **Extensión del Prefijo Bulk de Pair 1:** Elevamos el límite de iteraciones bulk para la primera inversión de Kaliski de 378 a 397, extendiendo el rango de iteraciones donde `mod_double` usa desplazamientos de bit puros (0 Toffoli) en lugar de duplicación modular completa.
-- **Optimización Fina de Kaliski (Pair 1):** Redujimos las iteraciones de la primera inversión de Kaliski a **398** de manera segura y limpia de fase.
-- **Reutilización de Acarreos en Kaliski (Gouzien):** Reutilizamos dinámicamente los bits futuros de la historia de medición `m_hist` como acarreos limpios para las sumas/restas de Kaliski, liberando picos ancilares locales.
-- **Solinas de Bajo Scratch para Shift22 (Gouzien):** Reemplazamos los sumadores constantes basados en carga en registros por sumadores directos a nivel de puerta (`add_nbit_const_direct_fast` y `sub_nbit_const_direct_fast`), eliminando un registro completo de constantes de 257 bits en el Solinas-fold.
-- Con esto logramos disminuir el recuento de Toffolis a **3,624,680** y los qubits a **2,710**, logrando un score de **9.82 × 10⁹**, un avance clave hacia la marca ideal. 
+## Logros Actuales
+- **Modularización Total:** Todo el código en `mod.rs` fue separado en múltiples módulos (`cuccaro.rs`, `solinas.rs`, `kaliski_inv.rs`, etc.) manteniendo el mismo desempeño.
+- **Pico de Qubits:** 2,310 (una reducción masiva de la línea base 2,715). Principalmente por reutilizar el estado clásico como variables transitorias en Kaliski (`v_w`).
+- Hemos implementado la versión final y robusta del sumador de constantes directas (`add_nbit_const_direct_fast`) utilizando una nueva compuerta base `z_if`.
+- Redujimos el límite de iteraciones de Kaliski `pair1_iters` a 399 y `pair2_iters` a 397 (según la rama actual), lo cual pasa todos los tests de correctitud.
+- **Fusión de CSWAP en Fronteras de Registros $(r,s)$ (`kal_cswap_rs_merge`):** Fusionamos y diferimos los CSWAPs del STEP 9 y el STEP 3 de la siguiente iteración basándonos en la paridad de la decisión.
+- Con esto logramos disminuir el recuento de Toffolis a **3,063,680** y los qubits a **2,310**, logrando un score de **7.08 × 10⁹** (estamos a ~2.4x de la mejor métrica de Google). 
 
