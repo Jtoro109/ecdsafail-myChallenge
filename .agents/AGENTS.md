@@ -9,7 +9,7 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
   - *Low-Qubit:* 1,175 qubits, 2.7M Toffolis (Score: $3.2 \times 10^9$).
   - *Low-Gate:* 1,425 qubits, 2.1M Toffolis (Score: $3.0 \times 10^9$).
   - *Línea Base Inicial:* 2,715 qubits, 3,942,753 Toffolis (Score: $1.07 \times 10^{10}$).
-  - *Nuestro Último Logro (Actual):* **2,711 qubits, 3,921,993 Toffolis** (Score: **$1.06 \times 10^{10}$**).
+  - *Nuestro Último Logro (Actual):* **2,710 qubits, 3,649,453 Toffolis** (Score: **$9.89 \times 10^{9}$**).
 
 
 ## 2. Instrucciones Operativas
@@ -31,8 +31,9 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
 - **Ruta C (Suma de Inversión Única):** Invertir una sola vez $w = dx^3$ y reconstruir $(Rx, Ry)$ mediante álgebra cerrada para ahorrar 1.8M Toffolis.
 
 
-## Logros Actuales (Ruta B: Low-Scratch Mod-Add)
+## Logros Actuales (Ruta B: Low-Scratch Mod-Add & CSWAP Boundary-Merge)
 - Hemos implementado la versión final y robusta del sumador de constantes directas (`add_nbit_const_direct_fast`) utilizando una nueva compuerta base `z_if` añadida a la interfaz de Qrisp para garantizar la limpieza de fase cuántica sin utilizar qubits temporales.
 - Redujimos el límite de iteraciones de Kaliski `pair1_iters` a 399 y `pair2_iters` a 399, lo cual pasa todos los tests de correctitud (9024 shots) con 0 basura de fase.
-- Con esto logramos disminuir el recuento de Toffolis a **3,912,613** y los qubits a **2,709**, un avance clave hacia la marca ideal. 
+- **Fusión de CSWAP en Fronteras de Registros $(r,s)$ (`kal_cswap_rs_merge`):** Fusionamos y diferimos los CSWAPs del STEP 9 y el STEP 3 de la siguiente iteración basándonos en la paridad de la decisión, resolviendo la transición de la fase bulk a la genérica mediante la asignación y limpieza dinámica del qubit `frame`.
+- Con esto logramos disminuir el recuento de Toffolis a **3,649,453** y los qubits a **2,710**, logrando un score de **9.89 × 10⁹** (rompiendo la barrera de 10¹⁰), un avance clave hacia la marca ideal. 
 

@@ -516,4 +516,49 @@ mod tests {
                 if c0 > 0 && c1 > 0 { "  <- CONFLICT" } else { "" });
         }
     }
+
+    #[test]
+    fn test_backward_determinism() {
+        use std::collections::HashMap;
+        let p = SECP256K1_P;
+        let mut tt: HashMap<u8, (u8, usize)> = HashMap::new();
+
+        for seed in 0..500u64 {
+            let v_in = random_element(seed + 1);
+            let (m_hist, snaps) = kaliski_run(v_in, p, 512);
+            for i in 0..512 {
+                let m_i = m_hist[i];
+                let (u_start, v_w_start, r_start, s_start, f_start) = snaps[i];
+                let (u, v_w, r, s, f) = snaps[i + 1];
+
+                // Fingerprint from the end state snaps[i+1]
+                let u0 = (u.as_limbs()[0] & 1) as u8;
+                let v0 = (v_w.as_limbs()[0] & 1) as u8;
+                let s0 = (s.as_limbs()[0] & 1) as u8;
+                let r0 = (r.as_limbs()[0] & 1) as u8;
+                let gt = if u > v_w { 1u8 } else { 0 };
+
+                // Build 6-bit key from (f, u0, v0, s0, r0, gt)
+                let k = (f as u64) << 5 | (u0 as u64) << 4 | (v0 as u64) << 3 | (s0 as u64) << 2 | (r0 as u64) << 1 | (gt as u64);
+                if let Some(&(prev_m, prev_idx)) = tt.get(&(k as u8)) {
+                    if prev_m != m_i {
+                        panic!(
+                            "Conflict on end-state key {:06b}:\n\
+                             Current sample (iter {}):\n\
+                             u_start={:x}, v_w_start={:x}, r_start={:x}, s_start={:x}, f_start={}\n\
+                             u_curr={:x}, v_w_curr={:x}, r_curr={:x}, s_curr={:x}, f_curr={}\n\
+                             m_i={}\n\n\
+                             Previous sample index: {}",
+                            k, i,
+                            u_start, v_w_start, r_start, s_start, f_start,
+                            u, v_w, r, s, f,
+                            m_i, prev_idx
+                        );
+                    }
+                }
+                tt.insert(k as u8, (m_i, i));
+            }
+        }
+        println!("✅ BACKWARD RECOMPUTATION DETERMINISM CONFIRMED!");
+    }
 }

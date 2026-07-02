@@ -6401,6 +6401,7 @@ fn kaliski_iteration_bulk_prefix3(
     m_i: QubitId,
     iter_idx: usize,
     coeff: Option<(&[QubitId], &[QubitId])>,
+    frame: QubitId,
 ) {
     let a_f = b.alloc_qubit();
     let b_f = b.alloc_qubit();
@@ -6467,9 +6468,17 @@ fn kaliski_iteration_bulk_prefix3(
     } else {
         u.len()
     };
-    for j in 0..rs_width_step3 {
-        cswap(b, a_f, r[j], s[j]);
+    b.cx(a_f, frame);
+    for j in 1..rs_width_step3 {
+        cswap(b, frame, r[j], s[j]);
     }
+    b.cx(a_f, frame);
+    if iter_idx > 0 {
+        b.x(s[0]);
+        b.cx(s[0], frame);
+        b.x(s[0]);
+    }
+    cswap(b, a_f, r[0], s[0]);
     if let Some((cr, cs)) = coeff {
         b.set_phase("kal_bulk_coeff_step3_cswap");
         coeff_channel_cswap(b, a_f, cr, cs);
@@ -6572,22 +6581,17 @@ fn kaliski_iteration_bulk_prefix3(
     } else {
         u.len()
     };
-    for j in 0..rs_width_step9 {
-        cswap(b, a_f, r[j], s[j]);
-    }
+    cswap(b, a_f, r[0], s[0]);
     if let Some((cr, cs)) = coeff {
         b.set_phase("kal_bulk_coeff_step9_cswap");
         coeff_channel_cswap(b, a_f, cr, cs);
     }
 
-    b.x(s[0]);
-    b.cx(s[0], a_f);
-    b.x(s[0]);
-
     b.x(f1);
     b.free(f1);
     b.free(add_f);
     b.free(b_f);
+    b.swap(a_f, frame);
     b.free(a_f);
     b.set_phase(_kal_saved_phase);
 }
@@ -6603,6 +6607,7 @@ fn kaliski_iteration(
     f: QubitId,
     iter_idx: usize,
     coeff: Option<(&[QubitId], &[QubitId])>,
+    frame: QubitId,
 ) {
     let n = u.len();
     // Iter-local flags (zero at iter start and iter end): alloc fresh here
@@ -7090,8 +7095,15 @@ fn kaliski_forward_with_coeff_caps(
 
     // ─── Iterations ───
     let use_bulk_prefix3 = bulk_prefix_enabled();
+    let frame_opt = if use_bulk_prefix3 && bulk_caps.forward > 0 {
+        Some(b.alloc_qubit())
+    } else {
+        None
+    };
+    let dummy_frame = st.f_flag;
     for i in 0..iters {
         if use_bulk_prefix3 && i < bulk_caps.forward {
+            let frame = frame_opt.unwrap();
             kaliski_iteration_bulk_prefix3(
                 b,
                 p,
@@ -7102,7 +7114,18 @@ fn kaliski_forward_with_coeff_caps(
                 st.m_hist[i],
                 i,
                 coeff,
+                frame,
             );
+            if i + 1 == bulk_caps.forward && bulk_caps.forward < iters {
+                let final_rs_width = if bulk_caps.forward + 1 < n { bulk_caps.forward + 1 } else { n };
+                for j in 1..final_rs_width {
+                    cswap(b, frame, st.r[j], st.s[j]);
+                }
+                b.x(st.s[0]);
+                b.cx(st.s[0], frame);
+                b.x(st.s[0]);
+                b.free(frame);
+            }
         } else {
             kaliski_iteration(
                 b,
@@ -7115,8 +7138,20 @@ fn kaliski_forward_with_coeff_caps(
                 st.f_flag,
                 i,
                 coeff,
+                frame_opt.unwrap_or(dummy_frame),
             );
         }
+    }
+    if use_bulk_prefix3 && bulk_caps.forward == iters {
+        let frame = frame_opt.unwrap();
+        let final_rs_width = if iters + 1 < n { iters + 1 } else { n };
+        for j in 1..final_rs_width {
+            cswap(b, frame, st.r[j], st.s[j]);
+        }
+        b.x(st.s[0]);
+        b.cx(st.s[0], frame);
+        b.x(st.s[0]);
+        b.free(frame);
     }
 
     // After the loop for nonzero v_in, classical invariants give:
@@ -7193,6 +7228,7 @@ fn kaliski_iteration_bulk_prefix3_backward(
     s: &[QubitId],
     m_i: QubitId,
     iter_idx: usize,
+    frame: QubitId,
 ) {
     let n = u.len();
     let a_f = b.alloc_qubit();
@@ -7203,16 +7239,11 @@ fn kaliski_iteration_bulk_prefix3_backward(
 
     // Reverse STEP 10.
     b.set_phase("bk_bulk_step10");
-    b.x(s[0]);
-    b.cx(s[0], a_f);
-    b.x(s[0]);
+    b.swap(a_f, frame);
 
     // Reverse STEP 9.
     b.set_phase("bk_bulk_step9_cswap");
-    let rs_width_step9 = if iter_idx + 2 < n { iter_idx + 2 } else { n };
-    for j in (0..rs_width_step9).rev() {
-        cswap(b, a_f, r[j], s[j]);
-    }
+    cswap(b, a_f, r[0], s[0]);
     // Late-iter truncation mirrors forward step9.
     let uv_width_step9 = if iter_idx < n { n } else { 2 * n - iter_idx };
     for j in (0..uv_width_step9).rev() {
@@ -7302,10 +7333,18 @@ fn kaliski_iteration_bulk_prefix3_backward(
 
     // Reverse STEP 3.
     b.set_phase("bk_bulk_step3_cswap");
-    let rs_width_step3 = if iter_idx + 1 < n { iter_idx + 1 } else { n };
-    for j in (0..rs_width_step3).rev() {
-        cswap(b, a_f, r[j], s[j]);
+    cswap(b, a_f, r[0], s[0]);
+    if iter_idx > 0 {
+        b.x(s[0]);
+        b.cx(s[0], frame);
+        b.x(s[0]);
     }
+    b.cx(a_f, frame);
+    let rs_width_step3 = if iter_idx + 1 < n { iter_idx + 1 } else { n };
+    for j in (1..rs_width_step3).rev() {
+        cswap(b, frame, r[j], s[j]);
+    }
+    b.cx(a_f, frame);
     // Late-iter truncation mirrors forward step3.
     let uv_width_step3 = if iter_idx < n { n } else { 2 * n - iter_idx };
     for j in (0..uv_width_step3).rev() {
@@ -7362,6 +7401,7 @@ fn kaliski_iteration_backward(
     m_i: QubitId,
     f: QubitId,
     iter_idx: usize,
+    frame: QubitId,
 ) {
     let n = u.len();
     // Iter-local flags alloc'd fresh (zero at iter start in the backward
@@ -7484,6 +7524,7 @@ fn kaliski_iteration_backward(
     // Reverse STEP 3 ─────────────────────────────────────────────────
     let rs_width_step3 = if iter_idx + 1 < n { iter_idx + 1 } else { n };
     let uv_width = if iter_idx < n { n } else { 2 * n - iter_idx };
+    // Reverse STEP 3 ─────────────────────────────────────────────────
     for j in (0..rs_width_step3).rev() {
         cswap(b, a_f, r[j], s[j]);
     }
@@ -7593,9 +7634,22 @@ fn kaliski_backward_caps(
     debug_assert!(iters <= st.m_hist.len());
 
     let use_bulk_prefix3 = bulk_prefix_enabled();
+    let mut frame_opt: Option<QubitId> = None;
+    let dummy_frame = st.f_flag;
     // ─── Reverse iterations (in reverse order) ───
     for i in (0..iters).rev() {
         if use_bulk_prefix3 && i < bulk_caps.backward {
+            if frame_opt.is_none() {
+                let frame = b.alloc_qubit();
+                b.x(st.s[0]);
+                b.cx(st.s[0], frame);
+                b.x(st.s[0]);
+                let final_rs_width = if bulk_caps.backward + 1 < n { bulk_caps.backward + 1 } else { n };
+                for j in 1..final_rs_width {
+                    cswap(b, frame, st.r[j], st.s[j]);
+                }
+                frame_opt = Some(frame);
+            }
             kaliski_iteration_bulk_prefix3_backward(
                 b,
                 p,
@@ -7605,6 +7659,7 @@ fn kaliski_backward_caps(
                 &st.s,
                 st.m_hist[i],
                 i,
+                frame_opt.unwrap(),
             );
         } else {
             kaliski_iteration_backward(
@@ -7617,8 +7672,12 @@ fn kaliski_backward_caps(
                 st.m_hist[i],
                 st.f_flag,
                 i,
+                frame_opt.unwrap_or(dummy_frame),
             );
         }
+    }
+    if let Some(frame) = frame_opt {
+        b.free(frame);
     }
 
     // ─── Reverse Init ───
@@ -8668,9 +8727,17 @@ fn kaliski_forward_alias_v_w_caps(
     b.x(st.s[0]);
     b.x(st.f_flag);
 
+    // ─── Iterations ───
     let use_bulk_prefix3 = bulk_prefix_enabled();
+    let frame_opt = if use_bulk_prefix3 && bulk_caps.forward > 0 {
+        Some(b.alloc_qubit())
+    } else {
+        None
+    };
+    let dummy_frame = st.f_flag;
     for i in 0..iters {
         if use_bulk_prefix3 && i < bulk_caps.forward {
+            let frame = frame_opt.unwrap();
             kaliski_iteration_bulk_prefix3(
                 b,
                 p,
@@ -8681,7 +8748,18 @@ fn kaliski_forward_alias_v_w_caps(
                 st.m_hist[i],
                 i,
                 None,
+                frame,
             );
+            if i + 1 == bulk_caps.forward && bulk_caps.forward < iters {
+                let final_rs_width = if bulk_caps.forward + 1 < n { bulk_caps.forward + 1 } else { n };
+                for j in 1..final_rs_width {
+                    cswap(b, frame, st.r[j], st.s[j]);
+                }
+                b.x(st.s[0]);
+                b.cx(st.s[0], frame);
+                b.x(st.s[0]);
+                b.free(frame);
+            }
         } else {
             kaliski_iteration(
                 b,
@@ -8694,8 +8772,20 @@ fn kaliski_forward_alias_v_w_caps(
                 st.f_flag,
                 i,
                 None,
+                frame_opt.unwrap_or(dummy_frame),
             );
         }
+    }
+    if use_bulk_prefix3 && bulk_caps.forward == iters {
+        let frame = frame_opt.unwrap();
+        let final_rs_width = if iters + 1 < n { iters + 1 } else { n };
+        for j in 1..final_rs_width {
+            cswap(b, frame, st.r[j], st.s[j]);
+        }
+        b.x(st.s[0]);
+        b.cx(st.s[0], frame);
+        b.x(st.s[0]);
+        b.free(frame);
     }
 }
 
@@ -8706,11 +8796,25 @@ fn kaliski_backward_alias_v_w_caps(
     iters: usize,
     bulk_caps: BulkPrefixCaps,
 ) {
+    let n = st.u.len();
     debug_assert!(iters <= st.m_hist.len());
 
     let use_bulk_prefix3 = bulk_prefix_enabled();
+    let mut frame_opt: Option<QubitId> = None;
+    let dummy_frame = st.f_flag;
     for i in (0..iters).rev() {
         if use_bulk_prefix3 && i < bulk_caps.backward {
+            if frame_opt.is_none() {
+                let frame = b.alloc_qubit();
+                b.x(st.s[0]);
+                b.cx(st.s[0], frame);
+                b.x(st.s[0]);
+                let final_rs_width = if bulk_caps.backward + 1 < n { bulk_caps.backward + 1 } else { n };
+                for j in 1..final_rs_width {
+                    cswap(b, frame, st.r[j], st.s[j]);
+                }
+                frame_opt = Some(frame);
+            }
             kaliski_iteration_bulk_prefix3_backward(
                 b,
                 p,
@@ -8720,6 +8824,7 @@ fn kaliski_backward_alias_v_w_caps(
                 &st.s,
                 st.m_hist[i],
                 i,
+                frame_opt.unwrap(),
             );
         } else {
             kaliski_iteration_backward(
@@ -8732,8 +8837,12 @@ fn kaliski_backward_alias_v_w_caps(
                 st.m_hist[i],
                 st.f_flag,
                 i,
+                frame_opt.unwrap_or(dummy_frame),
             );
         }
+    }
+    if let Some(frame) = frame_opt {
+        b.free(frame);
     }
 
     b.x(st.f_flag);
@@ -8858,10 +8967,18 @@ fn kaliski_forward_prescaled_kind(
     b.x(st.s[0]);
     b.x(st.f_flag);
 
+    // ─── Iterations ───
     let use_bulk_prefix3 = bulk_prefix_enabled();
     let bulk_prefix_iters = bulk_prefix_safe_iters();
+    let frame_opt = if use_bulk_prefix3 && bulk_prefix_iters > 0 {
+        Some(b.alloc_qubit())
+    } else {
+        None
+    };
+    let dummy_frame = st.f_flag;
     for i in 0..iters {
         if use_bulk_prefix3 && i < bulk_prefix_iters {
+            let frame = frame_opt.unwrap();
             kaliski_iteration_bulk_prefix3(
                 b,
                 p,
@@ -8872,7 +8989,18 @@ fn kaliski_forward_prescaled_kind(
                 st.m_hist[i],
                 i,
                 None,
+                frame,
             );
+            if i + 1 == bulk_prefix_iters && bulk_prefix_iters < iters {
+                let final_rs_width = if bulk_prefix_iters + 1 < n { bulk_prefix_iters + 1 } else { n };
+                for j in 1..final_rs_width {
+                    cswap(b, frame, st.r[j], st.s[j]);
+                }
+                b.x(st.s[0]);
+                b.cx(st.s[0], frame);
+                b.x(st.s[0]);
+                b.free(frame);
+            }
         } else {
             kaliski_iteration(
                 b,
@@ -8885,8 +9013,20 @@ fn kaliski_forward_prescaled_kind(
                 st.f_flag,
                 i,
                 None,
+                frame_opt.unwrap_or(dummy_frame),
             );
         }
+    }
+    if use_bulk_prefix3 && bulk_prefix_iters == iters {
+        let frame = frame_opt.unwrap();
+        let final_rs_width = if iters + 1 < n { iters + 1 } else { n };
+        for j in 1..final_rs_width {
+            cswap(b, frame, st.r[j], st.s[j]);
+        }
+        b.x(st.s[0]);
+        b.cx(st.s[0], frame);
+        b.x(st.s[0]);
+        b.free(frame);
     }
 }
 
@@ -8926,8 +9066,21 @@ fn kaliski_backward_prescaled_kind(
 
     let use_bulk_prefix3 = bulk_prefix_enabled();
     let bulk_prefix_iters = bulk_prefix_safe_iters();
+    let mut frame_opt: Option<QubitId> = None;
+    let dummy_frame = st.f_flag;
     for i in (0..iters).rev() {
         if use_bulk_prefix3 && i < bulk_prefix_iters {
+            if frame_opt.is_none() {
+                let frame = b.alloc_qubit();
+                b.x(st.s[0]);
+                b.cx(st.s[0], frame);
+                b.x(st.s[0]);
+                let final_rs_width = if bulk_prefix_iters + 1 < n { bulk_prefix_iters + 1 } else { n };
+                for j in 1..final_rs_width {
+                    cswap(b, frame, st.r[j], st.s[j]);
+                }
+                frame_opt = Some(frame);
+            }
             kaliski_iteration_bulk_prefix3_backward(
                 b,
                 p,
@@ -8937,6 +9090,7 @@ fn kaliski_backward_prescaled_kind(
                 &st.s,
                 st.m_hist[i],
                 i,
+                frame_opt.unwrap(),
             );
         } else {
             kaliski_iteration_backward(
@@ -8949,8 +9103,12 @@ fn kaliski_backward_prescaled_kind(
                 st.m_hist[i],
                 st.f_flag,
                 i,
+                frame_opt.unwrap_or(dummy_frame),
             );
         }
+    }
+    if let Some(frame) = frame_opt {
+        b.free(frame);
     }
 
     b.x(st.f_flag);
