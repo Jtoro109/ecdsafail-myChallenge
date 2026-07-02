@@ -314,6 +314,13 @@ impl B {
         op.c_condition = cond;
         self.ops.push(op);
     }
+    fn z_if(&mut self, q: QubitId, cond: BitId) {
+        let mut op = Op::empty();
+        op.kind = OperationType::Z;
+        op.q_target = q;
+        op.c_condition = cond;
+        self.ops.push(op);
+    }
     // ── Measurement / phase / classical bit ops ──
     fn hmr(&mut self, q: QubitId, c: BitId) {
         let mut op = Op::empty();
@@ -1757,6 +1764,75 @@ fn cmp_lt_into_fast(b: &mut B, u: &[QubitId], v: &[QubitId], flag: QubitId) {
 
 /// Like `mod_add_qq` but uses `cmp_lt_into_fast` for the flag uncompute.
 /// NOT safe inside emit_inverse blocks.
+fn add_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256) {
+    let n = acc.len();
+    if n == 0 {
+        return;
+    }
+    if n == 1 {
+        if bit(c, 0) {
+            b.x(acc[0]);
+        }
+        return;
+    }
+
+    let carries = b.alloc_qubits(n - 1);
+
+    // Forward carry sweep.
+    for i in 0..n - 1 {
+        let target = carries[i];
+        let carry_in = if i == 0 { None } else { Some(carries[i - 1]) };
+        if bit(c, i) {
+            if let Some(ci) = carry_in {
+                b.ccx(acc[i], ci, target);
+                b.cx(acc[i], target);
+                b.cx(ci, target);
+            } else {
+                b.cx(acc[i], target);
+            }
+        } else if let Some(ci) = carry_in {
+            b.ccx(acc[i], ci, target);
+        }
+    }
+
+    // Sum bits: acc_i ^= k_i ^ carry_i.
+    for i in 0..n {
+        if bit(c, i) {
+            b.x(acc[i]);
+        }
+        if i > 0 {
+            b.cx(carries[i - 1], acc[i]);
+        }
+    }
+
+    // Measurement-uncompute carries in reverse.
+    for i in (0..n - 1).rev() {
+        let m = b.alloc_bit();
+        b.hmr(carries[i], m);
+        let carry_in = if i == 0 { None } else { Some(carries[i - 1]) };
+        if bit(c, i) {
+            b.x(acc[i]);
+            if let Some(ci) = carry_in {
+                b.z_if(acc[i], m);
+                b.cz_if(acc[i], ci, m);
+                b.x(acc[i]);
+                b.z_if(ci, m);
+            } else {
+                b.z_if(acc[i], m);
+                b.x(acc[i]);
+            }
+        } else if let Some(ci) = carry_in {
+            b.x(acc[i]);
+            b.cz_if(acc[i], ci, m);
+            b.x(acc[i]);
+        }
+    }
+
+    b.free_vec(&carries);
+}
+
+/// Like `mod_add_qq` but uses `cmp_lt_into_fast` for the flag uncompute.
+/// NOT safe inside emit_inverse blocks.
 fn mod_add_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
     let n = acc.len();
     assert_eq!(n, a.len());
@@ -1787,10 +1863,7 @@ fn mod_add_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
         b.free(q_clean2[0]);
         b.free(q_clean2[1]);
     } else {
-        let n1 = acc_ext.len();
-        let ca = load_const(b, n1, c);
-        add_nbit_qq_fast(b, &ca, &acc_ext);
-        unload_const(b, &ca, c);
+        add_nbit_const_direct_fast(b, &acc_ext, c);
     }
     let flag = b.alloc_qubit();
     b.cx(acc_ovf, flag);
@@ -1811,20 +1884,7 @@ fn mod_add_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
         b.free(q_clean2[0]);
         b.free(q_clean2[1]);
     } else {
-        let n1 = acc_ext.len();
-        let ca = b.alloc_qubits(n1);
-        for i in 0..n1 {
-            if bit(c, i) {
-                b.cx(flag, ca[i]);
-            }
-        }
-        sub_nbit_qq_fast(b, &ca, &acc_ext);
-        for i in 0..n1 {
-            if bit(c, i) {
-                b.cx(flag, ca[i]);
-            }
-        }
-        b.free_vec(&ca);
+        csub_nbit_const_direct_fast(b, &acc_ext, c, flag);
     }
     b.x(flag);
     b.cx(flag, acc_ovf);
@@ -1870,10 +1930,7 @@ fn mod_add_qq_fast_from_zero(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256)
         b.free(q_clean2[0]);
         b.free(q_clean2[1]);
     } else {
-        let n1 = acc_ext.len();
-        let ca = load_const(b, n1, c);
-        add_nbit_qq_fast(b, &ca, &acc_ext);
-        unload_const(b, &ca, c);
+        add_nbit_const_direct_fast(b, &acc_ext, c);
     }
     let flag = b.alloc_qubit();
     b.cx(acc_ovf, flag);
@@ -1893,20 +1950,7 @@ fn mod_add_qq_fast_from_zero(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256)
         b.free(q_clean2[0]);
         b.free(q_clean2[1]);
     } else {
-        let n1 = acc_ext.len();
-        let ca = b.alloc_qubits(n1);
-        for i in 0..n1 {
-            if bit(c, i) {
-                b.cx(flag, ca[i]);
-            }
-        }
-        sub_nbit_qq_fast(b, &ca, &acc_ext);
-        for i in 0..n1 {
-            if bit(c, i) {
-                b.cx(flag, ca[i]);
-            }
-        }
-        b.free_vec(&ca);
+        csub_nbit_const_direct_fast(b, &acc_ext, c, flag);
     }
     b.x(flag);
     b.cx(flag, acc_ovf);
@@ -3891,7 +3935,7 @@ fn mulmod(a: U256, b: U256, p: U256) -> U256 {
 /// (since max(r,s) doubles per iter starting from max=1, so max ≤ 2^iter_idx).
 /// In that range, mod_double(r)'s Solinas cadd is identity — replace with
 /// a plain shift (0 Toffoli) for ~255 CCX savings per iter.
-const R_SMALL_THRESHOLD: usize = 262;
+const R_SMALL_THRESHOLD: usize = 263;
 
 fn r_small_threshold() -> usize {
     std::env::var("KAL_R_SMALL_THRESHOLD")
@@ -3909,7 +3953,7 @@ fn r_small_threshold() -> usize {
 /// `2^256`. Termination requires reaching `(1, 0)`, i.e. `s = 1`, so any run
 /// needs at least `ceil(log2(s0)) = 256` steps. Therefore the first 256 step
 /// entries are guaranteed bulk / nonterminal.
-const BULK_PREFIX_SAFE_ITERS: usize = 377;
+const BULK_PREFIX_SAFE_ITERS: usize = 394;
 
 fn env_usize(name: &str) -> Option<usize> {
     std::env::var(name).ok().and_then(|s| s.parse::<usize>().ok())
@@ -9440,7 +9484,7 @@ fn build_standard_point_add(
     let pair1_iters = std::env::var("KAL_PAIR1_ITERS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(400);
+        .unwrap_or(399);
     // The tagged validation paths change the op stream / Fiat-Shamir seed;
     // keep pair2 at the prior robust 404 setting to avoid conflating the
     // algebra probe with an iteration-threshold phase cliff.  Env overrides are
@@ -9451,7 +9495,7 @@ fn build_standard_point_add(
     let pair2_default = if tagged_div_validate || pair2_branch_inv {
         404
     } else {
-        400
+        399
     };
     let pair2_iters = std::env::var("KAL_PAIR2_ITERS")
         .ok()
