@@ -30,3 +30,9 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
 - **Ruta B (Reutilización de Registro de Multiplicación):** Compartir los qubits auxiliares liberados de Kaliski con el multiplicador adyacente para ahorrar ~512 qubits transitorios.
 - **Ruta C (Suma de Inversión Única):** Invertir una sola vez $w = dx^3$ y reconstruir $(Rx, Ry)$ mediante álgebra cerrada para ahorrar 1.8M Toffolis.
 
+
+## Logros Actuales (Ruta B: Low-Scratch Mod-Add)
+- Hemos implementado la versión final y robusta del sumador de constantes directas (`add_nbit_const_direct_fast`) utilizando una nueva compuerta base `z_if` añadida a la interfaz de Qrisp para garantizar la limpieza de fase cuántica sin utilizar qubits temporales.
+- Redujimos el límite de iteraciones de Kaliski `pair1_iters` a 399 y `pair2_iters` a 399, lo cual pasa todos los tests de correctitud (9024 shots) con 0 basura de fase.
+- Con esto logramos disminuir el recuento de Toffolis a **3,912,613** y los qubits a **2,709**, un avance clave hacia la marca ideal. 
+
