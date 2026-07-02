@@ -4063,8 +4063,8 @@ fn bulk_prefix_caps(pair: KalPair) -> BulkPrefixCaps {
         && env_usize("KAL_PAIR1_BULK3_FWD_ITERS").is_none()
         && env_usize("KAL_PAIR1_BULK3_BK_ITERS").is_none()
     {
-        forward = 378;
-        backward = 378;
+        forward = 397;
+        backward = 397;
     }
 
     BulkPrefixCaps { forward, backward }
