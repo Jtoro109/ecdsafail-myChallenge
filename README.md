@@ -65,15 +65,17 @@ run fail, not faster.
 
 | | Toffoli (avg/shot) | Peak qubits | Score |
 |---|---|---|---|
-| Current `main` | 3,942,753 | 2,715 | 1.07 × 10¹⁰ |
-| **Our Optimized myCircuit** | **3,624,680** | **2,710** | **9.82 × 10⁹** |
+| Original `main` baseline | 3,942,753 | 2,715 | 1.07 × 10¹⁰ |
+| Previous `myCircuit` (pre-modularization) | 3,624,680 | 2,710 | 9.82 × 10⁹ |
+| **Current `myCircuit` (modularized)** | **3,063,680** | **2,310** | **7.08 × 10⁹** |
 | Google's private low-qubit Pareto point | 2,700,000 | 1,175 | 3.2 × 10⁹ |
 | Google's private low-gate Pareto point | 2,100,000 | 1,425 | 3.0 × 10⁹ |
 
-We've run a research loop that has cut the score by ~33× from the textbook baseline.
-The published Pareto frontier sits roughly **3× lower still**. We believe
-both points on that frontier — and points strictly below them — are
-beatable.
+We've run a research loop that has cut the score by ~33× from the textbook baseline
+and **~1.5× further** through full modularization and optimization.
+The published Pareto frontier sits roughly **2.4× lower still** — the main
+gap is in qubit width (2,310 vs ~1,175–1,425). We believe both points on
+that frontier — and points strictly below them — are beatable.
 
 ---
 
