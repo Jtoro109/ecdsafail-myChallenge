@@ -3614,6 +3614,7 @@ fn square_tx_and_combined_ty_l2minus3qx(
     mod_add_qb(b, tx, ox, p);
     mod_neg_inplace_fast(b, tx, p);
 
+    b.set_phase("affine_combined_square_uncompute_final");
     schoolbook_square_symmetric_inverse(b, lam, &tmp_ext);
     b.free_vec(&tmp_ext);
 }
@@ -9791,7 +9792,7 @@ fn build_standard_point_add(
     p: U256,
 ) {
     let pair2_branch_inv = std::env::var("KAL_PAIR2_BRANCH_INV_ROLL").ok().as_deref() == Some("1");
-    let kal_pair1_borrow_dx_denom = env_flag_enabled("KAL_PAIR1_BORROW_DX_DENOM", false);
+    let kal_pair1_borrow_dx_denom = env_flag_enabled("KAL_PAIR1_BORROW_DX_DENOM", true);
     let kal_pair1_invkeep_outside_lambda =
         env_flag_enabled("KAL_PAIR1_INVKEEP_OUTSIDE_LAMBDA", false);
     let kal_pair1_invkeep_skip_second_cleanup =
@@ -10274,7 +10275,7 @@ fn build_standard_point_add(
                     b.free_vec(&scaled_tx);
                 }
             } else {
-                with_kal_inv_raw_pair(b, &tx, p, pair2_iters, KalPair::Pair2, |b, inv_raw| {
+                with_kal_inv_raw_borrow_v_w_pair(b, &tx, p, pair2_iters, KalPair::Pair2, |b, inv_raw| {
                     b.set_phase("pair2_double");
                     for _ in 0..pair2_iters {
                         mod_double_inplace_fast(b, &lam, p);
