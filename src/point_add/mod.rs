@@ -1515,22 +1515,14 @@ fn mod_shift_left_by_k(
 
     // Step 3: const add.
     b.set_phase("shift22_step3");
-    if lowq_shift22() {
-        add_nbit_const(b, &v_ext, c);
-    } else {
-        add_nbit_const_fast(b, &v_ext, c);
-    }
+    add_nbit_const_direct_fast(b, &v_ext, c);
     b.x(ovf);
     b.cx(ovf, flag_inv); // flag_inv = NOT(top_bit_after_add) = (value < p)
     b.x(ovf);
 
     // Step 4: conditional const sub.
     b.set_phase("shift22_step4");
-    if lowq_shift22() {
-        csub_nbit_const(b, &v_ext, c, flag_inv);
-    } else {
-        csub_nbit_const_fast(b, &v_ext, c, flag_inv);
-    }
+    csub_nbit_const_direct_fast(b, &v_ext, c, flag_inv);
     b.x(flag_inv);
     b.cx(flag_inv, ovf);
     b.x(flag_inv);
@@ -1560,22 +1552,14 @@ fn mod_shift_right_by_k(
     b.cx(flag_inv, ovf);
     b.x(flag_inv);
     b.set_phase("rshift22_rev_step4");
-    if lowq_shift22() {
-        cadd_nbit_const(b, &v_ext, c, flag_inv);
-    } else {
-        cadd_nbit_const_fast(b, &v_ext, c, flag_inv);
-    }
+    cadd_nbit_const_direct_fast(b, &v_ext, c, flag_inv);
 
     // Reverse step 3.
     b.x(ovf);
     b.cx(ovf, flag_inv);
     b.x(ovf);
     b.set_phase("rshift22_rev_step3");
-    if lowq_shift22() {
-        sub_nbit_const(b, &v_ext, c);
-    } else {
-        sub_nbit_const_fast(b, &v_ext, c);
-    }
+    sub_nbit_const_direct_fast(b, &v_ext, c);
     b.free(flag_inv);
     b.set_phase("rshift22_rev_step2");
 
@@ -1866,6 +1850,72 @@ fn cmp_lt_into_fast(b: &mut B, u: &[QubitId], v: &[QubitId], flag: QubitId) {
     }
     b.free_vec(&carries);
     b.free(c_in);
+}
+
+fn sub_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256) {
+    let n = acc.len();
+    if n == 0 {
+        return;
+    }
+    if n == 1 {
+        if bit(c, 0) {
+            b.x(acc[0]);
+        }
+        return;
+    }
+
+    let borrows = b.alloc_qubits(n - 1);
+
+    // Forward borrow sweep.
+    for i in 0..n - 1 {
+        let target = borrows[i];
+        let borrow_in = if i == 0 { None } else { Some(borrows[i - 1]) };
+        if bit(c, i) {
+            b.x(acc[i]);
+            if let Some(bi) = borrow_in {
+                b.ccx(acc[i], bi, target);
+                b.cx(acc[i], target);
+                b.cx(bi, target);
+            } else {
+                b.cx(acc[i], target);
+            }
+            b.x(acc[i]);
+        } else if let Some(bi) = borrow_in {
+            b.x(acc[i]);
+            b.ccx(acc[i], bi, target);
+            b.x(acc[i]);
+        }
+    }
+
+    // Difference bits.
+    for i in 0..n {
+        if bit(c, i) {
+            b.x(acc[i]);
+        }
+        if i > 0 {
+            b.cx(borrows[i - 1], acc[i]);
+        }
+    }
+
+    // Measurement-uncompute borrows.
+    for i in (0..n - 1).rev() {
+        let m = b.alloc_bit();
+        b.hmr(borrows[i], m);
+        let borrow_in = if i == 0 { None } else { Some(borrows[i - 1]) };
+        if bit(c, i) {
+            if let Some(bi) = borrow_in {
+                b.cz_if(acc[i], bi, m);
+                b.z_if(acc[i], m);
+                b.z_if(bi, m);
+            } else {
+                b.z_if(acc[i], m);
+            }
+        } else if let Some(bi) = borrow_in {
+            b.cz_if(acc[i], bi, m);
+        }
+    }
+
+    b.free_vec(&borrows);
 }
 
 /// Like `mod_add_qq` but uses `cmp_lt_into_fast` for the flag uncompute.
