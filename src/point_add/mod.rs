@@ -71,6 +71,7 @@ use crate::weierstrass_elliptic_curve::WeierstrassEllipticCurve;
 
 mod fermat_inv;
 mod venting;
+pub mod kaliski_classical_replay;
 
 struct B {
     pub ops: Vec<Op>,
