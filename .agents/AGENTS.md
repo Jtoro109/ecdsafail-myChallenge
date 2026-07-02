@@ -22,3 +22,10 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
   git push -u personal myCircuit:main
   ```
 - **Documentar:** Actualizar la tabla comparativa de puntajes en el [README.md](file:///home/emanuel/Documents/Universidad/Cripto/ellipticCurve/README.md).
+
+## 3. Estrategias de Optimización Estructural (Roadmap)
+- **Ruta A (Eliminación de `m_hist`):** Reemplazar el vector persistente de historial de 407 qubits con un qubit ancila local recomputado/descomputado en cada iteración del paso backward usando la fórmula:
+  $$m_i = f \land u[0] \land (\neg v_w[0] \lor (u > v_w))$$
+- **Ruta B (Reutilización de Registro de Multiplicación):** Compartir los qubits auxiliares liberados de Kaliski con el multiplicador adyacente para ahorrar ~512 qubits transitorios.
+- **Ruta C (Suma de Inversión Única):** Invertir una sola vez $w = dx^3$ y reconstruir $(Rx, Ry)$ mediante álgebra cerrada para ahorrar 1.8M Toffolis.
+
