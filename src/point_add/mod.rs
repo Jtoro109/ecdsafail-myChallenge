@@ -137,6 +137,7 @@ mod builder;
 pub(crate) use builder::*;
 
 
+
 pub fn build() -> Vec<Op> {
     let b = &mut B::new();
     // Register 0: target_x (quantum)

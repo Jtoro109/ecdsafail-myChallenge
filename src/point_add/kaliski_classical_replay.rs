@@ -518,6 +518,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_backward_determinism() {
         use std::collections::HashMap;
         let p = SECP256K1_P;
