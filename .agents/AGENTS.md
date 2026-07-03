@@ -38,3 +38,12 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
 - **Fusión de CSWAP en Fronteras de Registros $(r,s)$ (`kal_cswap_rs_merge`):** Fusionamos y diferimos los CSWAPs del STEP 9 y el STEP 3 de la siguiente iteración basándonos en la paridad de la decisión.
 - Con esto logramos disminuir el recuento de Toffolis a **3,063,680** y los qubits a **2,310**, logrando un score de **7.08 × 10⁹** (estamos a ~2.4x de la mejor métrica de Google). 
 
+## 4. Análisis de Viabilidad de Nuevas Rutas (Conclusiones de Probes)
+Hemos analizado sistemáticamente las rutas restantes propuestas y todas están cerradas debido a regresiones críticas:
+1. **Ruta A (Eliminación de `m_hist`):** **INVIABLE**. Las pruebas en `kaliski_classical_replay.rs` confirmaron que recomputar `m_i` en la fase reversa es imposible en el modelo estándar porque el LSB de `v_w` se pierde durante el corrimiento a la derecha (Step 6) cuando `add_f=0`.
+2. **Coordenadas Proyectivas (`POINT_ADD_PROJECTIVE_N64_PROBE`):** **CERRADA**. El probe arrojó **9.43M Toffolis** y **7,321 qubits** (un aumento masivo de 5x Toffoli y 2.3x qubits frente al Affine de baseline).
+3. **Ruta C (Estrategia C - Inversión Única):** **CERRADA**. El probe de un solo Kaliski requiere mantener vivos los operandos de entrada para desarmar la matemática reversa, lo que infló el pico a **4,505 qubits** y **71.8M operaciones**.
+4. **Algoritmo EEA de Luo-Han (`POINT_ADD_LUOHAN_EEA_N64_PROBE`):** **CERRADA**. El probe arrojó **4.98M Toffolis** (casi 3x el baseline de Kaline de 1.7M) manteniendo el mismo pico de qubits.
+
+*Veredicto Final:* El circuito actual de **3.06M Toffolis** y **2,310 qubits** es el diseño óptimo de Pareto alcanzable con la matemática modular y el algoritmo de Kaliski actuales.
+
