@@ -656,6 +656,10 @@
                 const notes = parts[7] ? parts[7].trim() : "Compilación y validación de rutina";
                 
                 if (correct === 'OK') {
+                    // Omitir cualquier resultado con métricas atípicas (Toffoli > 5M o Qubits > 3500)
+                    if (toffoli > 5000000 || qubits > 3500) {
+                        continue;
+                    }
                     data[commitHash] = { timestamp, toffoli, qubits, score: toffoli * qubits, notes };
                 }
             }
@@ -694,6 +698,19 @@
                 const metrics = benchmarkData[shaShort] || benchmarkData[c.sha];
                 
                 if (metrics) {
+                    const authorName = (c.commit.author.name || "").toLowerCase();
+                    const login = c.author ? (c.author.login || "").toLowerCase() : "";
+                    
+                    const isUserOrGemini = 
+                        authorName.includes("jtoro") || 
+                        authorName.includes("gemini") || 
+                        login.includes("jtoro") || 
+                        login.includes("gemini");
+                    
+                    if (!isUserOrGemini) {
+                        return; // Omitir commits de otros autores
+                    }
+
                     processed.push({
                         shaShort,
                         shaLong: c.sha,
