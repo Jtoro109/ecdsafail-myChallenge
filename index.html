@@ -593,12 +593,12 @@
 
             // 1. Intentar cargar TSV y Commits en línea desde GitHub
             try {
-                const tsvUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/results.tsv`;
+                const tsvUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/results.tsv?nocache=${new Date().getTime()}`;
                 const tsvResponse = await fetch(tsvUrl);
                 if (tsvResponse.ok) {
                     tsvText = await tsvResponse.text();
                     
-                    const commitResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?sha=${branch}&per_page=100`);
+                    const commitResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?sha=${branch}&per_page=100&nocache=${new Date().getTime()}`);
                     if (commitResponse.ok) {
                         commits = await commitResponse.json();
                         loadedOnline = true;
@@ -612,7 +612,7 @@
             // 2. Intentar cargar localmente si la conexión online falló (para localhost)
             if (!loadedOnline) {
                 try {
-                    const localTsvResponse = await fetch('./results.tsv');
+                    const localTsvResponse = await fetch(`./results.tsv?nocache=${new Date().getTime()}`);
                     if (localTsvResponse.ok) {
                         tsvText = await localTsvResponse.text();
                         syncStatus.innerText = "Localhost Sync OK";
