@@ -600,9 +600,12 @@
                     
                     const commitResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?sha=${branch}&per_page=100&nocache=${new Date().getTime()}`);
                     if (commitResponse.ok) {
-                        commits = await commitResponse.json();
-                        loadedOnline = true;
-                        syncStatus.innerText = "GitHub Sync OK";
+                        const json = await commitResponse.json();
+                        if (Array.isArray(json)) {
+                            commits = json;
+                            loadedOnline = true;
+                            syncStatus.innerText = "GitHub Sync OK";
+                        }
                     }
                 }
             } catch (e) {
@@ -632,8 +635,8 @@
 
             const benchmarkData = parseTSV(tsvText);
 
-            // 4. Si la API de GitHub no cargó commits, creamos la lista sintética de commits desde results.tsv
-            if (commits.length === 0) {
+            // 4. Si la API de GitHub no cargó commits o no es un array, creamos la lista sintética
+            if (!Array.isArray(commits) || commits.length === 0) {
                 commits = generateSyntheticCommits(benchmarkData);
             }
 
@@ -690,39 +693,55 @@
         }
 
         function processAndRenderData(commits, benchmarkData) {
+            if (!Array.isArray(commits)) {
+                commits = [];
+            }
+            
             const processed = [];
             const chronological = [...commits].reverse();
             
             chronological.forEach(c => {
-                const shaShort = c.sha.substring(0, 7);
-                const metrics = benchmarkData[shaShort] || benchmarkData[c.sha];
-                
-                if (metrics) {
-                    const authorName = (c.commit.author.name || "").toLowerCase();
-                    const login = c.author ? (c.author.login || "").toLowerCase() : "";
+                try {
+                    const shaShort = c.sha ? c.sha.substring(0, 7) : "";
+                    const metrics = benchmarkData[shaShort] || (c.sha ? benchmarkData[c.sha] : null);
                     
-                    const isUserOrGemini = 
-                        authorName.includes("jtoro") || 
-                        authorName.includes("gemini") || 
-                        login.includes("jtoro") || 
-                        login.includes("gemini");
-                    
-                    if (!isUserOrGemini) {
-                        return; // Omitir commits de otros autores
-                    }
+                    if (metrics) {
+                        const authorName = (c.commit?.author?.name || "").toLowerCase();
+                        const login = (c.author?.login || "").toLowerCase();
+                        const email = (c.commit?.author?.email || "").toLowerCase();
+                        
+                        const isUserOrGemini = 
+                            authorName.includes("jtoro") || 
+                            authorName.includes("gemini") || 
+                            authorName.includes("emanuel") ||
+                            authorName.includes("toro") ||
+                            login.includes("jtoro") || 
+                            login.includes("gemini") ||
+                            login.includes("emanuel") ||
+                            email.includes("jtoro") ||
+                            email.includes("toro") ||
+                            email.includes("gemini") ||
+                            email.includes("emanuel");
+                        
+                        if (!isUserOrGemini) {
+                            return; // Omitir commits de otros autores
+                        }
 
-                    processed.push({
-                        shaShort,
-                        shaLong: c.sha,
-                        message: c.commit.message,
-                        authorName: c.commit.author.name,
-                        authorAvatar: c.author ? c.author.avatar_url : 'https://github.com/identicons/guest.png',
-                        date: new Date(c.commit.author.date),
-                        htmlUrl: c.html_url,
-                        toffoli: metrics.toffoli,
-                        qubits: metrics.qubits,
-                        score: metrics.score
-                    });
+                        processed.push({
+                            shaShort,
+                            shaLong: c.sha,
+                            message: c.commit?.message || "Optimización de rutina",
+                            authorName: c.commit?.author?.name || "Jtoro109",
+                            authorAvatar: c.author?.avatar_url || 'https://github.com/Jtoro109.png',
+                            date: new Date(c.commit?.author?.date || (metrics.timestamp * 1000)),
+                            htmlUrl: c.html_url || `https://github.com/${owner}/${repo}/commit/${shaShort}`,
+                            toffoli: metrics.toffoli,
+                            qubits: metrics.qubits,
+                            score: metrics.score
+                        });
+                    }
+                } catch (err) {
+                    console.error("Error al procesar commit individual:", err);
                 }
             });
 
