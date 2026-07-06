@@ -706,9 +706,9 @@
                     const metrics = benchmarkData[shaShort] || (c.sha ? benchmarkData[c.sha] : null);
                     
                     if (metrics) {
-                        const authorName = (c.commit?.author?.name || "").toLowerCase();
-                        const login = (c.author?.login || "").toLowerCase();
-                        const email = (c.commit?.author?.email || "").toLowerCase();
+                        const authorName = (c.commit && c.commit.author && c.commit.author.name || "").toLowerCase();
+                        const login = (c.author && c.author.login || "").toLowerCase();
+                        const email = (c.commit && c.commit.author && c.commit.author.email || "").toLowerCase();
                         
                         const isUserOrGemini = 
                             authorName.includes("jtoro") || 
@@ -730,10 +730,10 @@
                         processed.push({
                             shaShort,
                             shaLong: c.sha,
-                            message: c.commit?.message || "Optimización de rutina",
-                            authorName: c.commit?.author?.name || "Jtoro109",
-                            authorAvatar: c.author?.avatar_url || 'https://github.com/Jtoro109.png',
-                            date: new Date(c.commit?.author?.date || (metrics.timestamp * 1000)),
+                            message: (c.commit && c.commit.message) || "Optimización de rutina",
+                            authorName: (c.commit && c.commit.author && c.commit.author.name) || "Jtoro109",
+                            authorAvatar: (c.author && c.author.avatar_url) || 'https://github.com/Jtoro109.png',
+                            date: new Date((c.commit && c.commit.author && c.commit.author.date) || (metrics.timestamp * 1000)),
                             htmlUrl: c.html_url || `https://github.com/${owner}/${repo}/commit/${shaShort}`,
                             toffoli: metrics.toffoli,
                             qubits: metrics.qubits,
@@ -773,12 +773,23 @@
 
             document.getElementById('table-subtitle').innerText = `${processed.length} ejecuciones exitosas registradas de forma local/online`;
 
-            // Gráfica y Tabla
-            renderChart(processed);
+            // Gráfica y Tabla de manera segura
+            try {
+                if (typeof Chart !== 'undefined') {
+                    renderChart(processed);
+                } else {
+                    console.warn("Chart.js no está cargado.");
+                }
+            } catch (chartErr) {
+                console.error("Error al renderizar gráfica:", chartErr);
+            }
             
-            // Ordenar para la tabla (mejor score primero)
-            const sorted = [...processed].sort((a, b) => a.score - b.score);
-            renderTable(sorted);
+            try {
+                const sorted = [...processed].sort((a, b) => a.score - b.score);
+                renderTable(sorted);
+            } catch (tableErr) {
+                console.error("Error al renderizar tabla:", tableErr);
+            }
         }
 
         function renderChart(data) {
