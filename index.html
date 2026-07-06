@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Benchmark Dashboard - ECDSA Fail</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-base: #080f0b;
+            --bg-surface: #0f1c14;
+            --bg-card: rgba(20, 36, 26, 0.4);
+            --border-color: rgba(64, 120, 90, 0.2);
+            --text-primary: #f2f7f4;
+            --text-secondary: #a3bdae;
+            --accent-primary: #10b981;
+            --accent-primary-hover: #059669;
+            --accent-glow: rgba(16, 185, 129, 0.15);
+            --gold: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding-bottom: 80px;
+            background-image: radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.08) 0%, transparent 50%);
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 40px;
+            background: rgba(8, 15, 11, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 800;
+            font-size: 22px;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #10b981, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo span {
+            color: var(--text-secondary);
+            font-weight: 300;
+            -webkit-text-fill-color: initial;
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 25px;
+        }
+
+        .status-badge {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-primary);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--accent-primary);
+            animation: pulse 2s infinite;
+        }
+
+        .profile {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255,255,255,0.03);
+            padding: 5px 15px;
+            border-radius: 30px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background-color: #333;
+            border: 2px solid var(--accent-primary);
+        }
+
+        .main-container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 25px;
+        }
+
+        /* Configuración del Repositorio Selector */
+        .repo-config {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            padding: 24px;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 30px;
+            display: flex;
+            gap: 20px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+            min-width: 220px;
+        }
+
+        .input-group label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-group input {
+            padding: 12px;
+            background: var(--bg-base);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 14px;
+            color: var(--text-primary);
+            transition: all 0.2s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        .load-btn {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary-hover));
+            color: #fff;
+            border: none;
+            padding: 13px 24px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px var(--accent-glow);
+        }
+
+        .load-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px var(--accent-glow);
+        }
+
+        /* Hero Dashboard Card */
+        .hero-banner {
+            background: linear-gradient(135deg, var(--bg-surface), #0b140f);
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            padding: 35px;
+            margin-bottom: 40px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .hero-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .hero-title h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 36px;
+            font-weight: 800;
+            color: #fff;
+            letter-spacing: -0.5px;
+        }
+
+        .hero-title p {
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin-top: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        /* Stats Row */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 20px;
+            margin-bottom: 35px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 30px;
+        }
+
+        .stat-box {
+            background: rgba(255,255,255,0.02);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.03);
+        }
+
+        .stat-box .label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-box .value {
+            font-size: 24px;
+            font-weight: 800;
+            color: #fff;
+            margin-top: 5px;
+        }
+
+        /* Chart */
+        .chart-container {
+            position: relative;
+            height: 320px;
+            width: 100%;
+        }
+
+        /* Leaderboard Table Section */
+        .leaderboard-section {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            padding: 30px;
+        }
+
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .table-title h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .table-title p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .best-score-display {
+            text-align: right;
+        }
+
+        .best-score-display .label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .best-score-display .value {
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--accent-primary);
+            text-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+        }
+
+        /* Table Styling */
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th {
+            text-align: left;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            letter-spacing: 1px;
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        td {
+            padding: 20px 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            vertical-align: middle;
+            font-size: 14px;
+        }
+
+        tr:hover td {
+            background-color: rgba(255,255,255,0.01);
+        }
+
+        .solver-cell {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .solver-avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.1);
+        }
+
+        .solver-info .name {
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .solver-info .commit-msg {
+            font-size: 12px;
+            color: var(--text-secondary);
+            max-width: 400px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: 2px;
+        }
+
+        .score-major {
+            font-weight: 800;
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            font-size: 16px;
+        }
+
+        .score-minor {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 3px;
+        }
+
+        .diff-text {
+            font-weight: 700;
+            color: var(--accent-primary);
+        }
+
+        .date-text {
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .link-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background-color: var(--bg-surface);
+            color: var(--accent-primary);
+            border: 1px solid var(--border-color);
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            transition: all 0.2s;
+        }
+
+        .link-btn:hover {
+            background-color: var(--accent-primary);
+            color: #fff;
+            border-color: var(--accent-primary);
+            box-shadow: 0 4px 10px var(--accent-glow);
+        }
+
+        .error-message {
+            color: #ef4444;
+            font-size: 14px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.5; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">ECDSACount<span>.dashboard</span></div>
+        <div class="nav-right">
+            <div class="status-badge">
+                <div class="status-dot"></div>
+                Real-time Sync Activo
+            </div>
+            <div class="profile">
+                <img class="avatar" id="user-avatar" src="https://github.com/identicons/guest.png" alt="User avatar">
+                <span id="user-name">Invitado</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="main-container">
+
+        <!-- Selector de Repositorio -->
+        <div class="repo-config">
+            <div class="input-group">
+                <label for="repo-owner">Usuario de GitHub</label>
+                <input type="text" id="repo-owner" value="Jtoro109">
+            </div>
+            <div class="input-group">
+                <label for="repo-name">Repositorio</label>
+                <input type="text" id="repo-name" value="ecdsafail-myChallenge">
+            </div>
+            <div class="input-group">
+                <label for="repo-branch">Rama</label>
+                <input type="text" id="repo-branch" value="myCircuit">
+            </div>
+            <button class="load-btn" id="fetch-btn">Conectar y Actualizar</button>
+            <div class="error-message" id="error-msg">No se pudo cargar el repositorio. Verifica que sea público o que la rama exista.</div>
+        </div>
+
+        <!-- Hero Banner con Gráfica -->
+        <div class="hero-banner">
+            <div class="hero-header">
+                <div class="hero-title">
+                    <h1 id="hero-percentage">0.0% de optimización</h1>
+                    <p>Historial real de compilaciones y pico de qubits físicos (secp256k1)</p>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="label">Total Commits</div>
+                    <div class="value" id="stat-total-commits">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="label">Último Commit Hash</div>
+                    <div class="value" id="stat-last-sha">N/A</div>
+                </div>
+                <div class="stat-box">
+                    <div class="label">Toffoli Mínimo</div>
+                    <div class="value" id="stat-min-toffoli">N/A</div>
+                </div>
+                <div class="stat-box">
+                    <div class="label">Qubits Mínimos</div>
+                    <div class="value" id="stat-min-qubits">N/A</div>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <canvas id="historyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Tabla de Posiciones -->
+        <div class="leaderboard-section">
+            <div class="table-header">
+                <div class="table-title">
+                    <h2>Historial de Commits del Desarrollador</h2>
+                    <p id="table-subtitle">Cargando datos históricos...</p>
+                </div>
+                <div class="best-score-display">
+                    <div class="label">Score Mínimo Logrado</div>
+                    <div class="value" id="best-score-val">0</div>
+                </div>
+            </div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Commit / Mensaje</th>
+                            <th>Complejidad (Score)</th>
+                            <th>Métricas Detalladas</th>
+                            <th>Fecha de Envío</th>
+                            <th>Enlace</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-body">
+                        <!-- Filas dinámicas aquí -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let myChart = null;
+
+        // Cargar inputs guardados en localStorage
+        if (localStorage.getItem('repo-owner')) {
+            document.getElementById('repo-owner').value = localStorage.getItem('repo-owner');
+            document.getElementById('repo-name').value = localStorage.getItem('repo-name');
+            document.getElementById('repo-branch').value = localStorage.getItem('repo-branch');
+        }
+
+        document.getElementById('fetch-btn').addEventListener('click', () => {
+            // Guardar inputs
+            localStorage.setItem('repo-owner', document.getElementById('repo-owner').value.trim());
+            localStorage.setItem('repo-name', document.getElementById('repo-name').value.trim());
+            localStorage.setItem('repo-branch', document.getElementById('repo-branch').value.trim());
+            loadGitHubCommits();
+        });
+
+        window.addEventListener('DOMContentLoaded', loadGitHubCommits);
+
+        async function loadGitHubCommits() {
+            const owner = document.getElementById('repo-owner').value.trim();
+            const repo = document.getElementById('repo-name').value.trim();
+            const branch = document.getElementById('repo-branch').value.trim();
+            const errorMsg = document.getElementById('error-msg');
+            
+            errorMsg.style.display = 'none';
+
+            try {
+                // 1. Descargar results.tsv del repositorio remoto
+                const tsvUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/results.tsv`;
+                const tsvResponse = await fetch(tsvUrl);
+                if (!tsvResponse.ok) throw new Error('No se pudo obtener el archivo results.tsv');
+                const tsvText = await tsvResponse.text();
+                const benchmarkData = parseTSV(tsvText);
+
+                // 2. Consultar la API de commits de GitHub
+                const commitResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?sha=${branch}&per_page=100`);
+                if (!commitResponse.ok) throw new Error('No se pudo obtener el historial de commits');
+                const commits = await commitResponse.json();
+
+                processAndRenderData(commits, benchmarkData);
+            } catch (error) {
+                console.error(error);
+                errorMsg.style.display = 'block';
+            }
+        }
+
+        function parseTSV(text) {
+            const lines = text.trim().split('\n');
+            const data = {};
+            const headers = lines[0].toLowerCase().split('\t');
+            
+            for (let i = 1; i < lines.length; i++) {
+                const parts = lines[i].split('\t');
+                if (parts.length < 5) continue;
+                
+                const commitHash = parts[1].trim();
+                const toffoli = parseFloat(parts[2]);
+                const qubits = parseInt(parts[4]);
+                const correct = parts[6].trim();
+                
+                // Solo guardar si pasó de forma clásica exitosa
+                if (correct === 'OK') {
+                    data[commitHash] = { toffoli, qubits, score: toffoli * qubits };
+                }
+            }
+            return data;
+        }
+
+        function processAndRenderData(commits, benchmarkData) {
+            const owner = document.getElementById('repo-owner').value.trim();
+            
+            // Filtrar commits para mostrar sólo los del desarrollador
+            const filteredCommits = commits.filter(c => {
+                const authorLogin = c.author ? c.author.login : '';
+                const committerLogin = c.committer ? c.committer.login : '';
+                return authorLogin.toLowerCase() === owner.toLowerCase() || committerLogin.toLowerCase() === owner.toLowerCase();
+            });
+
+            if (filteredCommits.length === 0) {
+                document.getElementById('table-subtitle').innerText = "No se encontraron commits del autor en esta rama.";
+                return;
+            }
+
+            // Mapear commits con los datos de results.tsv
+            const processed = [];
+            
+            // Invertimos cronológicamente (antiguo a nuevo) para graficar progreso
+            const chronological = [...filteredCommits].reverse();
+            
+            chronological.forEach(c => {
+                const shaShort = c.sha.substring(0, 7);
+                const metrics = benchmarkData[shaShort];
+                
+                if (metrics) {
+                    processed.push({
+                        shaShort,
+                        shaLong: c.sha,
+                        message: c.commit.message,
+                        authorName: c.commit.author.name,
+                        authorAvatar: c.author ? c.author.avatar_url : 'https://github.com/identicons/guest.png',
+                        date: new Date(c.commit.author.date),
+                        htmlUrl: c.html_url,
+                        toffoli: metrics.toffoli,
+                        qubits: metrics.qubits,
+                        score: metrics.score
+                    });
+                }
+            });
+
+            if (processed.length === 0) {
+                document.getElementById('table-subtitle').innerText = "Nota: Mapeando registros de results.tsv (no asociados a commits de git).";
+                return;
+            }
+
+            // Actualizar interfaz con datos del desarrollador
+            const latest = processed[processed.length - 1];
+            document.getElementById('user-avatar').src = latest.authorAvatar;
+            document.getElementById('user-name').innerText = latest.authorName;
+
+            // Actualizar Estadísticas
+            document.getElementById('stat-total-commits').innerText = processed.length;
+            document.getElementById('stat-last-sha').innerText = latest.shaShort;
+            
+            const minToffoli = Math.min(...processed.map(p => p.toffoli));
+            const minQubits = Math.min(...processed.map(p => p.qubits));
+            document.getElementById('stat-min-toffoli').innerText = minToffoli.toLocaleString();
+            document.getElementById('stat-min-qubits').innerText = minQubits;
+
+            // Porcentaje de mejora total
+            const initialScore = processed[0].score;
+            const bestScore = Math.min(...processed.map(p => p.score));
+            const improvementPct = (((initialScore - bestScore) / initialScore) * 100).toFixed(1);
+            document.getElementById('hero-percentage').innerText = `${improvementPct}% de optimización lograda`;
+            document.getElementById('best-score-val').innerText = bestScore.toLocaleString();
+
+            document.getElementById('table-subtitle').innerText = `${processed.length} compilaciones exitosas registradas en el historial de commits`;
+
+            // Gráfica y Tabla
+            renderChart(processed);
+            
+            // Ordenar para la tabla (mejor score primero)
+            const sorted = [...processed].sort((a, b) => a.score - b.score);
+            renderTable(sorted);
+        }
+
+        function renderChart(data) {
+            const ctx = document.getElementById('historyChart').getContext('2d');
+
+            const labels = data.map(d => d.date.toLocaleDateString('es-ES', { month: 'short', day: 'numeric', hour: '2-digit' }));
+            const scores = data.map(d => d.score);
+            const urls = data.map(d => d.htmlUrl);
+
+            // Google target scores
+            const googleLowGate = Array(labels.length).fill(3000000000);
+
+            if (myChart) {
+                myChart.destroy();
+            }
+
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Nuestro Score (Toffoli × Qubits)',
+                            data: scores,
+                            borderColor: '#10b981',
+                            borderWidth: 3,
+                            backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                            pointBackgroundColor: '#10b981',
+                            pointBorderColor: '#080f0b',
+                            pointBorderWidth: 2,
+                            pointRadius: 6,
+                            pointHoverRadius: 8,
+                            tension: 0.2,
+                            fill: true
+                        },
+                        {
+                            label: 'Google Low-Gate (3.0B)',
+                            data: googleLowGate,
+                            borderColor: '#ef4444',
+                            borderWidth: 2,
+                            borderDash: [6, 6],
+                            backgroundColor: 'transparent',
+                            pointRadius: 0,
+                            pointHoverRadius: 0,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            display: true,
+                            labels: {
+                                color: '#a3bdae',
+                                font: { size: 11 }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: '#0f1c14',
+                            titleColor: '#fff',
+                            bodyColor: '#a3bdae',
+                            borderColor: 'rgba(16, 185, 129, 0.3)',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw.toLocaleString()}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255,255,255,0.02)', drawBorder: false },
+                            ticks: { color: '#a3bdae', font: { size: 10 } }
+                        },
+                        y: {
+                            grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false },
+                            ticks: { color: '#a3bdae', font: { size: 10 } },
+                            suggestedMin: 2000000000,
+                            suggestedMax: 11000000000
+                        }
+                    },
+                    onClick: (e, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            window.open(urls[index], '_blank');
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('leaderboard-body');
+            tbody.innerHTML = '';
+
+            const bestScore = Math.min(...data.map(d => d.score));
+
+            data.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                const isBest = item.score === bestScore;
+                const diffText = isBest ? "🏆 Óptimo" : `+${((item.score - bestScore) / bestScore * 100).toFixed(1)}%`;
+
+                tr.innerHTML = `
+                    <td>
+                        <div class="solver-cell">
+                            <span style="font-weight: 800; color: ${isBest ? 'var(--gold)' : 'var(--text-secondary)'}; width: 25px;">#${index + 1}</span>
+                            <div style="display: flex; align-items: center; margin-right: 5px; position: relative; width: 50px; height: 38px;">
+                                <img class="solver-avatar" src="${item.authorAvatar}" alt="avatar" style="position: absolute; left: 0; top: 0; z-index: 2; width: 32px; height: 32px;">
+                                <img class="solver-avatar" src="https://github.com/google-gemini.png" alt="Gemini" style="position: absolute; left: 16px; top: 8px; width: 26px; height: 26px; border: 2px solid var(--accent-primary); z-index: 1;" title="Co-autor: Gemini-AI / Antigravity">
+                            </div>
+                            <div class="solver-info">
+                                <div class="name">${item.authorName} <span style="font-size: 11px; font-weight: normal; color: var(--accent-primary); background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px; margin-left: 5px;">+ Gemini-AI</span></div>
+                                <div class="commit-msg">${item.message}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="score-major" style="color: ${isBest ? 'var(--accent-primary)' : '#fff'}">${item.score.toLocaleString()}</div>
+                        <div class="score-minor">SHA: ${item.shaShort}</div>
+                    </td>
+                    <td>
+                        <div style="font-size: 13px; font-weight: 600;">Toffoli: ${item.toffoli.toLocaleString()}</div>
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Qubits: ${item.qubits}</div>
+                    </td>
+                    <td>
+                        <span class="date-text">${item.date.toLocaleDateString('es-ES')} ${item.date.toLocaleTimeString('es-ES', {hour: '2-digit', minute:'2-digit'})}</span>
+                    </td>
+                    <td>
+                        <a href="${item.htmlUrl}" target="_blank" class="link-btn">
+                            Ver Commit ↗
+                        </a>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    </script>
+</body>
+</html>
