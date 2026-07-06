@@ -159,6 +159,22 @@
             gap: 10px;
         }
 
+        /* Actualizar Button */
+        .btn-primary {
+            background-color: var(--accent-primary);
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--accent-primary-hover);
+        }
+
         /* Stats Row */
         .stats-grid {
             display: grid;
@@ -393,7 +409,7 @@
                     <h1 id="hero-percentage">0.0% de optimización</h1>
                     <p>Historial real de compilaciones y pico de qubits físicos (secp256k1)</p>
                 </div>
-                <div class="hero-actions" style="display: flex; gap: 10px;">
+                <div class="hero-actions">
                     <button class="btn-primary" id="update-btn">Actualizar Datos</button>
                 </div>
             </div>
@@ -457,150 +473,98 @@
     </div>
 
     <script>
-        let myChart = null;
+        var myChart = null;
 
-        const owner = "Jtoro109";
-        const repo = "ecdsafail-myChallenge";
-        const branch = "main";
+        var owner = "Jtoro109";
+        var repo = "ecdsafail-myChallenge";
+        var branch = "main";
 
         // EMBEDDED TSV FALLBACK (For offline, local file:// CORS lock or private repos)
-        const embeddedTSVData = `timestamp\tcommit\ttoffoli\tclifford\tqubits\tops\tcorrect\tnotes
-1780021974	fa473ea	3942753.000	22627118.169	2715	28677221	OK	
-1780022568	935dc1f	3942753.000	22627118.169	2715	28677221	OK	
-1780023874	935dc1f	3942753.000	22627118.169	2715	28677221	OK	
-1780023900	935dc1f	3962753.000	22627113.285	2715	28697222	OK	
-1780024119	935dc1f	3962753.000	22627113.285	2715	28697222	OK	
-1780047641	750fdf9	3962753.000	22627113.285	2715	28697222	OK	
-1780052385	196206e	3962753.000	22627113.285	2715	28697222	OK	
-1782955002	ed34c00	3960133.000	22627123.597	2715	28694602	OK	
-1782960999	ed34c00	3960133.000	22627123.597	2715	28694602	OK	
-1782961485	ed34c00	3942753.000	22627118.169	2715	28677221	OK	
-1782961599	ed34c00	3920501.000	22297458.348	2823	28308559	OK	
-1782961685	ed34c00	4453088.000	20976051.395	2713	27512019	FAIL	 | PHASE GARBAGE: global_phase = 0x0000000400000000 across 64 live shots (must be 0)
-1782961839	ed34c00	3942753.000	22627118.169	2715	28677221	OK	Removed dummy Toffolis
-1782966864	784a2ad	3942753.000	22626087.226	2716	28676196	OK	
-1782967183	784a2ad	3945571.000	22614441.921	2715	28665949	OK	
-1782967280	784a2ad	4162900.000	23079984.059	2896	29327148	FAIL	 | PHASE GARBAGE: global_phase = 0x0000100000000000 across 64 live shots (must be 0)
-1782967380	784a2ad	3960633.000	20339966.773	2715	27176791	OK	
-1782967687	784a2ad	3926169.000	22538169.099	2711	28556141	OK	
-1782967775	784a2ad	3862269.000	22197643.687	2711	28089551	FAIL	 | CLASSICAL MISMATCH shot 599: got (0x7df038e98ac31d343ab865716fc4295eb24d87fb98433c1d68cb9580e21bf4ef,0x40ea2cd1c27e690a5b0f1e335cbb2b90d7d64d5d28236c37ee771197d77c6dda) exp (0xb474735f83bbc84355250819eed64ce8c903ed82e2571f6ecb91831890bcb0cb,0x9f49ac1bfade47a8ed284359e63bb1d26783bee9f9dc520a58f3d5e72d0d572c)
-1782967876	784a2ad	3905169.000	22425875.043	2711	28402811	FAIL	 | PHASE GARBAGE: global_phase = 0x0000000000000002 across 64 live shots (must be 0)
-1782967956	784a2ad	3917805.000	22493413.064	2711	28495073	FAIL	 | PHASE GARBAGE: global_phase = 0x0000020000000000 across 64 live shots (must be 0)
-1782968150	784a2ad	3926169.000	22538169.099	2711	28556141	OK	Hardcoded default DUMMY=0 and KAL_PAIR1_ITERS=400
-1783004655	66ce719	3917805.000	22493410.807	2711	28495073	FAIL	 | PHASE GARBAGE: global_phase = 0x0000010000000000 across 64 live shots (must be 0)
-1783004730	66ce719	3924796.000	22534777.862	2711	28537404	FAIL	 | PHASE GARBAGE: global_phase = 0x0000000000000004 across 64 live shots (must be 0)
-1783004799	66ce719	3925892.000	22537482.604	2711	28552360	FAIL	 | CLASSICAL MISMATCH shot 937: got (0x9535e8c7c2ed847a162d4308f90e91d7eebb68172d21ed025299d74d7795e64e,0xc1d0a55706cde66854ae68371edc09b8f30feed10767287c2dcba1fa3b303809) exp (0x1c456464d32ec21266c5db11705eff499d1ff8273df57ceecfc28d2d9ebb91a4,0x571618c3c135b1c9c0208fe1dbb50216cb6c44c04893f7bd3c8c6afa4049de33)
-1783004917	66ce719	3926169.000	22538169.099	2711	28556141	OK	
-1783005201	91ea89d	4066101.000	22447772.342	2711	28710701	FAIL	 | CLASSICAL MISMATCH shot 4632: got (0xd9e9f23e5beb63f4ce4279c25e7bbd49211625585f9fb303e0defbe9644e4687,0x903d75aab6950b5edfc9d97c274959d2537bc3d80bb2c81dfa890f70ee1127eb) exp (0x5bf5e43e01582e0c3563a6df2897d3334a96e288f0b4a8f82780fe557b662579,0xb0afb0f4cc82a50a496c4ee946a587cc02f7648b2d3da7c22cf9306b33b12103)
-1783005488	91ea89d	3921993.000	22515796.627	2711	28525651	OK	
-1783005655	91ea89d	3921993.000	22515796.627	2711	28525651	OK	
-1783006496	91ea89d	3917817.000	22493446.232	2710	28495161	FAIL	 | CLASSICAL MISMATCH shot 42: got (0xded47538cea62d30d7c13278de8c35036c8cce5542b68a293314b71d9e9b69de,0x72d462af5b768e11b79ef81ace6252675c135054a497541feab9126a1efb88c2) exp (0xaf4ed3f4f0c612ba4b4081a4c42f390fc0a1ef2bc8f57b199464b5519b45537b,0x823b273f36ef4827a92129830d27a72bbe7ea3ccf826b6832c6ffd380a0ff629)
-1783007160	91ea89d	3965573.000	22956682.629	2711	29017357	OK	
-1783008008	91ea89d	5699180.000	30945950.668	2711	41434932	OK	
-1783009247	4a5d162	3921993.000	22515796.627	2711	28525651	OK	
-1783009662	be58c4b	3986613.000	21993110.151	2710	28475728	FAIL	 | PHASE GARBAGE: global_phase = 0x0000020000000000 across 64 live shots (must be 0)
-1783009736	be58c4b	3986613.000	21993110.151	2710	28475728	FAIL	 | PHASE GARBAGE: global_phase = 0x0000020000000000 across 64 live shots (must be 0)
-1783010174	be58c4b	9769622.000	66283923.959	4505	81954186	OK	
-1783010264	be58c4b	3917817.000	22493446.232	2710	28495161	FAIL	 | CLASSICAL MISMATCH shot 42: got (0xded47538cea62d30d7c13278de8c35036c8cce5542b68a293314b71d9e9b69de,0x72d462af5b768e11b79ef81ace6252675c135054a497541feab9126a1efb88c2) exp (0xaf4ed3f4f0c612ba4b4081a4c42f390fc0a1ef2bc8f57b199464b5519b45537b,0x823b273f36ef4827a92129830d27a72bbe7ea3ccf826b6832c6ffd380a0ff629)
-1783012206	be58c4b	3908724.000	22379839.608	2708	28346373	FAIL	 | PHASE GARBAGE: global_phase = 0x0000400000000000 across 64 live shots (must be 0)
-1783012273	be58c4b	3917088.000	22424602.501	2710	28407441	FAIL	 | PHASE GARBAGE: global_phase = 0x0000000080000000 across 64 live shots (must be 0)
-1783012399	be58c4b	3917088.000	22424602.501	2710	28407441	FAIL	 | PHASE GARBAGE: global_phase = 0x0000000080000000 across 64 live shots (must be 0)
-1783012456	be58c4b	3916789.000	22424571.992	2710	28407372	OK	
-1783012516	be58c4b	3908425.000	22379804.225	2708	28346304	FAIL	 | PHASE GARBAGE: global_phase = 0x0000000000000100 across 64 live shots (must be 0)
-1783013807	be58c4b	3912613.000	22402198.972	2709	28376882	OK	
-1783014741	6c6c097	3912613.000	22402198.972	2709	28376882	OK	
-1783014844	6c6c097	3912613.000	22402198.972	2709	28376882	OK	
-1783014947	6c6c097	3912613.000	22402198.972	2709	28376882	OK	
-1783015015	6c6c097	3912613.000	22402198.972	2709	28376882	OK	
-1783015030	6c6c097	0.000	0.000	0	0	FAIL	 | load: ops.bin: length mismatch: got 92073984 expected 1589105408 for 28376882 ops
-1783015113	6c6c097	3912613.000	22402198.972	2709	28376882	OK	
-1783015150	6c6c097	3912613.000	22402198.972	2709	28376882	OK	
-1783015192	6c6c097	4648685.000	24258558.227	2964	30928124	FAIL	 | CLASSICAL MISMATCH shot 186: got (0x10ebc8999e07f2e20bbb72b4175e8f264e96b71aa602e2e1f6a0afa79955b569,0xc4c512bac8e756c8befffdbed95fb184045bf126a5d9a873618e065630be5c26) exp (0x298b61fe150b74f7267ffa1fd930f05c5e36f9c835e4884fd4bac2167cdbb7f5,0x80e7836c2837e97bb991115352c29d164814222e67c163e14e4d269088c79b24)
-1783015261	6c6c097	4110385.000	24338718.211	2964	30548024	OK	
-1783015316	6c6c097	4050745.000	23083920.276	2964	29155560	FAIL	 | PHASE GARBAGE: global_phase = 0x0000000040000000 across 64 live shots (must be 0)
-1783015372	6c6c097	4110385.000	24337947.053	2961	30547256	FAIL	 | PHASE GARBAGE: global_phase = 0x0000020000000000 across 64 live shots (must be 0)
-1783015436	6c6c097	4050745.000	23083151.879	2873	29154792	FAIL	 | CLASSICAL MISMATCH shot 7986: got (0xf7bf32fd434df550d14227f057b28585d449be5edef56b084b00fb8c4a460aad,0x6949a87b436383ee0e5ed70ff8f66b28082d1de6afc347cd8c61b88b665bbf4d) exp (0x79a8647cdbc75c4fc3a495cac8b3db479f4f53f802ce87d64229e59f58ff2f0c,0xab7b17d3cf569cbb464866ec1b57926f9b62c2426a2f62524fbbbb0a1f077e1e)
-1783015495	6c6c097	3912613.000	22402198.972	2709	28376882	OK	
-1783015549	6c6c097	3912613.000	22401190.014	2709	28375857	OK	
-1783015702	6c6c097	8123694.000	40182617.818	5589	51136324	FAIL	 | PHASE GARBAGE: global_phase = 0x0000000000000002 across 64 live shots (must be 0)
-1783016265	6c6c097	3774913.000	22129218.212	2710	27966186	FAIL	 | CLASSICAL MISMATCH shot 32: got (0x74172ccbccf9880855c080e57edc72b7cee572962c7027036c8651b7b9416321,0x3fe64ab2c1cd13e6a9daabe1ab6a41a62cafab75412ca947d9037b9d25f69594) exp (0x496e8eaf6f7edc014361e7abb2145728b1d6bf78fb13cfb17a91cbeff66875d,0xdb6dd7f89dd6cf6fbb3c6eeff5612888ced99084a62edf5137806ba8b403165f)
-1783016853	6c6c097	3774913.000	22129218.212	2710	27966186	FAIL	 | CLASSICAL MISMATCH shot 32: got (0x74172ccbccf9880855c080e57edc72b7cee572962c7027036c8651b7b9416321,0x3fe64ab2c1cd13e6a9daabe1ab6a41a62cafab75412ca947d9037b9d25f69594) exp (0x496e8eaf6f7edc014361e7abb2145728b1d6bf78fb13cfb17a91cbeff66875d,0xdb6dd7f89dd6cf6fbb3c6eeff5612888ced99084a62edf5137806ba8b403165f)
-1783017112	6c6c097	3642823.000	21867335.082	2710	27572226	FAIL	 | CLASSICAL MISMATCH shot 6: got (0x672e3d472fcc6ced4192e0570f84fd15f27154ae6d717a133bfbb0759a5cb1e1,0x49b34b0366ed0fe2e7191a6cda21b2eb5c30acfbcb98b48dd6bdf83f99534f3c) exp (0xfc092d3711162c4bab72e06efa85b4ea6060a9071a649f355e8207be1557d22c,0x1004c678c4843fbe3d5eb160ce98fd033a12ebfba85b11a5e3a7c25f3e34cfc0)
-1783017207	6c6c097	3649453.000	21880528.998	2710	27592038	FAIL	 | PHASE GARBAGE: global_phase = 0x2051c780e2959f1e across 64 live shots (must be 0)
-1783017325	6c6c097	3649453.000	21880548.508	2710	27592038	FAIL	 | CLASSICAL MISMATCH shot 107: got (0x851638efdeaa16762ab02a7a204da19c3692673d2df95805842ec2532533a818,0x3f9a98e801a8b9a6a9ed4d58f1b248afb95c065751075ebd599460adca03bb97) exp (0x31a0dc1405a01101fee671ff9ba9ee0adb15d73cbedff6aab5b7b8596c4bae3f,0x35d7fede758d8c3c465c55546f2018b1aee1bdb0777a3fa694e8c8b84062c6e3)
-1783017554	6c6c097	3649453.000	21880520.053	2710	27592038	OK	
-1783017808	7db1f6d	3635627.000	21850887.475	2710	27501308	FAIL	 | PHASE GARBAGE: global_phase = 0x0040000000000000 across 64 live shots (must be 0)
-1783018396	7db1f6d	3649453.000	21880520.053	2710	27592038	OK	
-1783018820	7db1f6d	3649453.000	21880520.053	2710	27592038	OK	
-1783018887	7db1f6d	3645265.000	21858134.958	2709	27561460	FAIL	 | PHASE GARBAGE: global_phase = 0x0000004000000000 across 64 live shots (must be 0)
-1783018958	7db1f6d	3645265.000	21858128.990	2710	27561460	FAIL	 | CLASSICAL MISMATCH shot 636: got (0x15a467feabc9a308972cdf0ab507a2f3e56bf259c9f861199e6019e1069c8016,0xb4e3af21f9af1e50b0525a2340fbc5281fe749c10652850c342ea39f41c358d1) exp (0xbd1f4440ec6a634a1c00fa45a8606b3bdb1fdb61b0b556b5a5b855bed9147826,0x580947ce12efd849dd2d27e9e6cbc9e92741deecce3186a101e2af3bec3d3e29)
-1783019082	7db1f6d	3637133.000	21854095.914	2710	27510966	OK	
-1783019167	7db1f6d	3634133.000	21847694.256	2710	27491818	FAIL	 | PHASE GARBAGE: global_phase = 0x0000000000000080 across 64 live shots (must be 0)
-1783019251	7db1f6d	3636380.000	21852486.157	2710	27506137	OK	
-1783019318	7db1f6d	3635629.000	21850882.247	2710	27501336	OK	
-1783019394	7db1f6d	3634880.000	21849279.039	2710	27496563	OK	
-1783019517	7db1f6d	3634880.000	21849279.039	2710	27496563	OK	
-1783020421	cd47cd1	3634880.000	21849279.039	2710	27496563	OK	
-1783020646	cd47cd1	3632627.000	21844470.756	2710	27482160	FAIL	 | PHASE GARBAGE: global_phase = 0x4000000000000000 across 64 live shots (must be 0)
-1783020786	cd47cd1	3630692.000	21826879.252	2709	27465985	FAIL	 | PHASE GARBAGE: global_phase = 0x0000000000000002 across 64 live shots (must be 0)
-1783020893	cd47cd1	3630692.000	21826872.112	2710	27465985	OK	
-1783021648	cd47cd1	3626492.000	21804407.887	2710	27435319	FAIL	 | PHASE GARBAGE: global_phase = 0xd800fb9c5ab86a5d across 64 live shots (must be 0)
-1783023015	b59c464	3630692.000	21822437.789	2710	27461547	FAIL	 | CLASSICAL MISMATCH shot 6918: got (0x3f2725af572197dff5a32faf00d356bf091b6fb27b54376c0786a2dadc97a213,0x976305c85e104aebce21cdeaabd259e0e092d69c93077e8ae185be011be38fb) exp (0x3b1aa4a932ad1bcdf685b2fe73b05236b74dc2127fbf96c2a9f7392571dd54a5,0x43302b7312f30f489644900fd31c45fbd5749a8392c832bbf9c6e7bc785f44fb)
-1783023112	b59c464	3630692.000	21826820.344	2710	27465945	OK	
-1783024567	64dd826	3624758.000	21817661.275	2710	27466275	FAIL	 | PHASE GARBAGE: global_phase = 0x0008000000000000 across 64 live shots (must be 0)
-1783024680	64dd826	3624680.000	21817669.667	2710	27466257	OK	
-1783025253	b1f4052	3624680.000	21816629.985	2710	27465232	OK	
-1783025373	b1f4052	3624680.000	21815613.400	2709	27464207	OK	
-1783025550	b1f4052	3756262.000	22546980.373	2709	28392953	FAIL	 | CLASSICAL MISMATCH shot 7949: got (0x57e06fa35f5451f2590d183605f66bf9c4bdf65f46fc824f7d0276d6ad67c0af,0x67009ce6136c06d33d6230d61c10b02c6e2f3fd371da6f1115a4833a1dfc0bec) exp (0xdad733767338f11882cb256ccfc985d3feb45d6a2c616478f8c93adcd3ea4a0c,0x67009ce6136c06d33d6230d61c10b02c6e2f3fd371da6f1115a4833a1dfc0bec)
-1783025645	b1f4052	3624680.000	21815613.400	2709	27464207	OK	
-1783025935	b1f4052	3785192.000	21757388.906	2709	27676503	FAIL	 | CLASSICAL MISMATCH shot 4795: got (0xa9d8b19002edd6f1d7c69814cc4cfc6a7847ec26411218b79b6fbde79e5d5f85,0xae39686b875efe75d5fd4137a7132bec22d9f7d66b73e8b092c0d15f53fb5738) exp (0xcf2ff7b39b78f869cd35d3dfe2dbd487aa7ff18c7578c8244df1a891dc6ae7e0,0xae39686b875efe75d5fd4137a7132bec22d9f7d66b73e8b092c0d15f53fb5738)
-1783026095	b1f4052	3762077.000	21726855.280	2709	27615967	OK	
-1783026200	ae63b42	3624680.000	21815613.400	2709	27464207	OK	
-1783027396	ae63b42	3815081.000	22388309.387	2873	28286831	FAIL	 | PHASE GARBAGE: global_phase = 0x0000000004000000 across 64 live shots (must be 0)
-1783027516	ae63b42	3624680.000	21815613.400	2709	27464207	OK	
-1783028584	b703670	3613724.000	21855628.373	2842	27492162	FAIL	 | CLASSICAL MISMATCH shot 0: got (0x184ea4b70245edb43acb46789410443b55688f617f13587faa86cc2297fb9218,0xf8a75060703cba3ab4bc7b5a79e7f78c8591139cc775304759eb98f953daee8f) exp (0x17f2cc242fa22b405df56b166f08ae6c9bd447bca7b13c85506c84634118f07a,0x4fd5aae143cc8552c0749390498583e0c977a61d41ca802864ad231f27afe2ea)
-1783028696	b703670	3613724.000	20070345.361	2842	25348361	FAIL	 | CLASSICAL MISMATCH shot 0: got (0x3733c9c37aa59d5d297cef9afde5bcdecb5771d54c381e2f9b3832d8effe95cc,0x6aa396583a43d35c58ce4230bb46787bd60d6c7d48233a66fb6cfcb5f2518986) exp (0x627c78d89a14d2b72e8194480133d9d8c967b1e2998275b779bffaf48b0107cc,0x97d9d1ce6218333bac84b2221d25a262928258f8b535985f698e4e86f3760efe)
-1783028778	b703670	3613724.000	21855628.373	2842	27492162	FAIL	 | CLASSICAL MISMATCH shot 0: got (0x184ea4b70245edb43acb46789410443b55688f617f13587faa86cc2297fb9218,0xf8a75060703cba3ab4bc7b5a79e7f78c8591139cc775304759eb98f953daee8f) exp (0x17f2cc242fa22b405df56b166f08ae6c9bd447bca7b13c85506c84634118f07a,0x4fd5aae143cc8552c0749390498583e0c977a61d41ca802864ad231f27afe2ea)
-1783028865	b703670	3624680.000	21834137.222	2842	27481632	FAIL	 | CLASSICAL MISMATCH shot 0: got (0x6e9fa3b49b0edf14a1e7b47b3fc250bbacaf8f6fb920b44f8624d99bc836b579,0x35b95cb4f20e3dd87ceb0696f36cc17a985412be7e939c04e3b2656f769f250e) exp (0xb3f3192d490cb91de31a44594d5160d4d48933288e72825fc544822e09c9af55,0xa29e691143f3ce4113b8e0ce8e7b718b60830ea02ea8a9029b2fec5659ae85f4)
-1783028949	b703670	3624680.000	21839665.210	2842	27488265	FAIL	 | CLASSICAL MISMATCH shot 0: got (0x8833cf5ef92bcb00186b4612c1724d2a2e34f12419e90d3b655df378136f3a7b,0x861f35fd950f3498a7f6887e60a64d620363426fbbda62b99c12930b22fee408) exp (0xb3d8fd481e0dc402df49d28800529f4fd8625fc1b7f6951f47cf3792e9d74528,0x41776261f85fe6b4935660c2e5e598028a8c0ed10dac0f62e11d079816b8663e)
-1783029041	b703670	3624680.000	21815613.400	2709	27464207	OK	
-1783029651	2d56c44	3624625.000	21830957.665	2709	27474317	FAIL	 | CLASSICAL MISMATCH shot 6534: got (0x5766516eb63590e947ce10e027d4317aa211321d421389667289cc36afe47bd,0x972e2fd7198b22d969d7585123537397d31c27bd982f88c4e757d8e6e0fc16a3) exp (0x22715ab5361e8d21076fbf990f03a015da71ce85240a39bf1ed985fcb19f5d4c,0xfb26f93421d0ceeb425881d14ee629aaf60a14ac13953fc36210475fab1afe3d)
-1783029905	2d56c44	3063680.000	17751791.863	2310	22900249	OK	
-1783030272	cd0ad96	3063680.000	17751791.863	2310	22900249	OK	
-1783035945	e8471b5	2999552.000	17378418.151	2310	22394945	FAIL	 | CLASSICAL MISMATCH shot 4393: got (0xa5a0df8f4de60cd2d3bfaa1b25e7e26692de11ea3f7c6ff7805607ada06f8e73,0x94a5addccdc9a24dcf0e1d77f6f765c4ce2d9df70b8e98370cd4dd3084f20538) exp (0x34423c2c9ce20de5f1c791b5e9791406d64a1b8a91567e0e09281395d06bf442,0x94a5addccdc9a24dcf0e1d77f6f765c4ce2d9df70b8e98370cd4dd3084f20538)
-1783036766	f117ea8	3063680.000	17673627.579	2310	22822081	FAIL	 | CLASSICAL MISMATCH shot 3827: got (0xb551758ad89c0dd6491d9d3a3ca72aba7a8c21b09940a0e9b5da2fb657bb90ac,0xb96fa26f9d04f379e00f10ce85264f7bbef147724354a719fed439c4c55b5463) exp (0xfc6e7b83b2f0ed79ac37e996575198ce4a32d8982f45ed2ff6b161eea4c3a9a8,0x121cb706d7266a7fa00f48abe4f3ef21cf021f87a582439f8d75fd47c4ad9738)
-1783037012	f117ea8	3063680.000	17751791.863	2310	22900249	OK	
-1783037948	f117ea8	3075872.000	17674678.438	2310	22859044	FAIL	 | CLASSICAL MISMATCH shot 1894: got (0x5c1173309ba029eda444943fcff8ae1ae44aacae6f74bfcc907b26b930515d24,0xd6daa363cd40807899470f64e87faca9b4c2a51f110fe23d48dfa80704e269f7) exp (0xd0faba26b2851f0bcd6146d97c2df1b624536cfa99180d1376cb99c3d0a9dac4,0xd6daa363cd40807899470f64e87faca9b4c2a51f110fe23d48dfa80704e269f7)
-1783039460	f117ea8	3063680.000	17751791.863	2310	22900249	OK	initial test
-1783041411	419ccf7	14227916.000	97807829.339	7321	123327185	FAIL	projective probe | CLASSICAL MISMATCH shot 2083: got (0xf2f6c73d289663367c5f523750a8221719ace4f17b7ee53a4d60778992336254,0xe1b43feaa7811610af8d6c5485285484d389aac1b2d6ba530aae86351b5211c2) exp (0x90957683d9bd3c7be95aacd330018a129943ba6f402837cf47359db994037ed7,0xe1b43feaa7811610af8d6c5485285484d389aac1b2d6ba530aae86351b5211c2)
-1783042753	419ccf7	8475283.000	56774748.306	4505	71830027	FAIL	strategy c probe | PHASE GARBAGE: global_phase = 0x0008000000000000 across 64 live shots (must be 0)
-1783043014	419ccf7	9782064.000	28184039.166	3078	41315909	FAIL	luohan eea probe | CLASSICAL MISMATCH shot 3055: got (0xbfd89e0c6474d52298674c19f84ca48686f842dd07fca419072d3d1ff8318caf,0x78809f9f6eda9e6d9171c6bf6ccd848ac749c449d4249d74352f0ce2810ebfc0) exp (0x3c018380446baa55139c84482042e31296f2c15d2e561a1deaee6ad34dc85e39,0x78809f9f6eda9e6d9171c6bf6ccd848ac749c449d4249d74352f0ce2810ebfc0)
-1783043518	9afe489	3063680.000	17751791.863	2310	22900249	OK	clean verification run
+        var embeddedTSVData = "timestamp\tcommit\ttoffoli\tclifford\tqubits\tops\tcorrect\tnotes\n" +
+"1780021974\tfa473ea\t3942753.000\t22627118.169\t2715\t28677221\tOK\t\n" +
+"1780022568\t935dc1f\t3942753.000\t22627118.169\t2715\t28677221\tOK\t\n" +
+"1780023874\t935dc1f\t3942753.000\t22627118.169\t2715\t28677221\tOK\t\n" +
+"1780023900\t935dc1f\t3962753.000\t22627113.285\t2715\t28697222\tOK\t\n" +
+"1780024119\t935dc1f\t3962753.000\t22627113.285\t2715\t28697222\tOK\t\n" +
+"1780047641\t750fdf9\t3962753.000\t22627113.285\t2715\t28697222\tOK\t\n" +
+"1780052385\t196206e\t3962753.000\t22627113.285\t2715\t28697222\tOK\t\n" +
+"1782955002\ted34c00\t3960133.000\t22627123.597\t2715\t28694602\tOK\t\n" +
+"1782960999\ted34c00\t3960133.000\t22627123.597\t2715\t28694602\tOK\t\n" +
+"1782961485\ted34c00\t3942753.000\t22627118.169\t2715\t28677221\tOK\t\n" +
+"1782961599\ted34c00\t3920501.000\t22297458.348\t2823\t28308559\tOK\t\n" +
+"1782961685\ted34c00\t4453088.000\t20976051.395\t2713\t27512019\tFAIL\t | PHASE GARBAGE: global_phase = 0x0000000400000000 across 64 live shots\n" +
+"1782961839\ted34c00\t3942753.000\t22627118.169\t2715\t28677221\tOK\tRemoved dummy Toffolis\n" +
+"1782966864\t784a2ad\t3942753.000\t22626087.226\t2716\t28676196\tOK\t\n" +
+"1782967183\t784a2ad\t3945571.000\t22614441.921\t2715\t28665949\tOK\t\n" +
+"1782967380\t784a2ad\t3960633.000\t20339966.773\t2715\t27176791\tOK\t\n" +
+"1782967687\t784a2ad\t3926169.000\t22538169.099\t2711\t28556141\tOK\t\n" +
+"1782968150\t784a2ad\t3926169.000\t22538169.099\t2711\t28556141\tOK\tHardcoded default DUMMY=0 and KAL_PAIR1_ITERS=400\n" +
+"1783004917\t66ce719\t3926169.000\t22538169.099\t2711\t28556141\tOK\t\n" +
+"1783005488\t91ea89d\t3921993.000\t22515796.627\t2711\t28525651\tOK\t\n" +
+"1783005655\t91ea89d\t3921993.000\t22515796.627\t2711\t28525651\tOK\t\n" +
+"1783007160\t91ea89d\t3965573.000\t22956682.629\t2711\t29017357\tOK\t\n" +
+"1783008008\t91ea89d\t5699180.000\t30945950.668\t2711\t41434932\tOK\t\n" +
+"1783009247\t4a5d162\t3921993.000\t22515796.627\t2711\t28525651\tOK\t\n" +
+"1783010174\tbe58c4b\t9769622.000\t66283923.959\t4505\t81954186\tOK\t\n" +
+"1783012456\tbe58c4b\t3916789.000\t22424571.992\t2710\t28407372\tOK\t\n" +
+"1783013807\tbe58c4b\t3912613.000\t22402198.972\t2709\t28376882\tOK\t\n" +
+"1783014741\t6c6c097\t3912613.000\t22402198.972\t2709\t28376882\tOK\t\n" +
+"1783014844\t6c6c097\t3912613.000\t22402198.972\t2709\t28376882\tOK\t\n" +
+"1783014947\t6c6c097\t3912613.000\t22402198.972\t2709\t28376882\tOK\t\n" +
+"1783015015\t6c6c097\t3912613.000\t22402198.972\t2709\t28376882\tOK\t\n" +
+"1783015113\t6c6c097\t3912613.000\t22402198.972\t2709\t28376882\tOK\t\n" +
+"1783015150\t6c6c097\t3912613.000\t22402198.972\t2709\t28376882\tOK\t\n" +
+"1783015261\t6c6c097\t4110385.000\t24338718.211\t2964\t30548024\tOK\t\n" +
+"1783015495\t6c6c097\t3912613.000\t22402198.972\t2709\t28376882\tOK\t\n" +
+"1783015549\t6c6c097\t3912613.000\t22401190.014\t2709\t28375857\tOK\t\n" +
+"1783017554\t6c6c097\t3649453.000\t21880520.053\t2710\t27592038\tOK\t\n" +
+"1783018396\t7db1f6d\t3649453.000\t21880520.053\t2710\t27592038\tOK\t\n" +
+"1783018820\t7db1f6d\t3649453.000\t21880520.053\t2710\t27592038\tOK\t\n" +
+"1783019082\t7db1f6d\t3637133.000\t21854095.914\t2710\t27510966\tOK\t\n" +
+"1783019251\t7db1f6d\t3636380.000\t21852486.157\t2710\t27506137\tOK\t\n" +
+"1783019318\t7db1f6d\t3635629.000\t21850882.247\t2710\t27501336\tOK\t\n" +
+"1783019394\t7db1f6d\t3634880.000\t21849279.039\t2710\t27496563\tOK\t\n" +
+"1783019517\t7db1f6d\t3634880.000\t21849279.039\t2710\t27496563\tOK\t\n" +
+"1783020421\tcd47cd1\t3634880.000\t21849279.039\t2710\t27496563\tOK\t\n" +
+"1783020893\tcd47cd1\t3630692.000\t21826872.112\t2710\t27465985\tOK\t\n" +
+"1783023112\tb59c464\t3630692.000\t21826820.344\t2710\t27465945\tOK\t\n" +
+"1783024680\t64dd826\t3624680.000\t21817669.667\t2710\t27466257\tOK\t\n" +
+"1783025253\tb1f4052\t3624680.000\t21816629.985\t2710\t27465232\tOK\t\n" +
+"1783025373\tb1f4052\t3624680.000\t21815613.400\t2709\t27464207\tOK\t\n" +
+"1783025645\tb1f4052\t3624680.000\t21815613.400\t2709\t27464207\tOK\t\n" +
+"1783026095\tb1f4052\t3762077.000\t21726855.280\t2709\t27615967\tOK\t\n" +
+"1783026200\tae63b42\t3624680.000\t21815613.400\t2709\t27464207\tOK\t\n" +
+"1783027516\tae63b42\t3624680.000\t21815613.400\t2709\t27464207\tOK\t\n" +
+"1783029041\tb703670\t3624680.000\t21815613.400\t2709\t27464207\tOK\t\n" +
+"1783029905\t2d56c44\t3063680.000\t17751791.863\t2310\t22900249\tOK\t\n" +
+"1783030272\tcd0ad96\t3063680.000\t17751791.863\t2310\t22900249\tOK\t\n" +
+"1783037012\tf117ea8\t3063680.000\t17751791.863\t2310\t22900249\tOK\t\n" +
+"1783039460\tf117ea8\t3063680.000\t17751791.863\t2310\t22900249\tOK\tinitial test\n" +
+"1783043518\t9afe489\t3063680.000\t17751791.863\t2310\t22900249\tOK\tclean verification run\n";
 
         document.getElementById('update-btn').addEventListener('click', loadGitHubCommits);
-
         window.addEventListener('DOMContentLoaded', loadGitHubCommits);
 
         async function loadGitHubCommits() {
-            const errorMsg = document.getElementById('error-msg');
-            const syncStatus = document.getElementById('sync-status');
+            var errorMsg = document.getElementById('error-msg');
+            var syncStatus = document.getElementById('sync-status');
             errorMsg.style.display = 'none';
             syncStatus.innerText = "Sincronizando...";
 
-            let tsvText = "";
-            let commits = [];
-            let loadedOnline = false;
+            var tsvText = "";
+            var commits = [];
+            var loadedOnline = false;
 
             // 1. Intentar cargar TSV y Commits en línea desde GitHub
             try {
-                const tsvUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/results.tsv?nocache=${new Date().getTime()}`;
-                const tsvResponse = await fetch(tsvUrl);
+                var tsvUrl = "https://raw.githubusercontent.com/" + owner + "/" + repo + "/" + branch + "/results.tsv?nocache=" + new Date().getTime();
+                var tsvResponse = await fetch(tsvUrl);
                 if (tsvResponse.ok) {
                     tsvText = await tsvResponse.text();
                     
-                    const commitResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?sha=${branch}&per_page=100&nocache=${new Date().getTime()}`);
+                    var commitResponse = await fetch("https://api.github.com/repos/" + owner + "/" + repo + "/commits?sha=" + branch + "&per_page=100&nocache=" + new Date().getTime());
                     if (commitResponse.ok) {
-                        const json = await commitResponse.json();
+                        var json = await commitResponse.json();
                         if (Array.isArray(json)) {
                             commits = json;
                             loadedOnline = true;
@@ -615,7 +579,7 @@
             // 2. Intentar cargar localmente si la conexión online falló (para localhost)
             if (!loadedOnline) {
                 try {
-                    const localTsvResponse = await fetch(`./results.tsv?nocache=${new Date().getTime()}`);
+                    var localTsvResponse = await fetch("./results.tsv?nocache=" + new Date().getTime());
                     if (localTsvResponse.ok) {
                         tsvText = await localTsvResponse.text();
                         syncStatus.innerText = "Localhost Sync OK";
@@ -625,7 +589,7 @@
                 }
             }
 
-            // 3. Si no hay datos TSV cargados de archivos, usar el fallback embebido 100% offline
+            // 3. Si no hay datos TSV cargados de archivos, usar el fallback embebido
             if (!tsvText) {
                 tsvText = embeddedTSVData;
                 syncStatus.innerText = "Modo Offline (Embebido)";
@@ -633,9 +597,9 @@
                 errorMsg.style.display = "block";
             }
 
-            const benchmarkData = parseTSV(tsvText);
+            var benchmarkData = parseTSV(tsvText);
 
-            // 4. Si la API de GitHub no cargó commits o no es un array, creamos la lista sintética
+            // 4. Generar lista sintética si falló la API
             if (!Array.isArray(commits) || commits.length === 0) {
                 commits = generateSyntheticCommits(benchmarkData);
             }
@@ -644,97 +608,102 @@
         }
 
         function parseTSV(text) {
-            const lines = text.trim().split('\n');
-            const data = {};
+            var lines = text.trim().split('\n');
+            var data = {};
             
-            for (let i = 1; i < lines.length; i++) {
-                const parts = lines[i].split('\t');
+            for (var i = 1; i < lines.length; i++) {
+                var parts = lines[i].split('\t');
                 if (parts.length < 5) continue;
                 
-                const timestamp = parseInt(parts[0].trim());
-                const commitHash = parts[1].trim();
-                const toffoli = parseFloat(parts[2]);
-                const qubits = parseInt(parts[4]);
-                const correct = parts[6].trim();
-                const notes = parts[7] ? parts[7].trim() : "Compilación y validación de rutina";
+                var timestamp = parseInt(parts[0].trim());
+                var commitHash = parts[1].trim();
+                var toffoli = parseFloat(parts[2]);
+                var qubits = parseInt(parts[4]);
+                var correct = parts[6].trim();
+                var notes = parts[7] ? parts[7].trim() : "Compilación y validación de rutina";
                 
                 if (correct === 'OK') {
-                    // Omitir cualquier resultado con métricas atípicas (Toffoli > 5M o Qubits > 3500)
+                    // Omitir métricas atípicas
                     if (toffoli > 5000000 || qubits > 3500) {
                         continue;
                     }
-                    data[commitHash] = { timestamp, toffoli, qubits, score: toffoli * qubits, notes };
+                    data[commitHash] = { timestamp: timestamp, toffoli: toffoli, qubits: qubits, score: toffoli * qubits, notes: notes };
                 }
             }
             return data;
         }
 
         function generateSyntheticCommits(benchmarkData) {
-            // Generar una estructura de commits usando las filas de results.tsv
-            const synthetic = [];
-            for (const [hash, val] of Object.entries(benchmarkData)) {
-                synthetic.push({
-                    sha: hash,
-                    commit: {
-                        message: val.notes || "Optimización y reducción de Toffolis",
+            var synthetic = [];
+            for (var hash in benchmarkData) {
+                if (benchmarkData.hasOwnProperty(hash)) {
+                    var val = benchmarkData[hash];
+                    synthetic.push({
+                        sha: hash,
+                        commit: {
+                            message: val.notes || "Optimización y reducción de Toffolis",
+                            author: {
+                                name: "Jtoro109",
+                                date: new Date(val.timestamp * 1000).toISOString()
+                            }
+                        },
                         author: {
-                            name: "Jtoro109",
-                            date: new Date(val.timestamp * 1000).toISOString()
-                        }
-                    },
-                    author: {
-                        avatar_url: "https://github.com/Jtoro109.png"
-                    },
-                    html_url: `https://github.com/${owner}/${repo}/commit/${hash}`
-                });
+                            avatar_url: "https://github.com/Jtoro109.png"
+                        },
+                        html_url: "https://github.com/" + owner + "/" + repo + "/commit/" + hash
+                    });
+                }
             }
-            // Ordenar por fecha descendente (más nuevo al inicio, como hace la API de GitHub)
-            return synthetic.sort((a, b) => new Date(b.commit.author.date) - new Date(a.commit.author.date));
+            return synthetic.sort(function(a, b) {
+                return new Date(b.commit.author.date) - new Date(a.commit.author.date);
+            });
         }
 
         function processAndRenderData(commits, benchmarkData) {
-            if (!Array.isArray(commits)) {
-                commits = [];
+            var processed = [];
+            var chronological = [];
+            
+            if (Array.isArray(commits)) {
+                for (var i = commits.length - 1; i >= 0; i--) {
+                    chronological.push(commits[i]);
+                }
             }
             
-            const processed = [];
-            const chronological = [...commits].reverse();
-            
-            chronological.forEach(c => {
+            chronological.forEach(function(c) {
                 try {
-                    const shaShort = c.sha ? c.sha.substring(0, 7) : "";
-                    const metrics = benchmarkData[shaShort] || (c.sha ? benchmarkData[c.sha] : null);
+                    var shaShort = c.sha ? c.sha.substring(0, 7) : "";
+                    var metrics = benchmarkData[shaShort] || (c.sha ? benchmarkData[c.sha] : null);
                     
                     if (metrics) {
-                        const authorName = (c.commit && c.commit.author && c.commit.author.name || "").toLowerCase();
-                        const login = (c.author && c.author.login || "").toLowerCase();
-                        const email = (c.commit && c.commit.author && c.commit.author.email || "").toLowerCase();
+                        var authorName = (c.commit && c.commit.author && c.commit.author.name || "").toLowerCase();
+                        var login = (c.author && c.author.login || "").toLowerCase();
+                        var email = (c.commit && c.commit.author && c.commit.author.email || "").toLowerCase();
                         
-                        const isUserOrGemini = 
-                            authorName.includes("jtoro") || 
-                            authorName.includes("gemini") || 
-                            authorName.includes("emanuel") ||
-                            authorName.includes("toro") ||
-                            login.includes("jtoro") || 
-                            login.includes("gemini") ||
-                            login.includes("emanuel") ||
-                            email.includes("jtoro") ||
-                            email.includes("toro") ||
-                            email.includes("gemini") ||
-                            email.includes("emanuel");
+                        var isUserOrGemini = 
+                            authorName.indexOf("jtoro") !== -1 || 
+                            authorName.indexOf("gemini") !== -1 || 
+                            authorName.indexOf("emanuel") !== -1 ||
+                            authorName.indexOf("toro") !== -1 ||
+                            login.indexOf("jtoro") !== -1 || 
+                            login.indexOf("gemini") !== -1 || 
+                            login.indexOf("emanuel") !== -1 || 
+                            email.indexOf("jtoro") !== -1 ||
+                            email.indexOf("toro") !== -1 ||
+                            email.indexOf("gemini") !== -1 ||
+                            email.indexOf("emanuel") !== -1;
                         
                         if (!isUserOrGemini) {
-                            return; // Omitir commits de otros autores
+                            return;
                         }
 
                         processed.push({
-                            shaShort,
+                            shaShort: shaShort,
                             shaLong: c.sha,
                             message: (c.commit && c.commit.message) || "Optimización de rutina",
                             authorName: (c.commit && c.commit.author && c.commit.author.name) || "Jtoro109",
                             authorAvatar: (c.author && c.author.avatar_url) || 'https://github.com/Jtoro109.png',
                             date: new Date((c.commit && c.commit.author && c.commit.author.date) || (metrics.timestamp * 1000)),
-                            htmlUrl: c.html_url || `https://github.com/${owner}/${repo}/commit/${shaShort}`,
+                            htmlUrl: c.html_url || ("https://github.com/" + owner + "/" + repo + "/commit/" + shaShort),
                             toffoli: metrics.toffoli,
                             qubits: metrics.qubits,
                             score: metrics.score
@@ -745,13 +714,14 @@
                 }
             });
 
+            var subtitle = document.getElementById('table-subtitle');
             if (processed.length === 0) {
-                document.getElementById('table-subtitle').innerText = "No se encontraron ejecuciones exitosas en el archivo de resultados.";
+                subtitle.innerText = "No se encontraron ejecuciones exitosas en el archivo de resultados.";
                 return;
             }
 
             // Actualizar interfaz
-            const latest = processed[processed.length - 1];
+            var latest = processed[processed.length - 1];
             document.getElementById('user-avatar').src = latest.authorAvatar;
             document.getElementById('user-name').innerText = latest.authorName;
 
@@ -759,33 +729,34 @@
             document.getElementById('stat-total-commits').innerText = processed.length;
             document.getElementById('stat-last-sha').innerText = latest.shaShort;
             
-            const minToffoli = Math.min(...processed.map(p => p.toffoli));
-            const minQubits = Math.min(...processed.map(p => p.qubits));
+            var scores = processed.map(function(p) { return p.score; });
+            var toffolis = processed.map(function(p) { return p.toffoli; });
+            var qubitsList = processed.map(function(p) { return p.qubits; });
+            
+            var minToffoli = Math.min.apply(null, toffolis);
+            var minQubits = Math.min.apply(null, qubitsList);
             document.getElementById('stat-min-toffoli').innerText = minToffoli.toLocaleString();
             document.getElementById('stat-min-qubits').innerText = minQubits;
 
-            // Porcentaje de mejora total
-            const initialScore = processed[0].score;
-            const bestScore = Math.min(...processed.map(p => p.score));
-            const improvementPct = (((initialScore - bestScore) / initialScore) * 100).toFixed(1);
-            document.getElementById('hero-percentage').innerText = `${improvementPct}% de optimización lograda`;
+            var initialScore = processed[0].score;
+            var bestScore = Math.min.apply(null, scores);
+            var improvementPct = (((initialScore - bestScore) / initialScore) * 100).toFixed(1);
+            document.getElementById('hero-percentage').innerText = improvementPct + "% de optimización lograda";
             document.getElementById('best-score-val').innerText = bestScore.toLocaleString();
 
-            document.getElementById('table-subtitle').innerText = `${processed.length} ejecuciones exitosas registradas de forma local/online`;
+            subtitle.innerText = processed.length + " ejecuciones exitosas registradas";
 
-            // Gráfica y Tabla de manera segura
+            // Gráfica y Tabla seguras
             try {
                 if (typeof Chart !== 'undefined') {
                     renderChart(processed);
-                } else {
-                    console.warn("Chart.js no está cargado.");
                 }
             } catch (chartErr) {
                 console.error("Error al renderizar gráfica:", chartErr);
             }
             
             try {
-                const sorted = [...processed].sort((a, b) => a.score - b.score);
+                var sorted = [].concat(processed).sort(function(a, b) { return a.score - b.score; });
                 renderTable(sorted);
             } catch (tableErr) {
                 console.error("Error al renderizar tabla:", tableErr);
@@ -793,14 +764,14 @@
         }
 
         function renderChart(data) {
-            const ctx = document.getElementById('historyChart').getContext('2d');
+            var ctx = document.getElementById('historyChart').getContext('2d');
+            
+            var labels = data.map(function(d) { return d.shaShort; });
+            var scores = data.map(function(d) { return d.score; });
+            var urls = data.map(function(d) { return d.htmlUrl; });
 
-            const labels = data.map(d => d.date.toLocaleDateString('es-ES', { month: 'short', day: 'numeric', hour: '2-digit' }));
-            const scores = data.map(d => d.score);
-            const urls = data.map(d => d.htmlUrl);
-
-            // Google target scores
-            const googleLowGate = Array(labels.length).fill(3000000000);
+            var googleLowGate = Array(labels.length).fill(3000000000);
+            var googleBestGate = Array(labels.length).fill(7077100800);
 
             if (myChart) {
                 myChart.destroy();
@@ -812,28 +783,34 @@
                     labels: labels,
                     datasets: [
                         {
-                            label: 'Nuestro Score (Toffoli × Qubits)',
+                            label: 'Tu Complejidad (Toffoli * Qubits)',
                             data: scores,
                             borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
                             borderWidth: 3,
-                            backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                            fill: true,
+                            tension: 0.3,
                             pointBackgroundColor: '#10b981',
-                            pointBorderColor: '#080f0b',
-                            pointBorderWidth: 2,
-                            pointRadius: 6,
-                            pointHoverRadius: 8,
-                            tension: 0.2,
-                            fill: true
+                            pointHoverRadius: 8
                         },
                         {
-                            label: 'Google Low-Gate (3.0B)',
+                            label: 'Límite Google Superior (3.0B)',
                             data: googleLowGate,
+                            borderColor: '#f59e0b',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            backgroundColor: 'transparent',
+                            pointRadius: 0,
+                            fill: false
+                        },
+                        {
+                            label: 'Frontera Google Original (7.07B)',
+                            data: googleBestGate,
                             borderColor: '#ef4444',
                             borderWidth: 2,
                             borderDash: [6, 6],
                             backgroundColor: 'transparent',
                             pointRadius: 0,
-                            pointHoverRadius: 0,
                             fill: false
                         }
                     ]
@@ -842,41 +819,26 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { 
+                        legend: {
                             display: true,
-                            labels: {
-                                color: '#a3bdae',
-                                font: { size: 11 }
-                            }
+                            labels: { color: '#a3bdae', font: { size: 11 } }
                         },
                         tooltip: {
                             backgroundColor: '#0f1c14',
-                            titleColor: '#fff',
-                            bodyColor: '#a3bdae',
-                            borderColor: 'rgba(16, 185, 129, 0.3)',
-                            borderWidth: 1,
                             callbacks: {
                                 label: function(context) {
-                                    return `${context.dataset.label}: ${context.raw.toLocaleString()}`;
+                                    return context.dataset.label + ": " + context.raw.toLocaleString();
                                 }
                             }
                         }
                     },
                     scales: {
-                        x: {
-                            grid: { color: 'rgba(255,255,255,0.02)', drawBorder: false },
-                            ticks: { color: '#a3bdae', font: { size: 10 } }
-                        },
-                        y: {
-                            grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false },
-                            ticks: { color: '#a3bdae', font: { size: 10 } },
-                            suggestedMin: 2000000000,
-                            suggestedMax: 11000000000
-                        }
+                        x: { ticks: { color: '#a3bdae' } },
+                        y: { ticks: { color: '#a3bdae' } }
                     },
-                    onClick: (e, elements) => {
+                    onClick: function(e, elements) {
                         if (elements.length > 0) {
-                            const index = elements[0].index;
+                            var index = elements[0].index;
                             window.open(urls[index], '_blank');
                         }
                     }
@@ -885,47 +847,43 @@
         }
 
         function renderTable(data) {
-            const tbody = document.getElementById('leaderboard-body');
+            var tbody = document.getElementById('leaderboard-body');
             tbody.innerHTML = '';
 
-            const bestScore = Math.min(...data.map(d => d.score));
+            var bestScore = Math.min.apply(null, data.map(function(d) { return d.score; }));
 
-            data.forEach((item, index) => {
-                const tr = document.createElement('tr');
-                const isBest = item.score === bestScore;
-                const diffText = isBest ? "🏆 Óptimo" : `+${((item.score - bestScore) / bestScore * 100).toFixed(1)}%`;
+            data.forEach(function(item, index) {
+                var tr = document.createElement('tr');
+                var isBest = item.score === bestScore;
+                var diffText = isBest ? "🏆 Óptimo" : "+" + (((item.score - bestScore) / bestScore * 100).toFixed(1)) + "%";
 
-                tr.innerHTML = `
-                    <td>
-                        <div class="solver-cell">
-                            <span style="font-weight: 800; color: ${isBest ? 'var(--gold)' : 'var(--text-secondary)'}; width: 25px;">#${index + 1}</span>
-                            <div style="display: flex; align-items: center; margin-right: 5px; position: relative; width: 50px; height: 38px;">
-                                <img class="solver-avatar" src="${item.authorAvatar}" alt="avatar" style="position: absolute; left: 0; top: 0; z-index: 2; width: 32px; height: 32px;">
-                                <img class="solver-avatar" src="https://github.com/google-gemini.png" alt="Gemini" style="position: absolute; left: 16px; top: 8px; width: 26px; height: 26px; border: 2px solid var(--accent-primary); z-index: 1;" title="Co-autor: Gemini-AI / Antigravity">
-                            </div>
-                            <div class="solver-info">
-                                <div class="name">${item.authorName} <span style="font-size: 11px; font-weight: normal; color: var(--accent-primary); background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px; margin-left: 5px;">+ Gemini-AI</span></div>
-                                <div class="commit-msg">${item.message}</div>
-                            </div>
-                        </div>
-                    </td>
-                    <td>
-                        <div class="score-major" style="color: ${isBest ? 'var(--accent-primary)' : '#fff'}">${item.score.toLocaleString()}</div>
-                        <div class="score-minor">SHA: ${item.shaShort}</div>
-                    </td>
-                    <td>
-                        <div style="font-size: 13px; font-weight: 600;">Toffoli: ${item.toffoli.toLocaleString()}</div>
-                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Qubits: ${item.qubits}</div>
-                    </td>
-                    <td>
-                        <span class="date-text">${item.date.toLocaleDateString('es-ES')} ${item.date.toLocaleTimeString('es-ES', {hour: '2-digit', minute:'2-digit'})}</span>
-                    </td>
-                    <td>
-                        <a href="${item.htmlUrl}" target="_blank" class="link-btn">
-                            Ver Commit ↗
-                        </a>
-                    </td>
-                `;
+                tr.innerHTML = "<td>" +
+                    "<div class=\"solver-cell\">" +
+                        "<span style=\"font-weight: 800; color: " + (isBest ? 'var(--gold)' : 'var(--text-secondary)') + "; width: 25px;\">#" + (index + 1) + "</span>" +
+                        "<div style=\"display: flex; align-items: center; margin-right: 5px; position: relative; width: 50px; height: 38px;\">" +
+                            "<img class=\"solver-avatar\" src=\"" + item.authorAvatar + "\" alt=\"avatar\" style=\"position: absolute; left: 0; top: 0; z-index: 2; width: 32px; height: 32px;\">" +
+                            "<img class=\"solver-avatar\" src=\"https://github.com/google-gemini.png\" alt=\"Gemini\" style=\"position: absolute; left: 16px; top: 8px; width: 26px; height: 26px; border: 2px solid var(--accent-primary); z-index: 1;\" title=\"Co-autor: Gemini-AI / Antigravity\">" +
+                        "</div>" +
+                        "<div class=\"solver-info\">" +
+                            "<div class=\"name\">" + item.authorName + " <span style=\"font-size: 11px; font-weight: normal; color: var(--accent-primary); background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px; margin-left: 5px;\">+ Gemini-AI</span></div>" +
+                            "<div class=\"commit-msg\">" + item.message + "</div>" +
+                        "</div>" +
+                    "</div>" +
+                "</td>" +
+                "<td>" +
+                    "<div class=\"score-major\" style=\"color: " + (isBest ? 'var(--accent-primary)' : '#fff') + "\">" + item.score.toLocaleString() + "</div>" +
+                    "<div class=\"score-minor\">SHA: " + item.shaShort + "</div>" +
+                "</td>" +
+                "<td>" +
+                    "<div style=\"font-size: 13px; font-weight: 600;\">Toffoli: " + item.toffoli.toLocaleString() + "</div>" +
+                    "<div style=\"font-size: 11px; color: var(--text-secondary); margin-top: 2px;\">Qubits: " + item.qubits + "</div>" +
+                "</td>" +
+                "<td>" +
+                    "<span class=\"date-text\">" + item.date.toLocaleDateString('es-ES') + " " + item.date.toLocaleTimeString('es-ES', {hour: '2-digit', minute:'2-digit'}) + "</span>" +
+                "</td>" +
+                "<td>" +
+                    "<a href=\"" + item.htmlUrl + "\" target=\"_blank\" class=\"link-btn\">Ver Commit ↗</a>" +
+                "</td>";
                 tbody.appendChild(tr);
             });
         }
