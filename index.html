@@ -756,10 +756,110 @@
             }
             
             try {
-                var sorted = [].concat(processed).sort(function(a, b) { return a.score - b.score; });
+                var googleRuns = [
+                    {
+                        shaShort: "Google",
+                        shaLong: "google-low-gate",
+                        message: "Frontera Google Low-Gate (Compilado óptimo)",
+                        authorName: "Google Quantum AI",
+                        authorAvatar: "https://github.com/google.png",
+                        date: new Date(),
+                        htmlUrl: "#",
+                        toffoli: 2100000,
+                        qubits: 1425,
+                        score: 2992500000,
+                        isGoogle: true,
+                        googleType: "Low-Gate"
+                    },
+                    {
+                        shaShort: "Google",
+                        shaLong: "google-low-qubit",
+                        message: "Frontera Google Low-Qubit (Mapeo de hardware)",
+                        authorName: "Google Quantum AI",
+                        authorAvatar: "https://github.com/google.png",
+                        date: new Date(),
+                        htmlUrl: "#",
+                        toffoli: 2700000,
+                        qubits: 1175,
+                        score: 3172500000,
+                        isGoogle: true,
+                        googleType: "Low-Qubit"
+                    }
+                ];
+                var sorted = [].concat(processed).concat(googleRuns).sort(function(a, b) { return a.score - b.score; });
                 renderTable(sorted);
             } catch (tableErr) {
                 console.error("Error al renderizar tabla:", tableErr);
+            }
+        }
+
+        function showGoogleDetails(type) {
+            var title = "";
+            var body = "";
+            if (type === "Low-Gate") {
+                title = "Google Low-Gate Pareto Point";
+                body = "<h3>Desglose de Métricas:</h3>" +
+                       "<ul style=\"margin-left: 20px; margin-top: 10px; margin-bottom: 15px;\">" +
+                       "<li><strong>Toffoli (avg/shot):</strong> 2,100,000</li>" +
+                       "<li><strong>Qubits Físicos:</strong> 1,425</li>" +
+                       "<li><strong>Complejidad (Score):</strong> 2.99 × 10⁹ (Toffoli × Qubits)</li>" +
+                       "</ul>" +
+                       "<p><strong>Estrategia Técnica:</strong> Este punto de operación de Google prioriza la reducción de compuertas lógicas Toffoli al máximo, tolerando a cambio un número mayor de registros y ancillas de entrada (1,425 qubits). Se implementa mediante una paralelización agresiva en la suma de Kaliski.</p>";
+            } else {
+                title = "Google Low-Qubit Pareto Point";
+                body = "<h3>Desglose de Métricas:</h3>" +
+                       "<ul style=\"margin-left: 20px; margin-top: 10px; margin-bottom: 15px;\">" +
+                       "<li><strong>Toffoli (avg/shot):</strong> 2,700,000</li>" +
+                       "<li><strong>Qubits Físicos:</strong> 1,175</li>" +
+                       "<li><strong>Complejidad (Score):</strong> 3.17 × 10⁹ (Toffoli × Qubits)</li>" +
+                       "</ul>" +
+                       "<p><strong>Estrategia Técnica:</strong> Optimizado para hardware cuántico con limitaciones extremas de qubits. Reduce la cantidad total de qubits a tan solo 1,175. Para compensar la escasez de espacio temporal, se requiere mayor cómputo lógico, lo que incrementa las Toffolis a 2.7 millones.</p>";
+            }
+            
+            var modal = document.getElementById('google-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'google-modal';
+                modal.style.position = 'fixed';
+                modal.style.top = '0';
+                modal.style.left = '0';
+                modal.style.width = '100%';
+                modal.style.height = '100%';
+                modal.style.backgroundColor = 'rgba(0,0,0,0.85)';
+                modal.style.display = 'flex';
+                modal.style.alignItems = 'center';
+                modal.style.justifyContent = 'center';
+                modal.style.zIndex = '1000';
+                modal.style.backdropFilter = 'blur(6px)';
+                
+                var content = document.createElement('div');
+                content.id = 'google-modal-content';
+                content.style.background = '#0f1c14';
+                content.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+                content.style.padding = '30px';
+                content.style.borderRadius = '15px';
+                content.style.maxWidth = '500px';
+                content.style.width = '90%';
+                content.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
+                content.style.position = 'relative';
+                
+                modal.appendChild(content);
+                document.body.appendChild(modal);
+            }
+            
+            var modalContent = document.getElementById('google-modal-content');
+            modalContent.innerHTML = 
+                "<h2 style=\"font-family:'Outfit', sans-serif; color: var(--gold); margin-bottom: 15px;\">" + title + "</h2>" +
+                "<div style=\"color: var(--text-primary); font-size: 14px; line-height: 1.6;\">" + body + "</div>" +
+                "<button onclick=\"closeGoogleModal()\" class=\"btn-primary\" style=\"margin-top: 20px; width: 100%; background: var(--gold); color: #000; font-weight: bold; cursor: pointer;\">Cerrar Ventana</button>";
+                
+            modal.style.display = 'flex';
+        }
+        
+        function closeGoogleModal() {
+            var modal = document.getElementById('google-modal');
+            if (modal) {
+                modal.style.display = 'none';
             }
         }
 
@@ -770,7 +870,8 @@
             var scores = data.map(function(d) { return d.score; });
             var urls = data.map(function(d) { return d.htmlUrl; });
 
-            var googleLowGate = Array(labels.length).fill(3500000000);
+            var googleLowQubit = Array(labels.length).fill(3172500000);
+            var googleLowGate = Array(labels.length).fill(2992500000);
 
             if (myChart) {
                 myChart.destroy();
@@ -793,9 +894,19 @@
                             pointHoverRadius: 8
                         },
                         {
-                            label: 'Frontera Google Superior (3.5B)',
-                            data: googleLowGate,
+                            label: 'Google Low-Qubit (3.17B)',
+                            data: googleLowQubit,
                             borderColor: '#f59e0b',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            backgroundColor: 'transparent',
+                            pointRadius: 0,
+                            fill: false
+                        },
+                        {
+                            label: 'Google Low-Gate (2.99B)',
+                            data: googleLowGate,
+                            borderColor: '#ef4444',
                             borderWidth: 2,
                             borderDash: [5, 5],
                             backgroundColor: 'transparent',
@@ -846,35 +957,62 @@
 
             data.forEach(function(item, index) {
                 var tr = document.createElement('tr');
+                
+                if (item.isGoogle) {
+                    tr.style.backgroundColor = "rgba(245, 158, 11, 0.05)";
+                    tr.style.borderLeft = "4px solid var(--gold)";
+                }
+
                 var isBest = item.score === bestScore;
                 var diffText = isBest ? "🏆 Óptimo" : "+" + (((item.score - bestScore) / bestScore * 100).toFixed(1)) + "%";
+
+                var actionBtnHtml = "";
+                if (item.isGoogle) {
+                    actionBtnHtml = "<button onclick=\"showGoogleDetails('" + item.googleType + "')\" class=\"link-btn\" style=\"background: var(--gold); color: #000; border-color: var(--gold); cursor: pointer; font-weight: 800;\">Ver Desglose 🛈</button>";
+                } else {
+                    actionBtnHtml = "<a href=\"" + item.htmlUrl + "\" target=\"_blank\" class=\"link-btn\">Ver Commit ↗</a>";
+                }
+
+                var avatarHtml = "";
+                if (item.isGoogle) {
+                    avatarHtml = "<img class=\"solver-avatar\" src=\"" + item.authorAvatar + "\" alt=\"avatar\" style=\"width: 32px; height: 32px;\">";
+                } else {
+                    avatarHtml = "<div style=\"display: flex; align-items: center; margin-right: 5px; position: relative; width: 50px; height: 38px;\">" +
+                                    "<img class=\"solver-avatar\" src=\"" + item.authorAvatar + "\" alt=\"avatar\" style=\"position: absolute; left: 0; top: 0; z-index: 2; width: 32px; height: 32px;\">" +
+                                    "<img class=\"solver-avatar\" src=\"https://github.com/google-gemini.png\" alt=\"Gemini\" style=\"position: absolute; left: 16px; top: 8px; width: 26px; height: 26px; border: 2px solid var(--accent-primary); z-index: 1;\" title=\"Co-autor: Gemini-AI / Antigravity\">" +
+                                 "</div>";
+                }
+
+                var nameHtml = "";
+                if (item.isGoogle) {
+                    nameHtml = item.authorName + " <span style=\"font-size: 11px; font-weight: normal; color: var(--gold); background: rgba(245, 158, 11, 0.1); padding: 2px 6px; border-radius: 4px; margin-left: 5px;\">Pareto Target</span>";
+                } else {
+                    nameHtml = item.authorName + " <span style=\"font-size: 11px; font-weight: normal; color: var(--accent-primary); background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px; margin-left: 5px;\">+ Gemini-AI</span>";
+                }
 
                 tr.innerHTML = "<td>" +
                     "<div class=\"solver-cell\">" +
                         "<span style=\"font-weight: 800; color: " + (isBest ? 'var(--gold)' : 'var(--text-secondary)') + "; width: 25px;\">#" + (index + 1) + "</span>" +
-                        "<div style=\"display: flex; align-items: center; margin-right: 5px; position: relative; width: 50px; height: 38px;\">" +
-                            "<img class=\"solver-avatar\" src=\"" + item.authorAvatar + "\" alt=\"avatar\" style=\"position: absolute; left: 0; top: 0; z-index: 2; width: 32px; height: 32px;\">" +
-                            "<img class=\"solver-avatar\" src=\"https://github.com/google-gemini.png\" alt=\"Gemini\" style=\"position: absolute; left: 16px; top: 8px; width: 26px; height: 26px; border: 2px solid var(--accent-primary); z-index: 1;\" title=\"Co-autor: Gemini-AI / Antigravity\">" +
-                        "</div>" +
+                        avatarHtml +
                         "<div class=\"solver-info\">" +
-                            "<div class=\"name\">" + item.authorName + " <span style=\"font-size: 11px; font-weight: normal; color: var(--accent-primary); background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px; margin-left: 5px;\">+ Gemini-AI</span></div>" +
+                            "<div class=\"name\">" + nameHtml + "</div>" +
                             "<div class=\"commit-msg\">" + item.message + "</div>" +
                         "</div>" +
                     "</div>" +
                 "</td>" +
                 "<td>" +
                     "<div class=\"score-major\" style=\"color: " + (isBest ? 'var(--accent-primary)' : '#fff') + "\">" + item.score.toLocaleString() + "</div>" +
-                    "<div class=\"score-minor\">SHA: " + item.shaShort + "</div>" +
+                    "<div class=\"score-minor\">" + (item.isGoogle ? "Frontera" : "SHA: " + item.shaShort) + "</div>" +
                 "</td>" +
                 "<td>" +
                     "<div style=\"font-size: 13px; font-weight: 600;\">Toffoli: " + item.toffoli.toLocaleString() + "</div>" +
                     "<div style=\"font-size: 11px; color: var(--text-secondary); margin-top: 2px;\">Qubits: " + item.qubits + "</div>" +
                 "</td>" +
                 "<td>" +
-                    "<span class=\"date-text\">" + item.date.toLocaleDateString('es-ES') + " " + item.date.toLocaleTimeString('es-ES', {hour: '2-digit', minute:'2-digit'}) + "</span>" +
+                    "<span class=\"date-text\">" + (item.isGoogle ? "Punto Objetivo" : item.date.toLocaleDateString('es-ES') + " " + item.date.toLocaleTimeString('es-ES', {hour: '2-digit', minute:'2-digit'})) + "</span>" +
                 "</td>" +
                 "<td>" +
-                    "<a href=\"" + item.htmlUrl + "\" target=\"_blank\" class=\"link-btn\">Ver Commit ↗</a>" +
+                    actionBtnHtml +
                 "</td>";
                 tbody.appendChild(tr);
             });
