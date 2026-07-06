@@ -441,30 +441,15 @@
 
     <div class="main-container">
 
-        <!-- Selector de Repositorio -->
-        <div class="repo-config">
-            <div class="input-group">
-                <label for="repo-owner">Usuario de GitHub</label>
-                <input type="text" id="repo-owner" value="Jtoro109">
-            </div>
-            <div class="input-group">
-                <label for="repo-name">Repositorio</label>
-                <input type="text" id="repo-name" value="ecdsafail-myChallenge">
-            </div>
-            <div class="input-group">
-                <label for="repo-branch">Rama</label>
-                <input type="text" id="repo-branch" value="myCircuit">
-            </div>
-            <button class="load-btn" id="fetch-btn">Conectar y Actualizar</button>
-            <div class="error-message" id="error-msg">No se pudo cargar el repositorio. Verifica que sea público o que la rama exista.</div>
-        </div>
-
         <!-- Hero Banner con Gráfica -->
         <div class="hero-banner">
             <div class="hero-header">
                 <div class="hero-title">
                     <h1 id="hero-percentage">0.0% de optimización</h1>
                     <p>Historial real de compilaciones y pico de qubits físicos (secp256k1)</p>
+                </div>
+                <div class="hero-actions" style="display: flex; gap: 10px;">
+                    <button class="btn-primary" id="update-btn">Actualizar Datos</button>
                 </div>
             </div>
 
@@ -490,6 +475,7 @@
             <div class="chart-container">
                 <canvas id="historyChart"></canvas>
             </div>
+            <div class="error-message" id="error-msg" style="margin-top: 15px;">No se pudo cargar el repositorio. Verifica tu conexión o que los archivos en GitHub estén actualizados.</div>
         </div>
 
         <!-- Tabla de Posiciones -->
@@ -528,29 +514,16 @@
     <script>
         let myChart = null;
 
-        // Cargar inputs guardados en localStorage
-        if (localStorage.getItem('repo-owner')) {
-            document.getElementById('repo-owner').value = localStorage.getItem('repo-owner');
-            document.getElementById('repo-name').value = localStorage.getItem('repo-name');
-            document.getElementById('repo-branch').value = localStorage.getItem('repo-branch');
-        }
+        const owner = "Jtoro109";
+        const repo = "ecdsafail-myChallenge";
+        const branch = "myCircuit";
 
-        document.getElementById('fetch-btn').addEventListener('click', () => {
-            // Guardar inputs
-            localStorage.setItem('repo-owner', document.getElementById('repo-owner').value.trim());
-            localStorage.setItem('repo-name', document.getElementById('repo-name').value.trim());
-            localStorage.setItem('repo-branch', document.getElementById('repo-branch').value.trim());
-            loadGitHubCommits();
-        });
+        document.getElementById('update-btn').addEventListener('click', loadGitHubCommits);
 
         window.addEventListener('DOMContentLoaded', loadGitHubCommits);
 
         async function loadGitHubCommits() {
-            const owner = document.getElementById('repo-owner').value.trim();
-            const repo = document.getElementById('repo-name').value.trim();
-            const branch = document.getElementById('repo-branch').value.trim();
             const errorMsg = document.getElementById('error-msg');
-            
             errorMsg.style.display = 'none';
 
             try {
