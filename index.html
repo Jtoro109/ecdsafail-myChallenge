@@ -770,8 +770,7 @@
             var scores = data.map(function(d) { return d.score; });
             var urls = data.map(function(d) { return d.htmlUrl; });
 
-            var googleLowGate = Array(labels.length).fill(3000000000);
-            var googleBestGate = Array(labels.length).fill(7077100800);
+            var googleLowGate = Array(labels.length).fill(3500000000);
 
             if (myChart) {
                 myChart.destroy();
@@ -794,21 +793,11 @@
                             pointHoverRadius: 8
                         },
                         {
-                            label: 'Límite Google Superior (3.0B)',
+                            label: 'Frontera Google Superior (3.5B)',
                             data: googleLowGate,
                             borderColor: '#f59e0b',
                             borderWidth: 2,
                             borderDash: [5, 5],
-                            backgroundColor: 'transparent',
-                            pointRadius: 0,
-                            fill: false
-                        },
-                        {
-                            label: 'Frontera Google Original (7.07B)',
-                            data: googleBestGate,
-                            borderColor: '#ef4444',
-                            borderWidth: 2,
-                            borderDash: [6, 6],
                             backgroundColor: 'transparent',
                             pointRadius: 0,
                             fill: false
@@ -834,7 +823,10 @@
                     },
                     scales: {
                         x: { ticks: { color: '#a3bdae' } },
-                        y: { ticks: { color: '#a3bdae' } }
+                        y: { 
+                            min: 2500000000,
+                            ticks: { color: '#a3bdae' } 
+                        }
                     },
                     onClick: function(e, elements) {
                         if (elements.length > 0) {
