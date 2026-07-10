@@ -2,7 +2,7 @@
 # Benchmark a submission.
 #
 #   1. Wipe stale ops.bin / score.json so a contestant cannot pre-seed them.
-#   2. Run build_circuit (UNTRUSTED — runs contestant code in src/point_add)
+#   2. Run build_circuit (UNTRUSTED — runs contestant code in src/ec_add)
 #      under bubblewrap: read-only filesystem, no network, all capabilities
 #      dropped, unprivileged uid, writable only in a throwaway scratch dir
 #      (its cwd) where it emits ops.bin. Also run it in its own process group

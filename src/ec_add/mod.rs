@@ -7,7 +7,7 @@
 //!   p = 2^256 - 2^32 - 977
 //!   a = 0, b = 7
 //! are hard-coded. Specialization lets later optimization passes exploit
-//! the Solinas structure of p (sparse low word, mostly-ones upper words)
+//! the FastModulo structure of p (sparse low word, mostly-ones upper words)
 //! for faster modular reduction. Generalizing is an explicit non-goal.
 //!
 //! # Interface
@@ -18,12 +18,12 @@
 //! offsets. The harness validates against `WeierstrassEllipticCurve::add`.
 //!
 //! # Algorithm
-//! Standard affine addition with Roetteler-style two-Kaliski uncomputation:
+//! Standard affine addition with Roetteler-style two-Eea uncomputation:
 //!
 //!   1. Px -= Qx,  Py -= Qy          (register now holds dx, dy)
-//!   2. kaliski_inv_inplace(Px)       (Px ← dx^{-1})
+//!   2. eea_inv_inplace(Px)       (Px ← dx^{-1})
 //!   3. lam += Py * Px                (lam ← (dy)(dx^{-1}) = λ)
-//!   4. kaliski_inv_inplace(Px)       (Px ← dx)
+//!   4. eea_inv_inplace(Px)       (Px ← dx)
 //!   5. Py -= lam * Px                (Py ← 0)
 //!   6. Px -= lam*lam                 (Px ← dx - λ²)
 //!   7. Px ← -Px                      (Px ← λ² - dx)
@@ -36,22 +36,22 @@
 //!
 //! Step 12 in detail (uses the identity λ = (Qy + Ry) / (Qx - Rx)):
 //!     a. Px -= Qx; Px ← -Px            (Px ← Qx - Rx)
-//!     b. kaliski_inv_inplace(Px)       (Px ← (Qx - Rx)^{-1})
+//!     b. eea_inv_inplace(Px)       (Px ← (Qx - Rx)^{-1})
 //!     c. lam -= Py * Px                (lam -= Ry / (Qx - Rx))
 //!     d. lam -= Qy * Px                (lam -= Qy / (Qx - Rx))
 //!                                        → lam = 0
-//!     e. kaliski_inv_inplace(Px)       (Px ← Qx - Rx)
+//!     e. eea_inv_inplace(Px)       (Px ← Qx - Rx)
 //!     f. Px ← -Px; Px += Qx            (Px ← Rx)
 //!
 //! # Primitive layer
-//! All modular arithmetic is built on a single Cuccaro ripple-carry
+//! All modular arithmetic is built on a single RippleAdder ripple-carry
 //! adder operating on `(n+1)`-wide extended registers. Subtract =
 //! forward complement + add + back complement. Modular reduction
 //! after add/sub is: (cond-sub p) + (cond-add p) controlled by the
 //! resulting sign bit.
 //!
 //! # Current status
-//! First-pass baseline: correctness-first, no optimization. Kaliski is
+//! First-pass baseline: correctness-first, no optimization. Eea is
 //! implemented as the textbook binary almost-inverse (2n iterations).
 //! Expected gate counts far exceed zenodo's targets; the research loop
 //! reduces them.
@@ -84,53 +84,53 @@ mod bench_probe;
 #[allow(unused_imports)]
 pub(crate) use bench_probe::*;
 
-mod point_add;
+mod ec_add;
 #[allow(unused_imports)]
-pub(crate) use point_add::*;
+pub(crate) use ec_add::*;
 
-mod kaliski_state;
+mod eea_state;
 #[allow(unused_imports)]
-pub(crate) use kaliski_state::*;
+pub(crate) use eea_state::*;
 
-mod kaliski_walk;
+mod eea_walk;
 #[allow(unused_imports)]
-pub(crate) use kaliski_walk::*;
+pub(crate) use eea_walk::*;
 
-mod kaliski_inv;
+mod eea_inv;
 #[allow(unused_imports)]
-pub(crate) use kaliski_inv::*;
+pub(crate) use eea_inv::*;
 
-mod kaliski_coeff;
+mod eea_coeff;
 #[allow(unused_imports)]
-pub(crate) use kaliski_coeff::*;
+pub(crate) use eea_coeff::*;
 
-mod mul_schoolbook;
+mod mul_basic;
 #[allow(unused_imports)]
-pub(crate) use mul_schoolbook::*;
+pub(crate) use mul_basic::*;
 
-mod mul_karatsuba;
+mod mul_fast;
 #[allow(unused_imports)]
-pub(crate) use mul_karatsuba::*;
+pub(crate) use mul_fast::*;
 
-mod mul_affine;
+mod mul_ec;
 #[allow(unused_imports)]
-pub(crate) use mul_affine::*;
+pub(crate) use mul_ec::*;
 
-mod solinas;
+mod fast_modulo;
 #[allow(unused_imports)]
-pub(crate) use solinas::*;
+pub(crate) use fast_modulo::*;
 
-mod cuccaro;
+mod ripple_adder;
 #[allow(unused_imports)]
-pub(crate) use cuccaro::*;
+pub(crate) use ripple_adder::*;
 
-mod modular;
+mod mod_arithmetic;
 #[allow(unused_imports)]
-pub(crate) use modular::*;
+pub(crate) use mod_arithmetic::*;
 
-mod compare;
+mod comparator;
 #[allow(unused_imports)]
-pub(crate) use compare::*;
+pub(crate) use comparator::*;
 
 mod builder;
 #[allow(unused_imports)]
@@ -165,9 +165,9 @@ pub fn build() -> Vec<Op> {
     mod_sub_qb(b, &ty, &oy, p);
 
     if std::env::var("COMPACT_POINT_ADD").ok().as_deref() == Some("1") {
-        build_compact_point_add(b, &tx, &ty, &ox, &oy, p);
+        build_compact_ec_add(b, &tx, &ty, &ox, &oy, p);
     } else {
-        build_standard_point_add(b, &tx, &ty, &ox, &oy, p);
+        build_standard_ec_add(b, &tx, &ty, &ox, &oy, p);
     }
 
     if std::env::var("BY_REPLAY_BENCH_SCAFFOLD").ok().as_deref() == Some("1") {

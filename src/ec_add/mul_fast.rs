@@ -19,7 +19,7 @@ pub(crate) fn karatsuba_half_sum_compute(b: &mut B, lo: &[QubitId], hi: &[QubitI
     b.free(hi_pad);
 }
 
-/// Low-peak variant of `karatsuba_half_sum_compute` using non-fast Cuccaro.
+/// Low-peak variant of `karatsuba_half_sum_compute` using non-fast RippleAdder.
 /// Saves ~h carry qubits at peak at the cost of ~h extra Toffolis.
 pub(crate) fn karatsuba_half_sum_compute_lowq(b: &mut B, lo: &[QubitId], hi: &[QubitId], acc: &[QubitId]) {
     let h = lo.len();
@@ -417,7 +417,7 @@ pub(crate) fn mod_mul_write_into_zero_acc_karatsuba_with_tmp_ext(
     let z1_reg = b.alloc_qubits(2 * (h + 1));
     b.set_phase("kara_fwd");
     karatsuba_forward(b, x, y, tmp_ext, &z1_reg);
-    b.set_phase("kara_solinas");
+    b.set_phase("kara_fast_modulo");
 
     let lo: Vec<QubitId> = tmp_ext[0..n].to_vec();
     let hi: Vec<QubitId> = tmp_ext[n..2 * n].to_vec();
@@ -440,15 +440,15 @@ pub(crate) fn mod_mul_write_into_zero_acc_karatsuba_with_tmp_ext(
     }
     b.set_phase("sol_add10");
     mod_add_qq_fast_lowscratch(b, acc, &hi, p);
-    b.set_phase("kara_solinas_shift22L");
+    b.set_phase("kara_fast_modulo_shift22L");
     let (spill, flag_inv, ovf) = mod_shift_left_by_k(b, &hi, p, 22);
-    b.set_phase("kara_solinas_post32_add");
+    b.set_phase("kara_fast_modulo_post32_add");
     // Use non-fast mod_add at peak site (after shift_left, with extra locals alive)
     // to save 256 carry qubits at the expense of ~n Toffoli.
     mod_add_qq(b, acc, &hi, p);
-    b.set_phase("kara_solinas_shift22R");
+    b.set_phase("kara_fast_modulo_shift22R");
     mod_shift_right_by_k(b, &hi, p, 22, spill, flag_inv, ovf);
-    b.set_phase("kara_solinas_post_halve");
+    b.set_phase("kara_fast_modulo_post_halve");
     for _ in 0..10 {
         mod_halve_inplace_fast(b, &hi, p);
     }
@@ -470,17 +470,17 @@ pub(crate) fn mod_mul_write_into_zero_acc_karatsuba(
     b.free_vec(&tmp_ext);
 }
 
-pub(crate) fn pair1_mul1_write_into_zero_acc(
+pub(crate) fn state_a_mul1_write_into_zero_acc(
     b: &mut B,
     acc: &[QubitId],
     x: &[QubitId],
     y: &[QubitId],
     p: U256,
 ) {
-    if pair1_mul1_karatsuba_enabled(acc.len()) {
+    if state_a_mul1_karatsuba_enabled(acc.len()) {
         mod_mul_write_into_zero_acc_karatsuba(b, acc, x, y, p);
     } else if gz_mul_lowscratch() {
-        // 9n-floor: drop the pair1_borrow_dx_mul1 schoolbook Solinas-fold
+        // 9n-floor: drop the state_a_borrow_dx_mul1 schoolbook FastModulo-fold
         // transient below 2333 so it no longer rebinds the peak.
         mod_mul_write_into_zero_acc_schoolbook_lowscratch_fold(b, acc, x, y, p);
     } else {
@@ -488,36 +488,36 @@ pub(crate) fn pair1_mul1_write_into_zero_acc(
     }
 }
 
-pub(crate) fn pair1_mul2_add_into_acc(
+pub(crate) fn state_a_mul2_add_into_acc(
     b: &mut B,
     acc: &[QubitId],
     x: &[QubitId],
     y: &[QubitId],
     p: U256,
 ) {
-    if pair1_mul2_karatsuba_enabled(acc.len()) {
+    if state_a_mul2_karatsuba_enabled(acc.len()) {
         mod_mul_add_into_acc_karatsuba_lowq(b, acc, x, y, p);
     } else {
         mod_mul_add_into_acc_schoolbook(b, acc, x, y, p);
     }
 }
 
-pub(crate) fn pair2_mul_add_into_acc(
+pub(crate) fn state_b_mul_add_into_acc(
     b: &mut B,
     acc: &[QubitId],
     x: &[QubitId],
     y: &[QubitId],
     p: U256,
 ) {
-    if pair2_mul_karatsuba_enabled(acc.len()) {
+    if state_b_mul_fast_enabled(acc.len()) {
         if env_flag_enabled("KAL_PAIR2_MUL_KARATSUBA_LOWQ", false) {
             mod_mul_add_into_acc_karatsuba_lowq(b, acc, x, y, p);
         } else {
             mod_mul_add_into_acc_karatsuba(b, acc, x, y, p);
         }
     } else if gz_mul_lowscratch() {
-        // 9n-floor: drop the schoolbook Solinas-fold transient below 2333 so
-        // pair2_mul no longer rebinds the peak once STEP-4 has dropped.
+        // 9n-floor: drop the schoolbook FastModulo-fold transient below 2333 so
+        // state_b_mul no longer rebinds the peak once STEP-4 has dropped.
         mod_mul_add_into_acc_schoolbook_lowscratch_fold(b, acc, x, y, p);
     } else {
         mod_mul_add_into_acc_schoolbook(b, acc, x, y, p);

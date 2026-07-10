@@ -331,12 +331,12 @@ pub(crate) fn emit_single_inv_strategy_c_shape_benchmark_scaffold(b: &mut B, p: 
 // modular primitives are baked to n=256, so n=64 in the hypothesis title is
 // reinterpreted as "reduced register set ≈ 64 qubits per operand" — every
 // other parameter is held at the production scale so the per-mul / per-
-// Kaliski Toffoli/peak/owner-table numbers are MEASURED at full scale, not
+// Eea Toffoli/peak/owner-table numbers are MEASURED at full scale, not
 // extrapolated from a smaller width that would not actually exercise our
 // shipping primitives).
 //
 // The probe answers three owner-set-keyed kill questions for projective:
-//   1. Does projective remove the Kaliski owner block? (kill if NO)
+//   1. Does projective remove the Eea owner block? (kill if NO)
 //   2. Is projective Toffoli < affine Toffoli at the matched scaffold?
 //      (kill if NO)
 //   3. Is projective peak ≤ affine peak? (kill if NO)
@@ -344,17 +344,17 @@ pub(crate) fn emit_single_inv_strategy_c_shape_benchmark_scaffold(b: &mut B, p: 
 // Two sub-scaffolds, both running under the same B builder so their op
 // ranges can be sliced for separate Toffoli/peak accounting:
 //
-//   (A) AFFINE baseline:  1 Kaliski + 1 mod_mul (mirrors the per-Kaliski
-//       owner-set you see at pair1 in the real point-add). This is the
-//       minimum scaffold that exhibits the "Kaliski owner block plus an
+//   (A) AFFINE baseline:  1 Eea + 1 mod_mul (mirrors the per-Eea
+//       owner-set you see at state_a in the real point-add). This is the
+//       minimum scaffold that exhibits the "Eea owner block plus an
 //       adjacent multiplier transient" peak pattern.
 //
 //   (B) PROJECTIVE candidate: mixed `madd-2007-bl` (7M + 4S) using existing
-//       schoolbook primitives, FOLLOWED BY a final 1/Z Kaliski + 3M + 1S
+//       schoolbook primitives, FOLLOWED BY a final 1/Z Eea + 3M + 1S
 //       affine conversion. This is the EFD-canonical projective scaffold
 //       under the fixed affine-output harness contract — exactly the
 //       scaffold whose owner-set the research-204-210 deep-theory report
-//       predicts will preserve a 'z_inverse_kaliski_forward' owner block.
+//       predicts will preserve a 'z_inverse_eea_forward' owner block.
 //
 // Both sub-scaffolds emit only into freshly-allocated scratch registers
 // (the main point-add's tx/ty are NOT touched) and use init_small_const_reg
@@ -370,13 +370,13 @@ pub(crate) fn emit_single_inv_strategy_c_shape_benchmark_scaffold(b: &mut B, p: 
 //   PROJECTIVE_N64_VERDICT=CLOSED|OPEN
 //   PROJECTIVE_N64_KILL_TOFFOLI=YES|NO   (proj > affine)
 //   PROJECTIVE_N64_KILL_PEAK=YES|NO      (proj > affine)
-//   PROJECTIVE_N64_KILL_OWNER=YES|NO     (proj preserves a Kaliski owner block)
+//   PROJECTIVE_N64_KILL_OWNER=YES|NO     (proj preserves a Eea owner block)
 //
 // When TRACE_PEAK and TRACE_PEAK_OWNERS are also set, the existing
 // PEAK_OWNER_PHASE / PEAK_OWNER_LABEL reporter will surface the
-// 'z_inverse_kaliski_forward' phase and its owner block automatically — the
+// 'z_inverse_eea_forward' phase and its owner block automatically — the
 // kill-owner check below is a coarse summary based on whether projective's
-// peak phase contains a "kaliski_forward" substring.
+// peak phase contains a "eea_forward" substring.
 pub(crate) fn emit_projective_n64_probe(b: &mut B, p: U256) {
     const ITERS: usize = 404;
 
@@ -392,7 +392,7 @@ pub(crate) fn emit_projective_n64_probe(b: &mut B, p: U256) {
     init_small_const_reg(b, &a_dx, 3);
     init_small_const_reg(b, &a_dy, 5);
 
-    b.set_phase("affine_n64_kaliski_forward");
+    b.set_phase("affine_n64_eea_forward");
     with_kal_inv_raw(b, &a_dx, p, ITERS, |b, inv_raw| {
         b.set_phase("affine_n64_lam_mul");
         // lam += dy * dx^{-1}_raw  (schoolbook full multiply)
@@ -439,7 +439,7 @@ pub(crate) fn emit_projective_n64_probe(b: &mut B, p: U256) {
         m
     };
 
-    // ─── (B) Projective madd-2007-bl + final 1/Z Kaliski conversion ────
+    // ─── (B) Projective madd-2007-bl + final 1/Z Eea conversion ────
     let proj_start_ops = b.ops.len();
     let proj_start_peak = b.peak_qubits;
     let mut proj_peak_phase: &'static str = "";
@@ -453,7 +453,7 @@ pub(crate) fn emit_projective_n64_probe(b: &mut B, p: U256) {
     let z1 = b.alloc_qubits(N);
     let qx = b.alloc_qubits(N);
     let qy = b.alloc_qubits(N);
-    // Non-zero constants chosen so no input is 0 (avoids Kaliski degeneracy
+    // Non-zero constants chosen so no input is 0 (avoids Eea degeneracy
     // on Z3 = 0, but exact correctness of EC math is NOT required here —
     // we measure only the gate cost / qubit lifetime of the formula
     // skeleton).
@@ -560,10 +560,10 @@ pub(crate) fn emit_projective_n64_probe(b: &mut B, p: U256) {
     mod_sub_qq_fast(b, &z1h, &z1, p);
     b.free_vec(&z1h);
 
-    // ── Final affine conversion: 1/Z3 Kaliski + 3M + 1S. ─────────────
+    // ── Final affine conversion: 1/Z3 Eea + 3M + 1S. ─────────────
     // Rx_out = X3 * (1/Z3)^2
     // Ry_out = Y3 * (1/Z3)^3
-    b.set_phase("z_inverse_kaliski_forward");
+    b.set_phase("z_inverse_eea_forward");
     let rx_out = b.alloc_qubits(N);
     let ry_out = b.alloc_qubits(N);
     with_kal_inv_raw(b, &z3, p, ITERS, |b, inv_raw| {
@@ -665,9 +665,9 @@ pub(crate) fn emit_projective_n64_probe(b: &mut B, p: U256) {
     b.free_vec(&z1z1);
 
     b.set_phase("projective_n64_probe_free");
-    // Uncompute ry_out and rx_out: they were computed by Kaliski-internal
+    // Uncompute ry_out and rx_out: they were computed by Eea-internal
     // mul-add-mul-sub pairs that are already balanced. Their final state is
-    // |0⟩ (the mul-sub at end of Kaliski body un-set them). Verify via X
+    // |0⟩ (the mul-sub at end of Eea body un-set them). Verify via X
     // pattern: since inputs are constants, the un-mul-sub returns rx_out and
     // ry_out exactly to 0. Free directly.
     b.free_vec(&ry_out);
@@ -721,12 +721,12 @@ pub(crate) fn emit_projective_n64_probe(b: &mut B, p: U256) {
 
     let kill_toffoli = projective_toffoli > affine_toffoli;
     let kill_peak = projective_local_peak > affine_local_peak;
-    // Owner-set kill criterion: projective preserves a Kaliski owner block
-    // iff its peak phase name contains "kaliski_forward". This is a
+    // Owner-set kill criterion: projective preserves a Eea owner block
+    // iff its peak phase name contains "eea_forward". This is a
     // coarse summary; the precise owner-table is available via the
     // PEAK_OWNER_PHASE/PEAK_OWNER_LABEL lines when TRACE_PEAK_OWNERS is set.
-    let kill_owner = proj_peak_phase.contains("kaliski_forward")
-        || proj_peak_phase.contains("z_inverse_kaliski");
+    let kill_owner = proj_peak_phase.contains("eea_forward")
+        || proj_peak_phase.contains("z_inverse_eea");
     eprintln!(
         "PROJECTIVE_N64_KILL_TOFFOLI={}",
         if kill_toffoli { "YES" } else { "NO" }
@@ -828,7 +828,7 @@ pub(crate) fn emit_luohan_eea_n64_probe(b: &mut B, p: U256) {
     init_small_const_reg(b, &a_dx, 3);
     init_small_const_reg(b, &a_dy, 5);
 
-    b.set_phase("luohan_eea_n64_affine_kaliski_forward");
+    b.set_phase("luohan_eea_n64_affine_eea_forward");
     with_kal_inv_raw(b, &a_dx, p, ITERS, |b, inv_raw| {
         b.set_phase("luohan_eea_n64_affine_lam_mul");
         mod_mul_add_into_acc_schoolbook(b, &a_lam, &a_dy, inv_raw, p);

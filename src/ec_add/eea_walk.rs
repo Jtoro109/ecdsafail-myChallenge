@@ -1,9 +1,9 @@
-//! (refactor) Mechanically extracted from kaliski.rs. No logic changes.
+//! (refactor) Mechanically extracted from eea.rs. No logic changes.
 use super::*;
 /// Specialized real forward primitive for the first few guaranteed-bulk
-/// Kaliski iterations where `f = 1` and `v_w != 0` are known a priori.
+/// Eea iterations where `f = 1` and `v_w != 0` are known a priori.
 ///
-/// This keeps the same persistent-state interface as `kaliski_iteration`
+/// This keeps the same persistent-state interface as `eea_iteration`
 /// (notably `m_i` ends in the same value that the generic step would have
 /// produced), but drops STEP 0 / `f` handling entirely.
 ///
@@ -11,7 +11,7 @@ use super::*;
 /// attempt did not preserve full point-add correctness, so this remains an
 /// experimental helper while the history/backward compatibility conditions are
 /// worked out.
-pub(crate) fn kaliski_iteration_bulk_prefix3(
+pub(crate) fn eea_iteration_bulk_prefix3(
     b: &mut B,
     p: U256,
     u: &[QubitId],
@@ -112,7 +112,7 @@ pub(crate) fn kaliski_iteration_bulk_prefix3(
     b.free(l_gt);
 
     b.set_phase("kal_bulk_step3_cswap");
-    // Late-iter truncation: bitlen(u)+bitlen(v_w) ≤ 2n-iter_idx (Kaliski invariant).
+    // Late-iter truncation: bitlen(u)+bitlen(v_w) ≤ 2n-iter_idx (Eea invariant).
     let uv_width_step3 = {
         let base = if iter_idx < u.len() {
             u.len()
@@ -207,7 +207,7 @@ pub(crate) fn kaliski_iteration_bulk_prefix3(
         }
         // Narrow load/sub width to the late-iter bound.
         // Both tmp and v_w are 256 qubits. Use slice [0..load_width] for each.
-        // 9n-floor: carry-BORROW fast Cuccaro — host the n-1 carry register on
+        // 9n-floor: carry-BORROW fast RippleAdder — host the n-1 carry register on
         // clean future m_hist bits (restored to |0>), so the STEP-4 binder
         // drops by up to n-1 at FLAT Toffoli.
         if gz {
@@ -251,7 +251,7 @@ pub(crate) fn kaliski_iteration_bulk_prefix3(
         let s_slice: Vec<QubitId> = s[0..add_width].to_vec();
         if gz {
             // Late-iter recovery: also borrow u's provably-|0> high bits so the
-            // full-width s-add never falls back to slow Cuccaro (flat peak).
+            // full-width s-add never falls back to slow RippleAdder (flat peak).
             if gz_early_recover() {
                 // Lever C*: host the s-add carry pool on r-high ++ u-high (clean
                 // first) so the early/mid s-add stops borrowing m_hist slots.
@@ -379,7 +379,7 @@ pub(crate) fn kaliski_iteration_bulk_prefix3(
     b.set_phase(_kal_saved_phase);
 }
 
-pub(crate) fn kaliski_iteration(
+pub(crate) fn eea_iteration(
     b: &mut B,
     p: U256,
     u: &[QubitId],
@@ -409,7 +409,7 @@ pub(crate) fn kaliski_iteration(
     b.set_phase("kal_step0_eqzero");
     // ─── STEP 0: is_zero = (v_w == 0);  m[i] ^= (f AND is_zero);  f ^= m[i] ───
     // Truncated OR chain for late iter: v_w's bits [2n-iter..n-1] are 0
-    // (Kaliski invariant), so OR only of low 2n-iter bits suffices.
+    // (Eea invariant), so OR only of low 2n-iter bits suffices.
     // W-TRUNC: further narrow to the empirical bitlen envelope.
     let or_width =
         (if iter_idx < n { n } else { 2 * n - iter_idx }).min(kal_wtrunc_width(iter_idx, n));
@@ -476,7 +476,7 @@ pub(crate) fn kaliski_iteration(
 
     b.set_phase("kal_step3_cswap");
     // ─── STEP 3: with control(a): swap(u, v_w); swap(r, s) ───
-    // Late-iter truncation: Kaliski invariant: bitlen(u) + bitlen(v_w) ≤ 2n-iter,
+    // Late-iter truncation: Eea invariant: bitlen(u) + bitlen(v_w) ≤ 2n-iter,
     // so u[j]=v_w[j]=0 for j >= 2n-iter_idx. Truncate (u,v_w) cswap.
     // Small-iter truncation: max(r,s) ≤ 2^iter_idx, so r[j]=s[j]=0 for j >= iter_idx+1.
     let uv_width = if iter_idx < n { n } else { 2 * n - iter_idx };
@@ -577,7 +577,7 @@ pub(crate) fn kaliski_iteration(
         let s_slice: Vec<QubitId> = s[0..add_width].to_vec();
         if gz {
             // Late-iter recovery: also borrow u's provably-|0> high bits so the
-            // full-width s-add never falls back to slow Cuccaro (flat peak).
+            // full-width s-add never falls back to slow RippleAdder (flat peak).
             if gz_early_recover() {
                 // Lever C*: host the s-add carry pool on r-high ++ u-high (clean
                 // first) so the early/mid s-add stops borrowing m_hist slots.
@@ -643,7 +643,7 @@ pub(crate) fn kaliski_iteration(
 
     // ─── STEP 7 + 8: r := 2*r mod p ───────────────────────────────────
     // For iter_idx < r_small_threshold(), r's top bit is guaranteed 0 (since
-    // max(r,s) ≤ 2^iter_idx by induction). mod_double's Solinas correction
+    // max(r,s) ≤ 2^iter_idx by induction). mod_double's FastModulo correction
     // is identity; a plain shift suffices. Saves ~255 CCX per small iter.
     if iter_idx < r_small_threshold() {
         mod_double_no_corr(b, r);
@@ -659,7 +659,7 @@ pub(crate) fn kaliski_iteration(
 
     b.set_phase("kal_step9_cswap");
     // ─── STEP 9: with control(a): swap(u, v_w); swap(r, s) (again) ───
-    // Late-iter (u,v_w) truncation per Kaliski invariant (same as STEP 3).
+    // Late-iter (u,v_w) truncation per Eea invariant (same as STEP 3).
     // Small-iter (r,s) truncation: after STEP 4 s ≤ 2^{iter+1}, after STEP 7+8 r ≤ 2^{iter+1}.
     let uv_width = if iter_idx < n { n } else { 2 * n - iter_idx };
     for j in 0..uv_width {
@@ -746,9 +746,9 @@ pub(crate) fn or_step_uncompute(b: &mut B, x: QubitId, y: QubitId, out: QubitId)
     b.x(x);
 }
 
-/// Reverse of the specialized `kaliski_iteration_bulk_prefix3` used for the
+/// Reverse of the specialized `eea_iteration_bulk_prefix3` used for the
 /// first few guaranteed-bulk nonterminal iterations.
-pub(crate) fn kaliski_iteration_bulk_prefix3_backward(
+pub(crate) fn eea_iteration_bulk_prefix3_backward(
     b: &mut B,
     p: U256,
     u: &[QubitId],
@@ -815,7 +815,7 @@ pub(crate) fn kaliski_iteration_bulk_prefix3_backward(
     }
 
     // Reverse STEP 8+7 and STEP 6.
-    // Bug fix: forward uses mod_double_inplace_fast (with Solinas correction)
+    // Bug fix: forward uses mod_double_inplace_fast (with FastModulo correction)
     // for iter_idx >= R_SMALL_THRESHOLD, so backward must mirror with
     // mod_halve_inplace_fast to cover the case where r[255]=1 pre-double.
     // Previously unconditional mod_halve_no_corr was a latent bug that
@@ -854,7 +854,7 @@ pub(crate) fn kaliski_iteration_bulk_prefix3_backward(
         let s_slice: Vec<QubitId> = s[0..sub_width].to_vec();
         if gz {
             // Late-iter recovery: also borrow u's provably-|0> high bits so the
-            // full-width s-sub never falls back to slow Cuccaro (flat peak).
+            // full-width s-sub never falls back to slow RippleAdder (flat peak).
             if gz_early_recover() {
                 // Lever C*: mirror the forward s-add carry host (r-high ++ u-high
                 // clean first) so the reverse s-sub is byte-identical.
@@ -874,7 +874,7 @@ pub(crate) fn kaliski_iteration_bulk_prefix3_backward(
         // Late-iter denominator bits above 2n-iter_idx are known zero.  The
         // high tmp bits loaded from r only participate in the s-subtraction;
         // they do not need to be transformed into add_f&u or added back into
-        // v_w.  This mirrors `kaliski_iteration_backward` and saves one CCX
+        // v_w.  This mirrors `eea_iteration_backward` and saves one CCX
         // plus two CX per skipped high bit in the bulk reverse tail.
         // W-TRUNC: must match forward load_width exactly (this undoes the
         // forward `v_w -= u` over load_width) → same min envelope.
@@ -1047,10 +1047,10 @@ pub(crate) fn kaliski_iteration_bulk_prefix3_backward(
     b.set_phase(_kal_saved_phase);
 }
 
-/// Reverse of a single kaliski_iteration. Uses measurement-based
+/// Reverse of a single eea_iteration. Uses measurement-based
 /// uncomputation for the OR chain (with_eq_zero) and the step-4 tmp
 /// unload, saving ~511 CCX per iteration vs the gate-reversed version.
-pub(crate) fn kaliski_iteration_backward(
+pub(crate) fn eea_iteration_backward(
     b: &mut B,
     p: U256,
     u: &[QubitId],
@@ -1143,7 +1143,7 @@ pub(crate) fn kaliski_iteration_backward(
         let s_slice: Vec<QubitId> = s[0..sub_width].to_vec();
         if gz {
             // Late-iter recovery: also borrow u's provably-|0> high bits so the
-            // full-width s-sub never falls back to slow Cuccaro (flat peak).
+            // full-width s-sub never falls back to slow RippleAdder (flat peak).
             if gz_early_recover() {
                 // Lever C*: mirror the forward s-add carry host (r-high ++ u-high
                 // clean first) so the reverse s-sub is byte-identical.

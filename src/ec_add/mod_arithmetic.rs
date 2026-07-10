@@ -5,9 +5,9 @@ use super::*;
 //  Loading classical operands into a fresh qubit register
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// Cuccaro needs two qubit registers. To add a classical constant or a
+// RippleAdder needs two qubit registers. To add a classical constant or a
 // classical bit register to a quantum register, we allocate a fresh
-// qubit register, load the classical value into it, run Cuccaro, then
+// qubit register, load the classical value into it, run RippleAdder, then
 // unload. The load/unload is not counted against Toffolis.
 
 pub(crate) fn load_const(b: &mut B, n: usize, c: U256) -> Vec<QubitId> {
@@ -69,9 +69,9 @@ pub(crate) fn unext_reg(b: &mut B, ovf: QubitId) {
 }
 
 /// `acc := (acc + a) mod p`. Both `acc` and `a` are n-bit quantum registers
-/// with value in [0, p). Solinas reduction using c = 2^n - p: sum ∈ [0, 2p),
+/// with value in [0, p). FastModulo reduction using c = 2^n - p: sum ∈ [0, 2p),
 /// then add c, branch on top bit to either clear it (reduction) or undo
-/// the add (no reduction). Saves one full (n+1)-wide Cuccaro compared to
+/// the add (no reduction). Saves one full (n+1)-wide RippleAdder compared to
 /// the sub-p/add-p/csub-p pattern.
 pub(crate) fn mod_add_qq(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
     let n = acc.len();
@@ -116,7 +116,7 @@ pub(crate) fn mod_add_qq(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
 /// 257-wide loaded-constant registers of the `+c` / conditional `-c` reduction
 /// steps are replaced by Gidney venting dirty-borrow const adders (2 clean
 /// ancilla + a borrowed n-2 DIRTY donor, restored). Used for the shift22
-/// position-32 add inside the affine y-mul Solinas fold, where the loaded-const
+/// position-32 add inside the affine y-mul FastModulo fold, where the loaded-const
 /// register was the actual 2333 binder. `dirty` must be co-resident, >= n-1
 /// wide, disjoint from `acc` and `a`, and is restored to its entry value.
 pub(crate) fn mod_add_qq_dirty(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256, dirty: &[QubitId]) {
@@ -175,7 +175,7 @@ pub(crate) fn mod_sub_qq(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
 }
 
 /// Fast `acc := (acc - a) mod p`. Direct sub + conditional add-p + flag
-/// uncompute via neg+cmp_lt+neg. All ops use measurement-based Cuccaro.
+/// uncompute via neg+cmp_lt+neg. All ops use measurement-based RippleAdder.
 pub(crate) fn mod_sub_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
     let n = acc.len();
     assert_eq!(n, a.len());
@@ -212,9 +212,9 @@ pub(crate) fn mod_sub_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256
         b.free(q_clean2[0]);
         b.free(q_clean2[1]);
     } else if std::env::var("KAL_DIRECT_CONST_QQFOLD").ok().as_deref() != Some("0") {
-        // CARRY-TAIL (default-ON): route the sparse Solinas conditional -c through
+        // CARRY-TAIL (default-ON): route the sparse FastModulo conditional -c through
         // the truncatable direct const-sub (kal_carrytail_count_c clips its borrow
-        // chain to k0+W = 33+36 = 69 bits). The constant is the SPARSE Solinas
+        // chain to k0+W = 33+36 = 69 bits). The constant is the SPARSE FastModulo
         // c = 2^32+977, so the constant-aware window keeps the truncation tight and
         // the high result bits exact; validated 9024-clean (-6,346 avg-exec Toffoli
         // combined with the +c/-c reduction sites). KAL_DIRECT_CONST_QQFOLD=0 restores
@@ -237,7 +237,7 @@ pub(crate) fn mod_sub_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256
     let _ = (acc_ext, a_ext);
 }
 
-/// Fast mod_neg using measurement-based Cuccaro for the addition.
+/// Fast mod_neg using measurement-based RippleAdder for the addition.
 pub(crate) fn mod_neg_inplace_fast(b: &mut B, v: &[QubitId], p: U256) {
     for &q in v {
         b.x(q);
@@ -251,7 +251,7 @@ pub(crate) fn mod_neg_inplace_fast(b: &mut B, v: &[QubitId], p: U256) {
 /// Register-free mod_neg: `v := (p - v) mod p` via flip + direct const-add of
 /// (p+1). Avoids the n-bit `load_const` register of `mod_neg_inplace_fast`,
 /// so it adds no n-wide transient scratch (only the direct carry sweep's
-/// ancillae). Used in the low-scratch Solinas fold.
+/// ancillae). Used in the low-scratch FastModulo fold.
 pub(crate) fn mod_neg_inplace_direct(b: &mut B, v: &[QubitId], p: U256) {
     for &q in v {
         b.x(q);
@@ -264,10 +264,10 @@ pub(crate) fn mod_neg_inplace_direct(b: &mut B, v: &[QubitId], p: U256) {
 }
 
 /// Carry-free + register-free `acc := (acc + a) mod p`. Uses the no-carry
-/// Cuccaro (`add_nbit_qq`), the register-free direct const adders, and the
+/// RippleAdder (`add_nbit_qq`), the register-free direct const adders, and the
 /// no-carry comparator (`cmp_lt_into`). Holds ~0 wide transient scratch (only
 /// 2 ext-ovf + 1 flag), at +~n Toffoli per call vs the fast variant. Drops the
-/// Solinas-fold instant by ~256 (the cuccaro carry register) — the dominant
+/// FastModulo-fold instant by ~256 (the ripple_adder carry register) — the dominant
 /// fold-scratch at the affine y-mul binder.
 pub(crate) fn mod_add_qq_lowq_lowscratch(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
     let n = acc.len();
@@ -387,11 +387,11 @@ pub(crate) fn mod_sub_qb(b: &mut B, acc: &[QubitId], bits: &[BitId], p: U256) {
 // uncopying. For q*b mul, y[i] is a classical bit and the copy is
 // done with CX_if gates.
 
-/// `v := 2*v mod p`. In-place via shift-left (swap cascade) + Solinas-style
+/// `v := 2*v mod p`. In-place via shift-left (swap cascade) + FastModulo-style
 /// mod reduction. For secp256k1, p = 2^n - c with c = 2^32 + 977, so
 /// `T - p = T + c - 2^n`. The reduction becomes: add c, branch on the top
 /// bit of the (n+1)-wide shifted register — if set, clear it; else undo
-/// the add. Costs two full (n+1)-wide Cuccaro adds instead of three.
+/// the add. Costs two full (n+1)-wide RippleAdder adds instead of three.
 pub(crate) fn mod_double_inplace(b: &mut B, v: &[QubitId], p: U256) {
     let n = v.len();
     let ovf = b.alloc_qubit();
@@ -433,7 +433,7 @@ pub(crate) fn mod_double_inplace(b: &mut B, v: &[QubitId], p: U256) {
     b.free(ovf);
 }
 
-/// Fast `v := 2*v mod p` using measurement-based Cuccaro.
+/// Fast `v := 2*v mod p` using measurement-based RippleAdder.
 pub(crate) fn mod_double_inplace_fast(b: &mut B, v: &[QubitId], p: U256) {
     let n = v.len();
     let ovf = b.alloc_qubit();
@@ -447,10 +447,10 @@ pub(crate) fn mod_double_inplace_fast(b: &mut B, v: &[QubitId], p: U256) {
     // T = 2^n + low and T mod p = low + c; otherwise T mod p = low.
     let c = U256::MAX.wrapping_sub(p).wrapping_add(U256::from(1));
     // T-squeeze: KAL_DIRECT_CONST_DOUBLE default-ON. mod_double's reduction constant
-    // here is the SPARSE Solinas c = 2^32+977, so routing it through the register-free
+    // here is the SPARSE FastModulo c = 2^32+977, so routing it through the register-free
     // direct const-add lets the carry-tail SUB/ADD truncation (now both-path on this
     // base) clip its borrow/carry chain to W bits — across all ~800 mod_double calls
-    // of the two Kaliski passes. With carry-tail W=36 this is -84,576 avg-exec Toffoli
+    // of the two Eea passes. With carry-tail W=36 this is -84,576 avg-exec Toffoli
     // vs the carry-register variant, flat peak 2309, 9024-clean. Set =0 to restore.
     if std::env::var("KAL_DIRECT_CONST_DOUBLE").ok().as_deref() != Some("0") {
         cadd_nbit_const_direct_fast(b, v, c, ovf);
@@ -463,11 +463,11 @@ pub(crate) fn mod_double_inplace_fast(b: &mut B, v: &[QubitId], p: U256) {
 }
 
 /// `v := 2*v mod p` using the register-free direct const-add (no `load_const`
-/// addend register and no measurement-Cuccaro carry register held alongside
+/// addend register and no measurement-RippleAdder carry register held alongside
 /// it). Transient scratch ~n/2 less than `mod_double_inplace_fast`'s
 /// `cadd_nbit_const_fast` (which holds a 256-bit const register + 256 add
 /// carries simultaneously). Same value semantics; used in the low-scratch
-/// Solinas fold where the mod_double instant is the affine y-mul binder.
+/// FastModulo fold where the mod_double instant is the affine y-mul binder.
 pub(crate) fn mod_double_inplace_direct(b: &mut B, v: &[QubitId], p: U256) {
     let n = v.len();
     let ovf = b.alloc_qubit();
@@ -483,7 +483,7 @@ pub(crate) fn mod_double_inplace_direct(b: &mut B, v: &[QubitId], p: U256) {
 }
 
 /// `v := 2*v` assuming v[n-1] = 0 (no wrap). Just a shift-left cascade.
-/// 0 Toffoli. Used in Kaliski STEP 7+8 for small iters where r[255]=0 guaranteed.
+/// 0 Toffoli. Used in Eea STEP 7+8 for small iters where r[255]=0 guaranteed.
 pub(crate) fn mod_double_no_corr(b: &mut B, v: &[QubitId]) {
     let n = v.len();
     for i in (0..n - 1).rev() {
@@ -502,7 +502,7 @@ pub(crate) fn mod_halve_no_corr(b: &mut B, v: &[QubitId]) {
 
 
 /// Fast `v := v/2 mod p`. Explicit reverse of `mod_double_inplace` with
-/// measurement-based Cuccaro (not emit_inverse).
+/// measurement-based RippleAdder (not emit_inverse).
 pub(crate) fn mod_halve_inplace_fast(b: &mut B, v: &[QubitId], p: U256) {
     mod_halve_inplace_fast_with_dirty(b, v, p, None)
 }
@@ -632,19 +632,19 @@ pub(crate) fn mod_add_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256
     let (acc_ext, acc_ovf) = ext_reg(b, acc);
     let (a_ext, a_ovf) = ext_reg(b, a);
 
-    // Use fast (measurement-based) Cuccaro everywhere.
+    // Use fast (measurement-based) RippleAdder everywhere.
     add_nbit_qq_fast(b, &a_ext, &acc_ext);
     let c = U256::MAX.wrapping_sub(p).wrapping_add(U256::from(1));
-    // add_nbit_const with fast Cuccaro OR venting (using `a` as dirty).
+    // add_nbit_const with fast RippleAdder OR venting (using `a` as dirty).
     let use_vent = std::env::var("KAL_VENT_MODADD").ok().as_deref() == Some("1");
-    // KAL_DIRECT_CONST_QQFOLD (CARRY-TAIL, default-ON): route the sparse Solinas
+    // KAL_DIRECT_CONST_QQFOLD (CARRY-TAIL, default-ON): route the sparse FastModulo
     // reduction const-ops (+c / conditional -c) through the register-free direct
     // const adders, which carry-tail-truncate the carry/borrow chain via the
     // constant-aware window (kal_carrytail_count_c: cut = k0+W = 33+36 = 69 for the
     // SPARSE c = 2^32+977). NOTE: the `+c` step here uses the resulting bit-256 carry
     // (acc_ovf) AS the reduction flag — truncating that chain is only sound if no
     // carry from the qq-sum can reach bit 256 outside the window, which holds for the
-    // Solinas constant and is validated 9024-clean (the harness fails closed). This is
+    // FastModulo constant and is validated 9024-clean (the harness fails closed). This is
     // -6,346 avg-exec Toffoli vs the loaded-const full-width path, flat peak 2309.
     // KAL_DIRECT_CONST_QQFOLD=0 restores the loaded-const reduction.
     let use_direct = std::env::var("KAL_DIRECT_CONST_QQFOLD").ok().as_deref() != Some("0");
@@ -679,7 +679,7 @@ pub(crate) fn mod_add_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256
     let flag = b.alloc_qubit();
     b.cx(acc_ovf, flag);
     b.x(flag);
-    // csub_nbit_const with fast Cuccaro OR venting.
+    // csub_nbit_const with fast RippleAdder OR venting.
     if use_vent {
         let c_low = c.as_limbs()[0];
         let n1 = acc_ext.len();
@@ -723,7 +723,7 @@ pub(crate) fn mod_add_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256
 }
 
 /// Specialization of mod_add_qq_fast when acc = 0 on entry. Replaces the
-/// initial Cuccaro add with CX-copy (0 CCX instead of n-1 CCX).
+/// initial RippleAdder add with CX-copy (0 CCX instead of n-1 CCX).
 /// Saves 255 CCX per call.
 pub(crate) fn mod_add_qq_fast_from_zero(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
     let n = acc.len();
@@ -816,13 +816,13 @@ pub(crate) fn mod_add_qq_fast_from_zero(b: &mut B, acc: &[QubitId], a: &[QubitId
 }
 
 /// Low-scratch peak variant of `mod_add_qq_fast`. Identical arithmetic, but the
-/// Solinas `+c` / `-c` corrections (c = 2^256 - p = 2^32 + 977, sparse) are done
+/// FastModulo `+c` / `-c` corrections (c = 2^256 - p = 2^32 + 977, sparse) are done
 /// with the register-free direct const adders (`cadd_/csub_nbit_const_direct_fast`)
 /// instead of `load_const` + a full-width q-q add. This drops the per-call scratch
 /// from ~(n+1 loaded-const register + n carries) to ~(n carries), saving ~256
 /// qubits at the call site. Toffoli is ~neutral for sparse c (the direct const
 /// adders carry the same length sweep; only the loaded register disappears).
-/// Used at the Karatsuba Solinas fold, which owns the 2710 peak.
+/// Used at the Karatsuba FastModulo fold, which owns the 2710 peak.
 pub(crate) fn mod_add_qq_fast_lowscratch(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
     let n = acc.len();
     assert_eq!(n, a.len());
@@ -831,7 +831,7 @@ pub(crate) fn mod_add_qq_fast_lowscratch(b: &mut B, acc: &[QubitId], a: &[QubitI
     let (acc_ext, acc_ovf) = ext_reg(b, acc);
     let (a_ext, a_ovf) = ext_reg(b, a);
 
-    // Step 1: (n+1)-bit operand add (measurement-based Cuccaro, unchanged).
+    // Step 1: (n+1)-bit operand add (measurement-based RippleAdder, unchanged).
     add_nbit_qq_fast(b, &a_ext, &acc_ext);
 
     let c = U256::MAX.wrapping_sub(p).wrapping_add(U256::from(1));
@@ -859,7 +859,7 @@ pub(crate) fn mod_add_qq_fast_lowscratch(b: &mut B, acc: &[QubitId], a: &[QubitI
 }
 
 /// Low-scratch peak variant of `mod_add_qq_fast_from_zero` (acc == 0 on entry).
-/// Same register-free Solinas correction as `mod_add_qq_fast_lowscratch`.
+/// Same register-free FastModulo correction as `mod_add_qq_fast_lowscratch`.
 pub(crate) fn mod_add_qq_fast_from_zero_lowscratch(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
     let n = acc.len();
     assert_eq!(n, a.len());
@@ -900,10 +900,10 @@ pub(crate) fn mod_add_qq_fast_from_zero_lowscratch(b: &mut B, acc: &[QubitId], a
 /// row.
 ///
 /// NOTE: microbench (n=256) shows this DOES NOT reduce the local peak
-/// (schoolbook_fast 1797 = schoolbook_lowq 1797); the Solinas reduction +
+/// (schoolbook_fast 1797 = schoolbook_lowq 1797); the FastModulo reduction +
 /// acc lifetimes already dominate, and the lowq carry saving is hidden
 /// underneath. We also observed a deterministic phase-garbage batch when
-/// wiring this in at pair1_mul1 (1/20480 shots, ALT_SEED tag=5, across
+/// wiring this in at state_a_mul1 (1/20480 shots, ALT_SEED tag=5, across
 /// two runs), so this helper is currently DEAD CODE kept only as a paper
 /// trail for the negative result. See `autoresearch.ideas.md`.
 #[allow(dead_code)]
@@ -948,7 +948,7 @@ pub(crate) fn mod_mul_write_into_zero_acc_schoolbook_lowq(
 }
 
 /// Specialization of mod_mul_add_into_acc_schoolbook when acc = 0 on entry.
-/// Uses mod_add_qq_fast_from_zero for the first Solinas reduction step.
+/// Uses mod_add_qq_fast_from_zero for the first FastModulo reduction step.
 /// Saves ~255 CCX per call.
 pub(crate) fn mod_mul_write_into_zero_acc_schoolbook(
     b: &mut B,
@@ -1004,7 +1004,7 @@ pub(crate) fn cmod_add_qq(b: &mut B, acc: &[QubitId], a: &[QubitId], ctrl: Qubit
     }
     mod_add_qq_fast(b, acc, &f, p);
     // Gidney measurement-based AND uncomputation: f[i] = ctrl AND a[i],
-    // which is unchanged by mod_add_qq (Cuccaro restores the addend).
+    // which is unchanged by mod_add_qq (RippleAdder restores the addend).
     // HMR + classically-conditioned CZ costs 0 Toffoli vs 256 CCX.
     for i in 0..n {
         let m = b.alloc_bit();

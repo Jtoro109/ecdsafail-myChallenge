@@ -9,7 +9,7 @@ use super::*;
 /// SHIFT22_CARRYTAIL (default-ON): route the shift22 STEP-3 unconditional +c and
 /// STEP-4 conditional -c (and their reversals) through the carry-tail-truncatable
 /// direct const adders (cadd/csub_nbit_const_direct_fast). The constant is the
-/// SPARSE Solinas c = 2^32+977 (top bit 32), so kal_carrytail_count_c anchors the
+/// SPARSE FastModulo c = 2^32+977 (top bit 32), so kal_carrytail_count_c anchors the
 /// window above bit 32 and the high result bits stay exact. Replaces the
 /// register-loaded full-width add_nbit_const / csub_nbit_const of the shift22
 /// reduction, clipping the carry/borrow chains identically forward and backward
@@ -19,12 +19,12 @@ pub(crate) fn shift22_carrytail() -> bool {
 }
 
 /// Dedicated carry-tail cut for the shift22 STEP-3/STEP-4 direct const adders,
-/// DECOUPLED from the global Kaliski `kal_carrytail_w` so the proven Kaliski
+/// DECOUPLED from the global Eea `kal_carrytail_w` so the proven Eea
 /// island (W=22) stays pinned. Anchors above c's top set bit (k0=33) plus a
 /// dedicated window W (SHIFT22_CARRYTAIL_W, default 37 → cut=70). The shift22
 /// reduction operates on a freshly-folded value whose conditional-sub borrow run
-/// can be longer than the Kaliski case, so the window is anchored wider than the
-/// Kaliski 22. A full SHIFT22_CARRYTAIL_W sweep (each = trusted eval over 9024
+/// can be longer than the Eea case, so the window is anchored wider than the
+/// Eea 22. A full SHIFT22_CARRYTAIL_W sweep (each = trusted eval over 9024
 /// shots) found W=37 and W=40 the clean islands on the shift22-direct op-stream:
 /// W=37 → 0/0/0, avg-exec 2,429,688 Toffoli × 2309 = 5,610,149,592 (deepest clean);
 /// W=40 → 0/0/0, avg-exec 2,429,724. Note this is NOT a pure truncation-soundness
@@ -76,11 +76,11 @@ pub(crate) fn mod_shift_left_by_k(
 
     // Step 2: add spill · c to v_ext (using ovf as bit n).
     // c = 2^32 + 977 = 2^32 + 2^10 - 2^6 + 2^4 + 2^0.
-    // Consolidate 4 bits (6,7,8,9) of 977 into 2^10 - 2^6: saves 2 Cuccaros per shift.
+    // Consolidate 4 bits (6,7,8,9) of 977 into 2^10 - 2^6: saves 2 RippleAdders per shift.
     // Op list: ADD at 0, 4, 10, 32; SUB at 6. Total 5 ops instead of 7.
     let mut v_ext = v.to_vec();
     v_ext.push(ovf);
-    let cuccaro_op = |b: &mut B, pos: usize, is_sub: bool| {
+    let ripple_adder_op = |b: &mut B, pos: usize, is_sub: bool| {
         let pad_width = n + 1 - pos;
         let padded = b.alloc_qubits(pad_width);
         for i in 0..k.min(pad_width) {
@@ -90,17 +90,17 @@ pub(crate) fn mod_shift_left_by_k(
         let c_in = b.alloc_qubit();
         if lowq_shift22() {
             if is_sub {
-                cuccaro_sub(b, &padded, &v_slice, c_in);
+                ripple_adder_sub(b, &padded, &v_slice, c_in);
             } else {
-                cuccaro_add(b, &padded, &v_slice, c_in);
+                ripple_adder_add(b, &padded, &v_slice, c_in);
             }
         } else if is_sub {
-            // Fast cuccaro: saves ~n CCX per op. Peak during this op (~514
+            // Fast ripple_adder: saves ~n CCX per op. Peak during this op (~514
             // transient) is still below the mod_add_qq_fast peak (517) inside
-            // the enclosing Solinas, so no global peak increase.
-            cuccaro_sub_fast(b, &padded, &v_slice, c_in);
+            // the enclosing FastModulo, so no global peak increase.
+            ripple_adder_sub_fast(b, &padded, &v_slice, c_in);
         } else {
-            cuccaro_add_fast(b, &padded, &v_slice, c_in);
+            ripple_adder_add_fast(b, &padded, &v_slice, c_in);
         }
         b.free(c_in);
         for i in 0..k.min(pad_width) {
@@ -108,23 +108,23 @@ pub(crate) fn mod_shift_left_by_k(
         }
         b.free_vec(&padded);
     };
-    b.set_phase("shift22_cuccaro_op_0");
-    cuccaro_op(b, 0, false);
-    b.set_phase("shift22_cuccaro_op_4");
-    cuccaro_op(b, 4, false);
-    b.set_phase("shift22_cuccaro_op_6");
-    cuccaro_op(b, 6, true);
-    b.set_phase("shift22_cuccaro_op_10");
-    cuccaro_op(b, 10, false);
-    b.set_phase("shift22_cuccaro_op_32");
-    cuccaro_op(b, 32, false);
+    b.set_phase("shift22_ripple_adder_op_0");
+    ripple_adder_op(b, 0, false);
+    b.set_phase("shift22_ripple_adder_op_4");
+    ripple_adder_op(b, 4, false);
+    b.set_phase("shift22_ripple_adder_op_6");
+    ripple_adder_op(b, 6, true);
+    b.set_phase("shift22_ripple_adder_op_10");
+    ripple_adder_op(b, 10, false);
+    b.set_phase("shift22_ripple_adder_op_32");
+    ripple_adder_op(b, 32, false);
 
     // Step 3: const add.
     b.set_phase("shift22_step3");
     if shift22_carrytail() {
         // CARRY-TAIL: route the unconditional +c through the truncatable direct
         // const-add (QQFOLD pattern: always-on `one` ctrl) with a DEDICATED cut.
-        // c is the SPARSE Solinas 2^32+977; the dedicated window keeps high bits
+        // c is the SPARSE FastModulo 2^32+977; the dedicated window keeps high bits
         // exact. Reversal mirrors this exact cut via csub_..._cut(same cut).
         let cut = shift22_carrytail_cut();
         let one = b.alloc_qubit();
@@ -210,7 +210,7 @@ pub(crate) fn mod_shift_right_by_k(
     b.set_phase("rshift22_rev_step2");
 
     // Reverse step 2: inverse of the consolidated op list (5 ops, in reverse order, flipped signs).
-    let cuccaro_op = |b: &mut B, pos: usize, is_sub: bool| {
+    let ripple_adder_op = |b: &mut B, pos: usize, is_sub: bool| {
         let pad_width = n + 1 - pos;
         let padded = b.alloc_qubits(pad_width);
         for i in 0..k.min(pad_width) {
@@ -220,14 +220,14 @@ pub(crate) fn mod_shift_right_by_k(
         let c_in = b.alloc_qubit();
         if lowq_shift22() {
             if is_sub {
-                cuccaro_sub(b, &padded, &v_slice, c_in);
+                ripple_adder_sub(b, &padded, &v_slice, c_in);
             } else {
-                cuccaro_add(b, &padded, &v_slice, c_in);
+                ripple_adder_add(b, &padded, &v_slice, c_in);
             }
         } else if is_sub {
-            cuccaro_sub_fast(b, &padded, &v_slice, c_in);
+            ripple_adder_sub_fast(b, &padded, &v_slice, c_in);
         } else {
-            cuccaro_add_fast(b, &padded, &v_slice, c_in);
+            ripple_adder_add_fast(b, &padded, &v_slice, c_in);
         }
         b.free(c_in);
         for i in 0..k.min(pad_width) {
@@ -236,11 +236,11 @@ pub(crate) fn mod_shift_right_by_k(
         b.free_vec(&padded);
     };
     // Reverse: undo ADD at 32, 10; undo SUB at 6; undo ADD at 4, 0.
-    cuccaro_op(b, 32, true); // undo +spill·2^32
-    cuccaro_op(b, 10, true); // undo +spill·2^10
-    cuccaro_op(b, 6, false); // undo -spill·2^6
-    cuccaro_op(b, 4, true); // undo +spill·2^4
-    cuccaro_op(b, 0, true); // undo +spill·2^0
+    ripple_adder_op(b, 32, true); // undo +spill·2^32
+    ripple_adder_op(b, 10, true); // undo +spill·2^10
+    ripple_adder_op(b, 6, false); // undo -spill·2^6
+    ripple_adder_op(b, 4, true); // undo +spill·2^4
+    ripple_adder_op(b, 0, true); // undo +spill·2^0
 
     // Reverse step 1: reverse swap cascades.
     for shift_i in (0..k).rev() {
@@ -287,12 +287,12 @@ pub(crate) fn shift22_spill_op_dirty(
     acc.push(carry);
     let c_in = b.alloc_qubit();
     if is_sub {
-        cuccaro_sub(b, &addend, &acc, c_in);
+        ripple_adder_sub(b, &addend, &acc, c_in);
     } else {
-        cuccaro_add(b, &addend, &acc, c_in);
+        ripple_adder_add(b, &addend, &acc, c_in);
     }
     b.free(c_in);
-    b.free(zpad); // restored to |0> by cuccaro (addend register is preserved)
+    b.free(zpad); // restored to |0> by ripple_adder (addend register is preserved)
 
     // Step B: propagate the single carry/borrow into the high window.
     // add: hi += carry. sub: hi -= carry == controlled-decrement (invert,+1,invert).
@@ -352,9 +352,9 @@ fn shift22_compute_m_977(b: &mut B, m: &[QubitId], spill: &[QubitId], k: usize, 
         addend.extend_from_slice(&pad);
         let c_in = b.alloc_qubit();
         if is_sub {
-            cuccaro_sub(b, &addend, &m_slice, c_in);
+            ripple_adder_sub(b, &addend, &m_slice, c_in);
         } else {
-            cuccaro_add(b, &addend, &m_slice, c_in);
+            ripple_adder_add(b, &addend, &m_slice, c_in);
         }
         b.free(c_in);
         b.free_vec(&pad);
@@ -407,22 +407,22 @@ pub(crate) fn mod_shift_left_by_k_dirty(
         // and pos 32 instead of 5 dirty spill ops. Reversal mirrors this.
         let m = b.alloc_qubits(32);
         shift22_compute_m_977(b, &m, &spill, k, false);
-        b.set_phase("shift22_cuccaro_op_0");
+        b.set_phase("shift22_ripple_adder_op_0");
         shift22_spill_op_dirty(b, &v_ext, &m, 0, 32, false, dirty);
-        b.set_phase("shift22_cuccaro_op_32");
+        b.set_phase("shift22_ripple_adder_op_32");
         shift22_spill_op_dirty(b, &v_ext, &spill, 32, k, false, dirty);
         shift22_compute_m_977(b, &m, &spill, k, true);
         b.free_vec(&m);
     } else {
-        b.set_phase("shift22_cuccaro_op_0");
+        b.set_phase("shift22_ripple_adder_op_0");
         shift22_spill_op_dirty(b, &v_ext, &spill, 0, k, false, dirty);
-        b.set_phase("shift22_cuccaro_op_4");
+        b.set_phase("shift22_ripple_adder_op_4");
         shift22_spill_op_dirty(b, &v_ext, &spill, 4, k, false, dirty);
-        b.set_phase("shift22_cuccaro_op_6");
+        b.set_phase("shift22_ripple_adder_op_6");
         shift22_spill_op_dirty(b, &v_ext, &spill, 6, k, true, dirty);
-        b.set_phase("shift22_cuccaro_op_10");
+        b.set_phase("shift22_ripple_adder_op_10");
         shift22_spill_op_dirty(b, &v_ext, &spill, 10, k, false, dirty);
-        b.set_phase("shift22_cuccaro_op_32");
+        b.set_phase("shift22_ripple_adder_op_32");
         shift22_spill_op_dirty(b, &v_ext, &spill, 32, k, false, dirty);
     }
 
@@ -570,7 +570,7 @@ pub(crate) fn mod_shift_left_by_k_lowq(
 
     let mut v_ext = v.to_vec();
     v_ext.push(ovf);
-    let cuccaro_op = |b: &mut B, pos: usize, is_sub: bool| {
+    let ripple_adder_op = |b: &mut B, pos: usize, is_sub: bool| {
         let pad_width = n + 1 - pos;
         let padded = b.alloc_qubits(pad_width);
         for i in 0..k.min(pad_width) {
@@ -579,9 +579,9 @@ pub(crate) fn mod_shift_left_by_k_lowq(
         let v_slice: Vec<QubitId> = v_ext[pos..n + 1].to_vec();
         let c_in = b.alloc_qubit();
         if is_sub {
-            cuccaro_sub(b, &padded, &v_slice, c_in);
+            ripple_adder_sub(b, &padded, &v_slice, c_in);
         } else {
-            cuccaro_add(b, &padded, &v_slice, c_in);
+            ripple_adder_add(b, &padded, &v_slice, c_in);
         }
         b.free(c_in);
         for i in 0..k.min(pad_width) {
@@ -589,11 +589,11 @@ pub(crate) fn mod_shift_left_by_k_lowq(
         }
         b.free_vec(&padded);
     };
-    cuccaro_op(b, 0, false);
-    cuccaro_op(b, 4, false);
-    cuccaro_op(b, 6, true);
-    cuccaro_op(b, 10, false);
-    cuccaro_op(b, 32, false);
+    ripple_adder_op(b, 0, false);
+    ripple_adder_op(b, 4, false);
+    ripple_adder_op(b, 6, true);
+    ripple_adder_op(b, 10, false);
+    ripple_adder_op(b, 32, false);
 
     add_nbit_const(b, &v_ext, c);
     b.x(ovf);
@@ -634,7 +634,7 @@ pub(crate) fn mod_shift_right_by_k_lowq(
     sub_nbit_const(b, &v_ext, c);
     b.free(flag_inv);
 
-    let cuccaro_op = |b: &mut B, pos: usize, is_sub: bool| {
+    let ripple_adder_op = |b: &mut B, pos: usize, is_sub: bool| {
         let pad_width = n + 1 - pos;
         let padded = b.alloc_qubits(pad_width);
         for i in 0..k.min(pad_width) {
@@ -643,9 +643,9 @@ pub(crate) fn mod_shift_right_by_k_lowq(
         let v_slice: Vec<QubitId> = v_ext[pos..n + 1].to_vec();
         let c_in = b.alloc_qubit();
         if is_sub {
-            cuccaro_sub(b, &padded, &v_slice, c_in);
+            ripple_adder_sub(b, &padded, &v_slice, c_in);
         } else {
-            cuccaro_add(b, &padded, &v_slice, c_in);
+            ripple_adder_add(b, &padded, &v_slice, c_in);
         }
         b.free(c_in);
         for i in 0..k.min(pad_width) {
@@ -653,11 +653,11 @@ pub(crate) fn mod_shift_right_by_k_lowq(
         }
         b.free_vec(&padded);
     };
-    cuccaro_op(b, 32, true);
-    cuccaro_op(b, 10, true);
-    cuccaro_op(b, 6, false);
-    cuccaro_op(b, 4, true);
-    cuccaro_op(b, 0, true);
+    ripple_adder_op(b, 32, true);
+    ripple_adder_op(b, 10, true);
+    ripple_adder_op(b, 6, false);
+    ripple_adder_op(b, 4, true);
+    ripple_adder_op(b, 0, true);
 
     for shift_i in (0..k).rev() {
         for i in 0..n - 1 {

@@ -1,6 +1,6 @@
 //! Library entry point shared by the two challenge binaries:
 //!
-//! * `build_circuit` (untrusted) calls `point_add::build` and serializes the
+//! * `build_circuit` (untrusted) calls `ec_add::build` and serializes the
 //!   resulting op stream to `ops.bin`. This is the only place contestant
 //!   code executes.
 //! * `eval_circuit` (trusted) reads `ops.bin`, re-simulates against the
@@ -14,7 +14,7 @@
 
 #[allow(dead_code)]
 pub mod circuit;
-pub mod point_add;
+pub mod ec_add;
 #[allow(dead_code)]
 pub mod sim;
 #[allow(dead_code)]

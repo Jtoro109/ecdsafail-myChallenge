@@ -1,11 +1,11 @@
-//! (refactor) Mechanically extracted from kaliski.rs. No logic changes.
+//! (refactor) Mechanically extracted from eea.rs. No logic changes.
 use super::*;
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Kaliski binary almost-inverse (qrisp-style, standard form)
+//  Eea binary almost-inverse (qrisp-style, standard form)
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// Faithful port of `kaliski_mod_inv` from the qrisp reference at
+// Faithful port of `eea_mod_inv` from the qrisp reference at
 // `quantum-elliptic-curve-logarithm/src/quantum/ec_arithmetic.py`.
 //
 // The function computes `v_in := v_in^{-1} mod p` in place, using a
@@ -30,10 +30,10 @@ use super::*;
 /// them via classical uncomputation).
 /// Threshold: for iter_idx < r_small_threshold(), r's top bit is guaranteed 0
 /// (since max(r,s) doubles per iter starting from max=1, so max ≤ 2^iter_idx).
-/// In that range, mod_double(r)'s Solinas cadd is identity — replace with
+/// In that range, mod_double(r)'s FastModulo cadd is identity — replace with
 /// a plain shift (0 Toffoli) for ~255 CCX savings per iter.
 // bxue-l2 island (peak 2310 after reverting the f1-drop): R_SMALL=326,
-// BULK_PREFIX_SAFE_ITERS=400, pair1=399, pair2=397.
+// BULK_PREFIX_SAFE_ITERS=400, state_a=399, state_b=397.
 // T-squeeze: R_SMALL=325 — the re-roll value that lands K0=25 clean on the
 // cswap-base a25248f margin=0 island (with K0=26/R=326 only W=26 is clean at
 // 2,574,129; dropping to K0=25 needs the R=325 re-roll → 2,570,415). R=324/326/327
@@ -47,14 +47,14 @@ pub(crate) fn r_small_threshold() -> usize {
         .unwrap_or(R_SMALL_THRESHOLD)
 }
 
-// ─── W-TRUNC: empirical-width truncation of the Kaliski STEP-4 width loops ───
+// ─── W-TRUNC: empirical-width truncation of the Eea STEP-4 width loops ───
 //
 // The CCX-bearing per-iteration width loops (STEP-0 OR chain, STEP-2 gt
 // comparator, STEP-4 load/sub/transform/add) are sized by a PROVABLE worst-case
 // bound that is `n` for the entire first half (iter < n).  But the EMPIRICAL max
 // of max(bitlen(u), bitlen(v_w)) over the GCD walk is far smaller and shrinks
 // monotonically with iter.  Measured over 80k random secp256k1 inputs (exact
-// in-tree Montgomery-Kaliski recurrence, `/tmp/wtrunc_trace.py`), a safe affine
+// in-tree Montgomery-Eea recurrence, `/tmp/wtrunc_trace.py`), a safe affine
 // upper envelope that DOMINATES the per-iter sample max is
 //   w_env(it) = n                      for it < W_TRUNC_K0   (= 27)
 //   w_env(it) = n - floor((it-K0)*2/3) for it >= K0
@@ -103,7 +103,7 @@ pub(crate) fn kal_wtrunc_margin() -> usize {
     // with carry-tail W=26 (see kal_carrytail_w). margin=0 (no slack above the fitted
     // GCD-width envelope) only validates after the W=26 re-roll; margin=0 + W=26 =
     // 2,574,129 × 2309 = 5,943,663,861 (validated 9024-clean, peak 2309). These
-    // Kaliski-inverse truncation levers are ORTHOGONAL to the cswap/mul-layer wins
+    // Eea-inverse truncation levers are ORTHOGONAL to the cswap/mul-layer wins
     // and STACK on top of them. KAL_WTRUNC_MARGIN env override remains available.
     // SHIFT22_FOLD_DIRTY re-roll: the dirty-fold + affine mfw234 stream re-rolls the
     // Fiat-Shamir island. margin=0 at the prior K0=20 had NO clean reroll, but K0=21
@@ -112,7 +112,7 @@ pub(crate) fn kal_wtrunc_margin() -> usize {
     env_usize("KAL_WTRUNC_MARGIN").unwrap_or(0)
 }
 
-/// Empirical-bound truncation width for a CCX-bearing Kaliski width loop at
+/// Empirical-bound truncation width for a CCX-bearing Eea width loop at
 /// `iter_idx`, register width `n`.  Returns `n` (no truncation) when W-TRUNC is
 /// disabled.  When enabled, returns `min(n, w_env(iter)+margin)` so the caller
 /// can further clamp with `.min(provable_formula)` and never exceed it.
@@ -154,10 +154,10 @@ pub(crate) fn kal_wtrunc_slope_den() -> usize {
 
 // ─── DIALOG HISTORY-FOLD (default ON; KAL_DIALOG_FOLD=0 restores old path) ───
 //
-// The Kaliski inversion accumulates one history qubit `m_hist[i]` per iteration
+// The Eea inversion accumulates one history qubit `m_hist[i]` per iteration
 // (~iters of them) for reversibility, AND borrows the *future* slots
-// `m_hist[i+1..]` as the clean |0> carry register for the STEP-4 fast Cuccaro
-// (see `cuccaro_*_fast_borrow` / `gz_*`).  As the GCD walk proceeds, the borrowed
+// `m_hist[i+1..]` as the clean |0> carry register for the STEP-4 fast RippleAdder
+// (see `ripple_adder_*_fast_borrow` / `gz_*`).  As the GCD walk proceeds, the borrowed
 // v_w value SHRINKS, so its high bits (>= kal_wtrunc_width(i)) become guaranteed
 // |0> and idle.  The fold ROUTES each foldable m_hist[i] into one such idle v_w
 // HIGH bit, anchored at/above the circuit's OWN truncation width — so the bit is
@@ -174,7 +174,7 @@ pub(crate) fn kal_wtrunc_slope_den() -> usize {
 // kal_wtrunc_width over its storage iter and every carry-borrow iter.
 //
 // REQUIRES the step-6 v_w shift to be truncated to kal_wtrunc_width(i) so it
-// never disturbs the folded dialog bits (see kaliski_walk.rs).  Fold OFF =>
+// never disturbs the folded dialog bits (see eea_walk.rs).  Fold OFF =>
 // byte-identical to the banked circuit.
 pub(crate) fn kal_dialog_fold_enabled() -> bool {
     // BAKED DEFAULT ON (part of the validated C* construction, score 5,185,018,575).
@@ -215,7 +215,7 @@ pub(crate) fn dialog_fold_shift_width(iter_idx: usize, n: usize) -> usize {
 /// A slot is foldable only at a coord `c >= anchor(j)`, where
 ///   anchor(j) = max kal_wtrunc_width(i) over every iter `i` that
 ///               (a) stores slot j (i == j), or
-///               (b) borrows slot j as a STEP-4 fast-Cuccaro carry, i.e.
+///               (b) borrows slot j as a STEP-4 fast-RippleAdder carry, i.e.
 ///                   j is inside iter i's m_future draw window [i+1, i+drawn(i)].
 /// At `c >= kal_wtrunc_width(i)` the bit is provably |0> at iter i (the GCD value
 /// in v_w is `< 2^kal_wtrunc_width(i)` — the very invariant the W-TRUNC layer
@@ -235,7 +235,7 @@ pub(crate) fn dialog_fold_vw_slotmap(n: usize, iters: usize) -> Vec<Option<usize
     let load_w = |i: usize| (if i < n { n } else { 2 * n - i }).min(kal_wtrunc_width(i, n));
     let add_w = |i: usize| if i + 2 < n { i + 2 } else { n };
     // Lever C* (gz_early_recover): the wide STEP-4 v_w SUB (fwd) / v_w ADD (bwd)
-    // now hosts its (width-1) fast-Cuccaro carry register on s's provably-|0>
+    // now hosts its (width-1) fast-RippleAdder carry register on s's provably-|0>
     // HIGH bits FIRST (s[gz_s_clean_lo(i)..n), width s_clean_w(i)) and only draws
     // the SHORTFALL from m_future. So that op's m_future draw shrinks from
     // load_w-1 to max(0, load_w-1 - s_clean_w). This collapses the wide EARLY
@@ -246,7 +246,7 @@ pub(crate) fn dialog_fold_vw_slotmap(n: usize, iters: usize) -> Vec<Option<usize
     let early = gz_early_recover();
     // Per-iter clean |0> carry-donor widths (must match gz_vw_clean_pool /
     // gz_s_clean_pool in builder.rs exactly): s-high = r-high = n-(i+1) (coeff
-    // bitlen bound), u-high = i-n (late Kaliski bound). The SUB hosts on
+    // bitlen bound), u-high = i-n (late Eea bound). The SUB hosts on
     // s+r+u-high, the s-add on r+u-high (s is its accumulator).
     let s_clean_w = |i: usize| n.saturating_sub(gz_s_clean_lo(i, n)); // == r-high
     // u-high uses the W-TRUNC load envelope (u[load_w..n] is |0>), matching
@@ -322,7 +322,7 @@ pub(crate) fn dialog_fold_vw_slotmap(n: usize, iters: usize) -> Vec<Option<usize
     map
 }
 
-/// CSWAP W-TRUNC (default-ON): narrow the bulk Kaliski step3/step9 (u,v_w)
+/// CSWAP W-TRUNC (default-ON): narrow the bulk Eea step3/step9 (u,v_w)
 /// Fredkin cswap widths to the SAME empirical bitlen envelope already used by
 /// the step4 LOAD/SUB/ADD loops (`kal_wtrunc_width`).  Bits above the envelope
 /// are empirically 0 in BOTH u and v_w, so the Fredkin swap of those bits is a
@@ -344,7 +344,7 @@ pub(crate) fn kal_cswap_wtrunc_enabled() -> bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CARRY-TAIL truncation for the direct const ±c adders (cuccaro.rs).
+// CARRY-TAIL truncation for the direct const ±c adders (ripple_adder.rs).
 //
 // For sparse secp256k1 c=2^32+977 the only work above the top constant set bit
 // (bit 32) is carry/borrow PROPAGATION. Empirically (3M-trial MC, both operand
@@ -383,7 +383,7 @@ fn kal_carrytail_mode() -> &'static str {
         // mod_neg/mod_double, corrupting high sum bits → poisoning a sign-bit
         // comparison → dirty flag whose free()/R injected random phase. Fixed by
         // the constant-aware window (kal_carrytail_count_c): dense constants now
-        // run full-chain, sparse Solinas constants keep the tight truncation.
+        // run full-chain, sparse FastModulo constants keep the tight truncation.
         _ => "both",
     }
 }
@@ -411,7 +411,7 @@ pub(crate) fn majfold_sub_enabled() -> bool {
 /// computed carry value is identical, so the backward Hmr cz_if measurement-
 /// uncompute is byte-unchanged. Same proven technique as the banked SUB fold;
 /// this is the unfolded sibling (cadd_nbit_const_direct_fast drives every
-/// mod_double, i.e. the pair2_double / Solinas-fold doubling phases).
+/// mod_double, i.e. the state_b_double / FastModulo-fold doubling phases).
 /// KAL_MAJFOLD_ADD=0 disables.
 pub(crate) fn majfold_add_enabled() -> bool {
     std::env::var("KAL_MAJFOLD_ADD").ok().as_deref() != Some("0")
@@ -504,7 +504,7 @@ pub(crate) fn kal_carrytail_count(n: usize, enabled: bool) -> usize {
 /// at `cut` is exact only if no carry can reach bit `cut`; every set bit of `c`
 /// (with a |1> control) is a carry generator/propagator, so the window must
 /// start ABOVE c's top set bit. Anchor `k0 = max(env_k0, c.bit_len())`:
-///   * SPARSE Solinas c = 2^256 - p (top bit 32) keeps the tight truncation, but
+///   * SPARSE FastModulo c = 2^256 - p (top bit 32) keeps the tight truncation, but
 ///   * DENSE c = p+1 (mod_neg/mod_double, top bit 255) gets the full chain
 ///     (cut = n-1), the only sound choice — otherwise a dropped carry corrupts
 ///     the high sum bits, poisons a sign-bit comparison, and the dirty flag's
@@ -555,17 +555,17 @@ pub(crate) fn kal_cswap_uv_merge_safe_iters() -> usize {
     env_usize("KAL_CSWAP_UV_MERGE_SAFE_ITERS").unwrap_or(331) // CO-TUNE: 331 + reroll=47 (full-9024 island)
 }
 
-/// For nonzero secp256k1 inputs, the first 256 Kaliski iterations are always
+/// For nonzero secp256k1 inputs, the first 256 Eea iterations are always
 /// nonterminal, so `f = 1` and `v_w != 0` at step entry are guaranteed.
 ///
-/// Proof sketch: let `s = u + v`. Every Kaliski step satisfies `s' >= s/2`.
+/// Proof sketch: let `s = u + v`. Every Eea step satisfies `s' >= s/2`.
 /// Starting from `(u, v) = (p, v0)` with `1 <= v0 < p`, we have
 /// `s0 = p + v0 >= p + 1`, and `p + 1` is strictly between `2^255` and
 /// `2^256`. Termination requires reaching `(1, 0)`, i.e. `s = 1`, so any run
 /// needs at least `ceil(log2(s0)) = 256` steps. Therefore the first 256 step
 /// entries are guaranteed bulk / nonterminal.
 // bxue-l2 peak-2310 island: BULK_PREFIX_SAFE_ITERS=400 (paired with R_SMALL=326,
-// pair1=399, pair2=397). Our shift22-collapse + sol-ext-pos32-fast stay default-on.
+// state_a=399, state_b=397). Our shift22-collapse + sol-ext-pos32-fast stay default-on.
 pub(crate) const BULK_PREFIX_SAFE_ITERS: usize = 400;
 
 pub(crate) fn env_usize(name: &str) -> Option<usize> {
@@ -573,10 +573,10 @@ pub(crate) fn env_usize(name: &str) -> Option<usize> {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum KalPair {
+pub(crate) enum KalAlgoState {
     Default,
-    Pair1,
-    Pair2,
+    AlgoState1,
+    AlgoState2,
 }
 
 #[derive(Clone, Copy)]
@@ -611,14 +611,14 @@ pub(crate) fn bulk_prefix_safe_iters() -> usize {
         == Some("1");
     let default = if centered_q_payload_hook {
         // The narrower q-payload history changes the circuit shape enough that
-        // the old 370 centered-hook Kaliski prefix hits an altseed phase cliff.
+        // the old 370 centered-hook Eea prefix hits an altseed phase cliff.
         // This env path is an ugly integration probe; use a conservative prefix
-        // rather than letting the remaining Kaliski scaffold dominate the test.
+        // rather than letting the remaining Eea scaffold dominate the test.
         360
     } else if centered_roundtrip_hook {
         // The huge centered roundtrip hooks change the circuit hash / RNG stream
         // enough that the aggressively tuned 375 bulk-prefix setting can hit a
-        // rare phase cliff in the old Kaliski scaffold. Use the previously
+        // rare phase cliff in the old Eea scaffold. Use the previously
         // validated 370 setting for these smoke hooks; normal default remains 378.
         370
     } else {
@@ -627,18 +627,18 @@ pub(crate) fn bulk_prefix_safe_iters() -> usize {
     env_usize("KAL_BULK3_ITERS").unwrap_or(default)
 }
 
-pub(crate) fn bulk_prefix_caps(pair: KalPair) -> BulkPrefixCaps {
+pub(crate) fn bulk_prefix_caps(pair: KalAlgoState) -> BulkPrefixCaps {
     let mut forward = bulk_prefix_safe_iters();
     let mut backward = forward;
 
     let (pair_all, pair_fwd, pair_bk) = match pair {
-        KalPair::Default => (None, None, None),
-        KalPair::Pair1 => (
+        KalAlgoState::Default => (None, None, None),
+        KalAlgoState::AlgoState1 => (
             Some("KAL_PAIR1_BULK3_ITERS"),
             Some("KAL_PAIR1_BULK3_FWD_ITERS"),
             Some("KAL_PAIR1_BULK3_BK_ITERS"),
         ),
-        KalPair::Pair2 => (
+        KalAlgoState::AlgoState2 => (
             Some("KAL_PAIR2_BULK3_ITERS"),
             Some("KAL_PAIR2_BULK3_FWD_ITERS"),
             Some("KAL_PAIR2_BULK3_BK_ITERS"),
@@ -668,7 +668,7 @@ pub(crate) fn bulk_prefix_caps(pair: KalPair) -> BulkPrefixCaps {
         }
     }
 
-    // Pair1 uses the same bulk prefix as the global default (no override needed).
+    // AlgoState1 uses the same bulk prefix as the global default (no override needed).
     // Previously pinned to 394; now inherits BULK_PREFIX_SAFE_ITERS = 401.
 
     BulkPrefixCaps { forward, backward }
@@ -686,11 +686,11 @@ pub(crate) enum SparseConstShiftUndo {
     Chunk(usize, Vec<QubitId>, QubitId, QubitId),
 }
 
-/// Persistent state for the Kaliski forward computation. Transients are
+/// Persistent state for the Eea forward computation. Transients are
 /// allocated inside the iteration body; `emit_inverse` will correctly
 /// reverse them because it skips R ops (the free markers) in the reverse
 /// stream, and our forward guarantees each free lands on a |0⟩ qubit.
-pub(crate) struct KaliskiState {
+pub(crate) struct EeaState {
     pub(crate) u: Vec<QubitId>,      // n qubits
     pub(crate) v_w: Vec<QubitId>,    // n qubits
     pub(crate) r: Vec<QubitId>,      // n qubits
@@ -698,12 +698,12 @@ pub(crate) struct KaliskiState {
     pub(crate) m_hist: Vec<QubitId>, // iters qubits
     pub(crate) f_flag: QubitId,
     // a_flag, b_flag, add_flag are iter-local: allocated fresh inside each
-    // kaliski_iteration / _backward and zeroed/freed at iter end. This
+    // eea_iteration / _backward and zeroed/freed at iter end. This
     // saves 3 qubits of state live during body, dropping peak by 3.
 }
 
-pub(crate) fn alloc_kaliski_state(b: &mut B, n: usize, max_iters: usize) -> KaliskiState {
-    KaliskiState {
+pub(crate) fn alloc_eea_state(b: &mut B, n: usize, max_iters: usize) -> EeaState {
+    EeaState {
         u: b.alloc_qubits(n),
         v_w: b.alloc_qubits(n),
         r: b.alloc_qubits(n),
@@ -713,7 +713,7 @@ pub(crate) fn alloc_kaliski_state(b: &mut B, n: usize, max_iters: usize) -> Kali
     }
 }
 
-pub(crate) fn free_kaliski_state(b: &mut B, st: KaliskiState) {
+pub(crate) fn free_eea_state(b: &mut B, st: EeaState) {
     b.free(st.f_flag);
     b.free_vec(&st.m_hist);
     b.free_vec(&st.s);
@@ -722,11 +722,11 @@ pub(crate) fn free_kaliski_state(b: &mut B, st: KaliskiState) {
     b.free_vec(&st.u);
 }
 
-/// Branch-history-only Kaliski denominator state for the tagged-DIV probes.
-/// Unlike `KaliskiState`, this does not carry qrisp's full inverse coefficient
+/// Branch-history-only Eea denominator state for the tagged-DIV probes.
+/// Unlike `EeaState`, this does not carry qrisp's full inverse coefficient
 /// `(r,s)`. It stores the final swap bit `a` alongside the existing `m` bit;
 /// together they recover the add branch as `f & !(a xor m)`.
-pub(crate) struct KaliskiBranchState {
+pub(crate) struct EeaBranchState {
     pub(crate) u: Vec<QubitId>,
     pub(crate) v_w: Vec<QubitId>,
     pub(crate) m_hist: Vec<QubitId>,
@@ -735,8 +735,8 @@ pub(crate) struct KaliskiBranchState {
     pub(crate) f_flag: QubitId,
 }
 
-pub(crate) fn alloc_kaliski_branch_state(b: &mut B, n: usize, max_iters: usize) -> KaliskiBranchState {
-    KaliskiBranchState {
+pub(crate) fn alloc_eea_branch_state(b: &mut B, n: usize, max_iters: usize) -> EeaBranchState {
+    EeaBranchState {
         u: b.alloc_qubits(n),
         v_w: b.alloc_qubits(n),
         m_hist: b.alloc_qubits(max_iters),
@@ -746,8 +746,8 @@ pub(crate) fn alloc_kaliski_branch_state(b: &mut B, n: usize, max_iters: usize) 
     }
 }
 
-pub(crate) fn alloc_kaliski_branch_state_no_add(b: &mut B, n: usize, max_iters: usize) -> KaliskiBranchState {
-    KaliskiBranchState {
+pub(crate) fn alloc_eea_branch_state_no_add(b: &mut B, n: usize, max_iters: usize) -> EeaBranchState {
+    EeaBranchState {
         u: b.alloc_qubits(n),
         v_w: b.alloc_qubits(n),
         m_hist: b.alloc_qubits(max_iters),
@@ -757,7 +757,7 @@ pub(crate) fn alloc_kaliski_branch_state_no_add(b: &mut B, n: usize, max_iters: 
     }
 }
 
-pub(crate) fn free_kaliski_branch_state(b: &mut B, st: KaliskiBranchState) {
+pub(crate) fn free_eea_branch_state(b: &mut B, st: EeaBranchState) {
     b.free(st.f_flag);
     b.free_vec(&st.add_hist);
     b.free_vec(&st.a_hist);
@@ -767,25 +767,25 @@ pub(crate) fn free_kaliski_branch_state(b: &mut B, st: KaliskiBranchState) {
 }
 
 // H193 PAIR1 INVKEEP CLEANUP NO-BULK PHASE LOCATOR:
-// The cleanup Kaliski inside `kaliski_xor_inv_raw_into_keep_alias_vw` reuses the
+// The cleanup Eea inside `eea_xor_inv_raw_into_keep_alias_vw` reuses the
 // bulk-prefix3 forward+backward pair on the same classical `tx` that the first
-// Kaliski already exercised. The H192 strict scaffold phase-fails despite the
+// Eea already exercised. The H192 strict scaffold phase-fails despite the
 // classical state being correct; the bulk-prefix3 cliff (validated only at
-// pair1=378 in the single-call schedule) has never been validated against this
+// state_a=378 in the single-call schedule) has never been validated against this
 // second-call shape. Override only the cleanup helper's bulk caps via a fresh
-// env knob; the first Kaliski continues to use `bulk_prefix_caps(pair)` (378
-// by default on Pair1). Defaults to 0 when KAL_PAIR1_INVKEEP_OUTSIDE_LAMBDA=1
+// env knob; the first Eea continues to use `bulk_prefix_caps(pair)` (378
+// by default on AlgoState1). Defaults to 0 when KAL_PAIR1_INVKEEP_OUTSIDE_LAMBDA=1
 // to deliberately disable the suspected phase-batch source for the cleanup.
-pub(crate) fn cleanup_bulk_prefix_caps(pair: KalPair) -> BulkPrefixCaps {
+pub(crate) fn cleanup_bulk_prefix_caps(pair: KalAlgoState) -> BulkPrefixCaps {
     let invkeep_active =
-        env_flag_enabled("KAL_PAIR1_INVKEEP_OUTSIDE_LAMBDA", false) && matches!(pair, KalPair::Pair1);
+        env_flag_enabled("KAL_PAIR1_INVKEEP_OUTSIDE_LAMBDA", false) && matches!(pair, KalAlgoState::AlgoState1);
     if !invkeep_active {
         // Outside the INVKEEP path callers don't use this helper.  Fall through
         // to the normal bulk prefix caps for safety.
         return bulk_prefix_caps(pair);
     }
     // H193: default cleanup bulk caps to 0 when INVKEEP is enabled, so the
-    // cleanup Kaliski runs only the generic (non-bulk-prefix3) iteration on
+    // cleanup Eea runs only the generic (non-bulk-prefix3) iteration on
     // both forward and backward.  Explicit env override wins.
     let override_val = env_usize("KAL_PAIR1_INVKEEP_CLEANUP_BULK_ITERS").unwrap_or(0);
     BulkPrefixCaps {

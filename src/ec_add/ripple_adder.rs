@@ -2,7 +2,7 @@
 use super::*;
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Cuccaro ripple-carry adder
+//  RippleAdder ripple-carry adder
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // Operates on two n-wide qubit registers `a` (addend, unchanged) and
@@ -12,7 +12,7 @@ use super::*;
 //           (i.e., the output carry is XORed into z; pass a fresh 0 bit
 //           to receive the high bit)
 //
-// Based on Cuccaro et al. 2004 (arXiv:quant-ph/0410184), Figure 3.
+// Based on RippleAdder et al. 2004 (arXiv:quant-ph/0410184), Figure 3.
 //
 // `MAJ(x, y, w)` triple:
 //     CX(w, y)        # y ← y ⊕ w
@@ -36,10 +36,10 @@ pub(crate) fn uma(b: &mut B, x: QubitId, y: QubitId, w: QubitId) {
     b.cx(x, y);
 }
 
-/// Fast Cuccaro add using carry ancillae + measurement-based UMA.
-/// Same interface as `cuccaro_add` but uses n-1 carry ancillae so the
+/// Fast RippleAdder add using carry ancillae + measurement-based UMA.
+/// Same interface as `ripple_adder_add` but uses n-1 carry ancillae so the
 /// UMA sweep costs 0 Toffoli (measurement only). NOT emit_inverse-safe.
-pub(crate) fn cuccaro_add_fast(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
+pub(crate) fn ripple_adder_add_fast(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
     let n = a.len();
     assert_eq!(n, acc.len());
     if n == 0 {
@@ -67,7 +67,7 @@ pub(crate) fn cuccaro_add_fast(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: 
         b.cx(carries[i], a[i]);
     }
 
-    // Final sum bit (same as original cuccaro_add)
+    // Final sum bit (same as original ripple_adder_add)
     b.cx(a[n - 2], acc[n - 1]);
     b.cx(a[n - 1], acc[n - 1]);
 
@@ -91,14 +91,14 @@ pub(crate) fn cuccaro_add_fast(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: 
     b.free_vec(&carries);
 }
 
-/// Carry-BORROW twin of [`cuccaro_add_fast`]: identical gate sequence, but the
+/// Carry-BORROW twin of [`ripple_adder_add_fast`]: identical gate sequence, but the
 /// n-1 carry qubits are BORROWED from `carry_src` (which MUST be clean |0⟩ on
 /// entry and is restored to |0⟩ on exit by the measurement-uncompute) instead
 /// of freshly allocated. Flat Toffoli, zero new width at the peak — the carry
 /// register is hosted on already-live but idle clean ancilla (e.g. the future
-/// Kaliski m_hist transcript bits m_hist[iter+1..], guaranteed |0⟩ until their
+/// Eea m_hist transcript bits m_hist[iter+1..], guaranteed |0⟩ until their
 /// own iteration writes them). `carry_src.len()` must be >= n-1.
-pub(crate) fn cuccaro_add_fast_borrow(
+pub(crate) fn ripple_adder_add_fast_borrow(
     b: &mut B,
     a: &[QubitId],
     acc: &[QubitId],
@@ -156,7 +156,7 @@ pub(crate) fn cuccaro_add_fast_borrow(
 /// Pure mod-2^n: the high carry is discarded (no `z` ancilla). This is
 /// honestly reversible because the last MAJ/UMA pair cancel out the
 /// carry information on `a[n-1]`.
-pub(crate) fn cuccaro_add(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
+pub(crate) fn ripple_adder_add(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
     let n = a.len();
     assert_eq!(n, acc.len());
     if n == 0 {
@@ -187,9 +187,9 @@ pub(crate) fn cuccaro_add(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: Qubit
     uma(b, c_in, acc[0], a[0]);
 }
 
-/// Reverse of `cuccaro_add`: performs `acc -= a mod 2^n`.
-/// Implemented as the exact inverse gate sequence of `cuccaro_add`.
-pub(crate) fn cuccaro_sub(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
+/// Reverse of `ripple_adder_add`: performs `acc -= a mod 2^n`.
+/// Implemented as the exact inverse gate sequence of `ripple_adder_add`.
+pub(crate) fn ripple_adder_sub(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
     let n = a.len();
     assert_eq!(n, acc.len());
     if n == 0 {
@@ -240,9 +240,9 @@ pub(crate) fn inv_uma(b: &mut B, x: QubitId, y: QubitId, w: QubitId) {
 //  Non-modular n-bit primitives
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Fast Cuccaro sub: `acc -= a mod 2^n` with measurement UMA (0 Toffoli
-/// for UMA sweep). Exact gate-level inverse of `cuccaro_add_fast`.
-pub(crate) fn cuccaro_sub_fast(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
+/// Fast RippleAdder sub: `acc -= a mod 2^n` with measurement UMA (0 Toffoli
+/// for UMA sweep). Exact gate-level inverse of `ripple_adder_add_fast`.
+pub(crate) fn ripple_adder_sub_fast(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
     let n = a.len();
     assert_eq!(n, acc.len());
     if n == 0 {
@@ -256,7 +256,7 @@ pub(crate) fn cuccaro_sub_fast(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: 
 
     let carries = b.alloc_qubits(n - 1);
 
-    // Forward inv_UMA sweep with carry ancillae (reversed UMA from cuccaro_sub).
+    // Forward inv_UMA sweep with carry ancillae (reversed UMA from ripple_adder_sub).
     // Step 0:
     b.cx(c_in, acc[0]);
     b.cx(a[0], c_in);
@@ -270,7 +270,7 @@ pub(crate) fn cuccaro_sub_fast(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: 
         b.cx(carries[i], a[i]);
     }
 
-    // Final sum bit (reversed from cuccaro_add)
+    // Final sum bit (reversed from ripple_adder_add)
     b.cx(a[n - 1], acc[n - 1]);
     b.cx(a[n - 2], acc[n - 1]);
 
@@ -293,9 +293,9 @@ pub(crate) fn cuccaro_sub_fast(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: 
     b.free_vec(&carries);
 }
 
-/// Carry-BORROW twin of [`cuccaro_sub_fast`]: see [`cuccaro_add_fast_borrow`].
+/// Carry-BORROW twin of [`ripple_adder_sub_fast`]: see [`ripple_adder_add_fast_borrow`].
 /// Borrows `carry_src[..n-1]` (clean |0>, restored to |0>) as the carry block.
-pub(crate) fn cuccaro_sub_fast_borrow(
+pub(crate) fn ripple_adder_sub_fast_borrow(
     b: &mut B,
     a: &[QubitId],
     acc: &[QubitId],
@@ -346,12 +346,12 @@ pub(crate) fn cuccaro_sub_fast_borrow(
     // carries borrowed: restored to |0>, NOT freed.
 }
 
-/// Borrow-carry `acc += a mod 2^n`: hosts the fast-Cuccaro carry register on
+/// Borrow-carry `acc += a mod 2^n`: hosts the fast-RippleAdder carry register on
 /// `carry_src` (clean |0>, restored). Flat Toffoli, no new peak width.
 pub(crate) fn add_nbit_qq_fast_borrow(b: &mut B, a: &[QubitId], acc: &[QubitId], carry_src: &[QubitId]) {
     assert_eq!(a.len(), acc.len());
     let c_in = b.alloc_qubit();
-    cuccaro_add_fast_borrow(b, a, acc, c_in, carry_src);
+    ripple_adder_add_fast_borrow(b, a, acc, c_in, carry_src);
     b.free(c_in);
 }
 
@@ -359,11 +359,11 @@ pub(crate) fn add_nbit_qq_fast_borrow(b: &mut B, a: &[QubitId], acc: &[QubitId],
 pub(crate) fn sub_nbit_qq_fast_borrow(b: &mut B, a: &[QubitId], acc: &[QubitId], carry_src: &[QubitId]) {
     assert_eq!(a.len(), acc.len());
     let c_in = b.alloc_qubit();
-    cuccaro_sub_fast_borrow(b, a, acc, c_in, carry_src);
+    ripple_adder_sub_fast_borrow(b, a, acc, c_in, carry_src);
     b.free(c_in);
 }
 
-/// Build a width-(n-1) clean-|0> carry register for a fast-Cuccaro add/sub of
+/// Build a width-(n-1) clean-|0> carry register for a fast-RippleAdder add/sub of
 /// width n, hosting as many bits as possible on `m_future` (clean |0> bits that
 /// belong to the caller and are restored to |0> on exit), and freshly
 /// allocating only the shortfall. Returns (full_carry_vec, fresh_count); the
@@ -387,17 +387,17 @@ pub(crate) fn borrow_carry_register(
 
 /// Max fresh carry qubits we will allocate on top of the m_future borrow
 /// before falling back to the slow (carry-register-FREE, 1-ancilla in-place
-/// Cuccaro). Tuned so the per-step peak stays <= the 2333 shift22 floor:
+/// RippleAdder). Tuned so the per-step peak stays <= the 2333 shift22 floor:
 /// 2333 - (binder carrier 1175 + tmp 256 + init 512 + lam 256 + slack) leaves
 /// headroom for ~120 fresh carries. When the m_future pool is too small to
-/// cover (n-1) with <= this many fresh bits, we use slow Cuccaro for that one
+/// cover (n-1) with <= this many fresh bits, we use slow RippleAdder for that one
 /// call (flat WIDTH, +~n Toffoli) — only the few late iters with an exhausted
 /// pool pay it, keeping the global Toffoli penalty small while still capping
 /// the peak at the floor.
 pub(crate) fn gz_max_fresh_carries() -> usize {
     // 131 = the max fresh-carry budget that keeps the per-step peak at the 2333
     // shift22 floor (132+ lets kal_bulk_step4 borrow-fast push to 2334+).
-    // Swept empirically; minimizes the slow-Cuccaro fallback Toffoli at 2333.
+    // Swept empirically; minimizes the slow-RippleAdder fallback Toffoli at 2333.
     std::env::var("KAL_GZ_MAX_FRESH")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
@@ -406,29 +406,29 @@ pub(crate) fn gz_max_fresh_carries() -> usize {
 
 /// `acc += a mod 2^n`: borrow the carry register from `m_future` (clean |0>);
 /// if the shortfall would exceed `gz_max_fresh_carries`, fall back to the slow
-/// in-place Cuccaro (no carry register at all) so the peak stays at the floor.
+/// in-place RippleAdder (no carry register at all) so the peak stays at the floor.
 pub(crate) fn add_nbit_qq_fast_mfut(b: &mut B, a: &[QubitId], acc: &[QubitId], m_future: &[QubitId]) {
     assert_eq!(a.len(), acc.len());
     let n = a.len();
     let need = n.saturating_sub(1);
     let borrowed = need.min(m_future.len());
     if need - borrowed > gz_max_fresh_carries() {
-        // Pool too small: slow Cuccaro (1 ancilla, no carry register).
+        // Pool too small: slow RippleAdder (1 ancilla, no carry register).
         let c_in = b.alloc_qubit();
-        cuccaro_add(b, a, acc, c_in);
+        ripple_adder_add(b, a, acc, c_in);
         b.free(c_in);
         return;
     }
     let (carries, fresh) = borrow_carry_register(b, n, m_future);
     let c_in = b.alloc_qubit();
-    cuccaro_add_fast_borrow(b, a, acc, c_in, &carries);
+    ripple_adder_add_fast_borrow(b, a, acc, c_in, &carries);
     b.free(c_in);
     for &q in carries[carries.len() - fresh..].iter() {
         b.free(q);
     }
 }
 
-/// `acc -= a mod 2^n` with m_future borrow + slow-Cuccaro shortfall fallback.
+/// `acc -= a mod 2^n` with m_future borrow + slow-RippleAdder shortfall fallback.
 pub(crate) fn sub_nbit_qq_fast_mfut(b: &mut B, a: &[QubitId], acc: &[QubitId], m_future: &[QubitId]) {
     assert_eq!(a.len(), acc.len());
     let n = a.len();
@@ -436,13 +436,13 @@ pub(crate) fn sub_nbit_qq_fast_mfut(b: &mut B, a: &[QubitId], acc: &[QubitId], m
     let borrowed = need.min(m_future.len());
     if need - borrowed > gz_max_fresh_carries() {
         let c_in = b.alloc_qubit();
-        cuccaro_sub(b, a, acc, c_in);
+        ripple_adder_sub(b, a, acc, c_in);
         b.free(c_in);
         return;
     }
     let (carries, fresh) = borrow_carry_register(b, n, m_future);
     let c_in = b.alloc_qubit();
-    cuccaro_sub_fast_borrow(b, a, acc, c_in, &carries);
+    ripple_adder_sub_fast_borrow(b, a, acc, c_in, &carries);
     b.free(c_in);
     for &q in carries[carries.len() - fresh..].iter() {
         b.free(q);
@@ -477,7 +477,7 @@ pub(crate) fn borrow_carry_register_pool(
 }
 
 /// `acc += a mod 2^n`: borrow carries from `m_future` THEN `extra` (both clean
-/// |0>, restored on exit); slow-Cuccaro fallback only if the COMBINED pool is
+/// |0>, restored on exit); slow-RippleAdder fallback only if the COMBINED pool is
 /// still too small. Recovers the late-iter slow-fallback Toffoli at flat peak.
 pub(crate) fn add_nbit_qq_fast_mfut_pool(
     b: &mut B,
@@ -493,13 +493,13 @@ pub(crate) fn add_nbit_qq_fast_mfut_pool(
     let borrowed = need.min(pool);
     if need - borrowed > gz_max_fresh_carries() {
         let c_in = b.alloc_qubit();
-        cuccaro_add(b, a, acc, c_in);
+        ripple_adder_add(b, a, acc, c_in);
         b.free(c_in);
         return;
     }
     let (carries, fresh) = borrow_carry_register_pool(b, n, m_future, extra);
     let c_in = b.alloc_qubit();
-    cuccaro_add_fast_borrow(b, a, acc, c_in, &carries);
+    ripple_adder_add_fast_borrow(b, a, acc, c_in, &carries);
     b.free(c_in);
     for &q in carries[carries.len() - fresh..].iter() {
         b.free(q);
@@ -521,32 +521,32 @@ pub(crate) fn sub_nbit_qq_fast_mfut_pool(
     let borrowed = need.min(pool);
     if need - borrowed > gz_max_fresh_carries() {
         let c_in = b.alloc_qubit();
-        cuccaro_sub(b, a, acc, c_in);
+        ripple_adder_sub(b, a, acc, c_in);
         b.free(c_in);
         return;
     }
     let (carries, fresh) = borrow_carry_register_pool(b, n, m_future, extra);
     let c_in = b.alloc_qubit();
-    cuccaro_sub_fast_borrow(b, a, acc, c_in, &carries);
+    ripple_adder_sub_fast_borrow(b, a, acc, c_in, &carries);
     b.free(c_in);
     for &q in carries[carries.len() - fresh..].iter() {
         b.free(q);
     }
 }
 
-/// Fast `acc += a mod 2^n` using measurement-based Cuccaro.
+/// Fast `acc += a mod 2^n` using measurement-based RippleAdder.
 pub(crate) fn add_nbit_qq_fast(b: &mut B, a: &[QubitId], acc: &[QubitId]) {
     assert_eq!(a.len(), acc.len());
     let c_in = b.alloc_qubit();
-    cuccaro_add_fast(b, a, acc, c_in);
+    ripple_adder_add_fast(b, a, acc, c_in);
     b.free(c_in);
 }
 
-/// Fast `acc -= a mod 2^n` using measurement-based Cuccaro.
+/// Fast `acc -= a mod 2^n` using measurement-based RippleAdder.
 pub(crate) fn sub_nbit_qq_fast(b: &mut B, a: &[QubitId], acc: &[QubitId]) {
     assert_eq!(a.len(), acc.len());
     let c_in = b.alloc_qubit();
-    cuccaro_sub_fast(b, a, acc, c_in);
+    ripple_adder_sub_fast(b, a, acc, c_in);
     b.free(c_in);
 }
 
@@ -558,14 +558,14 @@ pub(crate) fn sub_nbit_qq_fast(b: &mut B, a: &[QubitId], acc: &[QubitId]) {
 pub(crate) fn add_nbit_qq(b: &mut B, a: &[QubitId], acc: &[QubitId]) {
     assert_eq!(a.len(), acc.len());
     let c_in = b.alloc_qubit();
-    cuccaro_add(b, a, acc, c_in);
+    ripple_adder_add(b, a, acc, c_in);
     b.free(c_in);
 }
 
 pub(crate) fn sub_nbit_qq(b: &mut B, a: &[QubitId], acc: &[QubitId]) {
     assert_eq!(a.len(), acc.len());
     let c_in = b.alloc_qubit();
-    cuccaro_sub(b, a, acc, c_in);
+    ripple_adder_sub(b, a, acc, c_in);
     b.free(c_in);
 }
 
@@ -577,7 +577,7 @@ pub(crate) fn centered_restoring_trial_subtract_clean(
 ) {
     // Trial subtract for a centered-Euclid quotient bit. Compute the borrow,
     // copy out the success bit, then undo with the arithmetic inverse instead
-    // of replaying the Cuccaro subtract wrapper through emit_inverse.
+    // of replaying the RippleAdder subtract wrapper through emit_inverse.
     assert_eq!(u.len(), v.len());
     let top_u = b.alloc_qubit();
     let top_v = b.alloc_qubit();
@@ -667,7 +667,7 @@ pub(crate) fn csub_nbit_const_fast(b: &mut B, acc: &[QubitId], c: U256, ctrl: Qu
 /// `ctrl ? c : 0` addend.  This is the same measurement-uncomputed ripple idea
 /// as [`sub_nbit_qq_fast`], but the carry/borrow recurrence is specialized to a
 /// classical bit and the external control.  It saves the n-qubit loaded-constant
-/// register at Kaliski halve peaks; for sparse secp256k1 `c=2^32+977` the CCX
+/// register at Eea halve peaks; for sparse secp256k1 `c=2^32+977` the CCX
 /// count is essentially unchanged.
 pub(crate) fn csub_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256, ctrl: QubitId) {
     let n = acc.len();
@@ -677,7 +677,7 @@ pub(crate) fn csub_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256, c
 
 /// `csub_nbit_const_direct_fast` with an explicit carry-tail `cut` (number of
 /// borrow ancillae). Used by the shift22 reduction so its window is decoupled
-/// from the global Kaliski carry-tail W. `cut` MUST be identical between a
+/// from the global Eea carry-tail W. `cut` MUST be identical between a
 /// forward call and its reversal (phase-parity law).
 pub(crate) fn csub_nbit_const_direct_fast_cut(
     b: &mut B,
@@ -798,7 +798,7 @@ pub(crate) fn cadd_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256, c
 }
 
 /// `cadd_nbit_const_direct_fast` with an explicit carry-tail `cut`. Used by the
-/// shift22 reduction so its window is decoupled from the global Kaliski carry-tail
+/// shift22 reduction so its window is decoupled from the global Eea carry-tail
 /// W. `cut` MUST be identical between a forward call and its reversal.
 pub(crate) fn cadd_nbit_const_direct_fast_cut(
     b: &mut B,
@@ -825,7 +825,7 @@ pub(crate) fn cadd_nbit_const_direct_fast_cut(
     // top set bit 255) must NOT be truncated — a dropped carry corrupts the high
     // sum bits, poisons a downstream sign-bit comparison, leaves a flag dirty, and
     // its free()/R injects random phase. Anchoring k0 above c's top set bit gives
-    // dense constants the full chain while sparse Solinas constants keep the tight
+    // dense constants the full chain while sparse FastModulo constants keep the tight
     // truncation. This is what makes the ADD path phase-clean.
     let cut = cut.min(n - 1);
     let carries = b.alloc_qubits(cut);

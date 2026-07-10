@@ -1,7 +1,7 @@
-//! (refactor) Mechanically extracted from kaliski.rs. No logic changes.
+//! (refactor) Mechanically extracted from eea.rs. No logic changes.
 use super::*;
 /// Optional side-channel coefficient transform used by the tagged-DIV probe.
-/// It applies the same linear Kaliski coefficient update to an external
+/// It applies the same linear Eea coefficient update to an external
 /// `(cr, cs)` pair while the ordinary inverse state still carries the
 /// qrisp sentinel needed to uncompute branch flags.
 pub(crate) fn coeff_channel_cswap(b: &mut B, ctrl: QubitId, cr: &[QubitId], cs: &[QubitId]) {
@@ -26,7 +26,7 @@ pub(crate) fn coeff_channel_double(b: &mut B, p: U256, cr: &[QubitId]) {
 }
 
 
-pub(crate) fn kaliski_branch_iteration_with_coeff(
+pub(crate) fn eea_branch_iteration_with_coeff(
     b: &mut B,
     p: U256,
     u: &[QubitId],
@@ -126,7 +126,7 @@ pub(crate) fn kaliski_branch_iteration_with_coeff(
     b.set_phase(_kal_saved_phase);
 }
 
-pub(crate) fn kaliski_branch_iteration_record(
+pub(crate) fn eea_branch_iteration_record(
     b: &mut B,
     u: &[QubitId],
     v_w: &[QubitId],
@@ -399,7 +399,7 @@ pub(crate) fn apply_coeff_channel_from_term_index(
     }
 }
 
-pub(crate) fn kaliski_branch_iteration_backward_recorded(
+pub(crate) fn eea_branch_iteration_backward_recorded(
     b: &mut B,
     u: &[QubitId],
     v_w: &[QubitId],
@@ -495,7 +495,7 @@ pub(crate) fn kaliski_branch_iteration_backward_recorded(
     b.set_phase(_kal_saved_phase);
 }
 
-pub(crate) fn kaliski_branch_iteration_backward(
+pub(crate) fn eea_branch_iteration_backward(
     b: &mut B,
     u: &[QubitId],
     v_w: &[QubitId],
@@ -597,10 +597,10 @@ pub(crate) fn kaliski_branch_iteration_backward(
     b.set_phase(_kal_saved_phase);
 }
 
-pub(crate) fn kaliski_branch_forward_with_coeff(
+pub(crate) fn eea_branch_forward_with_coeff(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiBranchState,
+    st: &EeaBranchState,
     p: U256,
     iters: usize,
     coeff: (&[QubitId], &[QubitId]),
@@ -614,7 +614,7 @@ pub(crate) fn kaliski_branch_forward_with_coeff(
     }
     b.x(st.f_flag);
     for i in 0..iters {
-        kaliski_branch_iteration_with_coeff(
+        eea_branch_iteration_with_coeff(
             b,
             p,
             &st.u,
@@ -627,16 +627,16 @@ pub(crate) fn kaliski_branch_forward_with_coeff(
     }
 }
 
-pub(crate) fn kaliski_branch_backward(
+pub(crate) fn eea_branch_backward(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiBranchState,
+    st: &EeaBranchState,
     p: U256,
     iters: usize,
 ) {
     let n = v_in.len();
     for i in (0..iters).rev() {
-        kaliski_branch_iteration_backward(
+        eea_branch_iteration_backward(
             b,
             &st.u,
             &st.v_w,
@@ -655,10 +655,10 @@ pub(crate) fn kaliski_branch_backward(
     }
 }
 
-pub(crate) fn kaliski_branch_record_forward(
+pub(crate) fn eea_branch_record_forward(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiBranchState,
+    st: &EeaBranchState,
     p: U256,
     iters: usize,
 ) {
@@ -671,7 +671,7 @@ pub(crate) fn kaliski_branch_record_forward(
     }
     b.x(st.f_flag);
     for i in 0..iters {
-        kaliski_branch_iteration_record(
+        eea_branch_iteration_record(
             b,
             &st.u,
             &st.v_w,
@@ -684,16 +684,16 @@ pub(crate) fn kaliski_branch_record_forward(
     }
 }
 
-pub(crate) fn kaliski_branch_record_backward(
+pub(crate) fn eea_branch_record_backward(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiBranchState,
+    st: &EeaBranchState,
     p: U256,
     iters: usize,
 ) {
     let n = v_in.len();
     for i in (0..iters).rev() {
-        kaliski_branch_iteration_backward_recorded(
+        eea_branch_iteration_backward_recorded(
             b,
             &st.u,
             &st.v_w,
@@ -712,10 +712,10 @@ pub(crate) fn kaliski_branch_record_backward(
     }
 }
 
-pub(crate) fn kaliski_branch_record_forward_term(
+pub(crate) fn eea_branch_record_forward_term(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiBranchState,
+    st: &EeaBranchState,
     term_bits: &[QubitId],
     p: U256,
     iters: usize,
@@ -729,7 +729,7 @@ pub(crate) fn kaliski_branch_record_forward_term(
     }
     b.x(st.f_flag);
     for i in 0..iters {
-        kaliski_branch_iteration_record(
+        eea_branch_iteration_record(
             b,
             &st.u,
             &st.v_w,
@@ -742,17 +742,17 @@ pub(crate) fn kaliski_branch_record_forward_term(
     }
 }
 
-pub(crate) fn kaliski_branch_record_backward_term(
+pub(crate) fn eea_branch_record_backward_term(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiBranchState,
+    st: &EeaBranchState,
     term_bits: &[QubitId],
     p: U256,
     iters: usize,
 ) {
     let n = v_in.len();
     for i in (0..iters).rev() {
-        kaliski_branch_iteration_backward(
+        eea_branch_iteration_backward(
             b,
             &st.u,
             &st.v_w,
@@ -779,9 +779,9 @@ pub(crate) fn with_kal_branch_inv_raw_roll<F: FnOnce(&mut B, &[QubitId])>(
     body: F,
 ) {
     let n = v_in.len();
-    let mut st = alloc_kaliski_branch_state_no_add(b, n, iters);
+    let mut st = alloc_eea_branch_state_no_add(b, n, iters);
     let term_bits = b.alloc_qubits(9);
-    kaliski_branch_record_forward_term(b, v_in, &st, &term_bits, p, iters);
+    eea_branch_record_forward_term(b, v_in, &st, &term_bits, p, iters);
 
     // Final denominator state is known when iters is beyond the convergence
     // tail. Free it so coefficient replay carries only histories + inv coeffs.
@@ -810,9 +810,9 @@ pub(crate) fn with_kal_branch_inv_raw_roll<F: FnOnce(&mut B, &[QubitId])>(
     st.v_w = b.alloc_qubits(n);
     st.f_flag = b.alloc_qubit();
     b.x(st.u[0]);
-    kaliski_branch_record_backward_term(b, v_in, &st, &term_bits, p, iters);
+    eea_branch_record_backward_term(b, v_in, &st, &term_bits, p, iters);
     b.free_vec(&term_bits);
-    free_kaliski_branch_state(b, st);
+    free_eea_branch_state(b, st);
 }
 
 pub(crate) fn with_kal_branch_term_roll_tagged_div<F: FnOnce(&mut B)>(
@@ -824,9 +824,9 @@ pub(crate) fn with_kal_branch_term_roll_tagged_div<F: FnOnce(&mut B)>(
     body: F,
 ) {
     let n = v_in.len();
-    let mut st = alloc_kaliski_branch_state_no_add(b, n, iters);
+    let mut st = alloc_eea_branch_state_no_add(b, n, iters);
     let term_bits = b.alloc_qubits(9);
-    kaliski_branch_record_forward_term(b, v_in, &st, &term_bits, p, iters);
+    eea_branch_record_forward_term(b, v_in, &st, &term_bits, p, iters);
 
     b.x(st.u[0]);
     b.free_vec(&st.u);
@@ -840,9 +840,9 @@ pub(crate) fn with_kal_branch_term_roll_tagged_div<F: FnOnce(&mut B)>(
     st.v_w = b.alloc_qubits(n);
     st.f_flag = b.alloc_qubit();
     b.x(st.u[0]);
-    kaliski_branch_record_backward_term(b, v_in, &st, &term_bits, p, iters);
+    eea_branch_record_backward_term(b, v_in, &st, &term_bits, p, iters);
     b.free_vec(&term_bits);
-    free_kaliski_branch_state(b, st);
+    free_eea_branch_state(b, st);
 }
 
 pub(crate) fn with_kal_branch_term_tagged_div<F: FnOnce(&mut B)>(
@@ -854,9 +854,9 @@ pub(crate) fn with_kal_branch_term_tagged_div<F: FnOnce(&mut B)>(
     body: F,
 ) {
     let n = v_in.len();
-    let mut st = alloc_kaliski_branch_state_no_add(b, n, iters);
+    let mut st = alloc_eea_branch_state_no_add(b, n, iters);
     let term_bits = b.alloc_qubits(9);
-    kaliski_branch_record_forward_term(b, v_in, &st, &term_bits, p, iters);
+    eea_branch_record_forward_term(b, v_in, &st, &term_bits, p, iters);
 
     b.x(st.u[0]);
     b.free_vec(&st.u);
@@ -870,9 +870,9 @@ pub(crate) fn with_kal_branch_term_tagged_div<F: FnOnce(&mut B)>(
     st.v_w = b.alloc_qubits(n);
     st.f_flag = b.alloc_qubit();
     b.x(st.u[0]);
-    kaliski_branch_record_backward_term(b, v_in, &st, &term_bits, p, iters);
+    eea_branch_record_backward_term(b, v_in, &st, &term_bits, p, iters);
     b.free_vec(&term_bits);
-    free_kaliski_branch_state(b, st);
+    free_eea_branch_state(b, st);
 }
 
 pub(crate) fn with_kal_branch_stream_tagged_div<F: FnOnce(&mut B)>(
@@ -884,8 +884,8 @@ pub(crate) fn with_kal_branch_stream_tagged_div<F: FnOnce(&mut B)>(
     body: F,
 ) {
     let n = v_in.len();
-    let mut st = alloc_kaliski_branch_state(b, n, iters);
-    kaliski_branch_record_forward(b, v_in, &st, p, iters);
+    let mut st = alloc_eea_branch_state(b, n, iters);
+    eea_branch_record_forward(b, v_in, &st, p, iters);
 
     // At sufficient iteration count the denominator state is known `(u,v,f)=(1,0,0)`.
     // Free it before the coefficient replay so the replay peak is history + coeff,
@@ -902,8 +902,8 @@ pub(crate) fn with_kal_branch_stream_tagged_div<F: FnOnce(&mut B)>(
     st.v_w = b.alloc_qubits(n);
     st.f_flag = b.alloc_qubit();
     b.x(st.u[0]);
-    kaliski_branch_record_backward(b, v_in, &st, p, iters);
-    free_kaliski_branch_state(b, st);
+    eea_branch_record_backward(b, v_in, &st, p, iters);
+    free_eea_branch_state(b, st);
 }
 
 pub(crate) fn with_kal_branch_tagged_div_coeff<F: FnOnce(&mut B)>(
@@ -914,9 +914,9 @@ pub(crate) fn with_kal_branch_tagged_div_coeff<F: FnOnce(&mut B)>(
     coeff: (&[QubitId], &[QubitId]),
     body: F,
 ) {
-    let st = alloc_kaliski_branch_state(b, v_in.len(), iters);
-    kaliski_branch_forward_with_coeff(b, v_in, &st, p, iters, coeff);
+    let st = alloc_eea_branch_state(b, v_in.len(), iters);
+    eea_branch_forward_with_coeff(b, v_in, &st, p, iters, coeff);
     body(b);
-    kaliski_branch_backward(b, v_in, &st, p, iters);
-    free_kaliski_branch_state(b, st);
+    eea_branch_backward(b, v_in, &st, p, iters);
+    free_eea_branch_state(b, st);
 }

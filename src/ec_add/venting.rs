@@ -864,11 +864,11 @@ fn c_add_vented_2clean_inline(
 /// `q_target += q_offset + carry_in` (mod 2^n) where q_offset is quantum.
 ///
 /// Cost: 2n±O(1) CCX, 2 clean ancilla, n classical vent_keys.
-/// (vs. our Cuccaro-based add_nbit_qq_fast at n-1 CCX + n-1 carry ancilla.)
+/// (vs. our RippleAdder-based add_nbit_qq_fast at n-1 CCX + n-1 carry ancilla.)
 ///
 /// # Peak win
 /// Peak transient during this add: 2 clean + 1 c_in = 3 extra qubits.
-/// vs Cuccaro fast which needs n-1 carry ancilla = n+O(1) extra qubits.
+/// vs RippleAdder fast which needs n-1 carry ancilla = n+O(1) extra qubits.
 /// Saves ~n qubits at peak.
 /// Controlled variant of xor_right_shifted_carries_into.
 fn c_xor_right_shifted_carries_into_classical(

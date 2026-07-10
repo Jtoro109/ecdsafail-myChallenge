@@ -2,7 +2,7 @@
 //! with Horner-style modular multiplication.
 //!
 //! ARCHITECTURE:
-//! - Replaces both Kaliski inversions with Fermat x^{p-2}
+//! - Replaces both Eea inversions with Fermat x^{p-2}
 //! - Uses Horner mul (no 2n workspace, ~2n² CCX per mul)
 //! - In-place squaring/multiplication via 3-register Bennett:
 //!   C = A; B = A*A (Horner); swap(A,B); B -= C → 0; free B,C

@@ -345,42 +345,42 @@ pub(crate) fn env_flag_enabled(name: &str, default: bool) -> bool {
         .unwrap_or(default)
 }
 
-pub(crate) fn point_add_karatsuba_enabled() -> bool {
+pub(crate) fn ec_add_karatsuba_enabled() -> bool {
     env_flag_enabled("POINT_ADD_KARATSUBA", true)
 }
 
 /// Master switch for the "9n-floor" peak-drop construction (default OFF; when
 /// OFF the emitted circuit is byte-identical to the f1d99ad C1 baseline).
 ///
-/// The f1d99ad peak (2457) is a JOINT PIN across the pair2 Kaliski STEP-4
+/// The f1d99ad peak (2457) is a JOINT PIN across the state_b Eea STEP-4
 /// phases (kal_bulk_step4 / kal_step4 / bk_step4 / bk_bulk_step4 + their
-/// step6_7_8 mod_double) AND the two binding multiplies (pair2_mul,
-/// pair1_borrow_dx_mul1). Each STEP-4 holds a 256-wide `tmp` accumulator
-/// co-resident with an ~255-wide measurement-Cuccaro carry register
+/// step6_7_8 mod_double) AND the two binding multiplies (state_b_mul,
+/// state_a_borrow_dx_mul1). Each STEP-4 holds a 256-wide `tmp` accumulator
+/// co-resident with an ~255-wide measurement-RippleAdder carry register
 /// (`sub_nbit_qq_fast` + `add_nbit_qq_fast`); each step6_7_8 holds a
 /// `cadd_nbit_const_fast` const-register + carry register; each binding mul
-/// holds the schoolbook Solinas-fold transient. Below the 2455-2457 cluster
+/// holds the schoolbook FastModulo-fold transient. Below the 2455-2457 cluster
 /// the next floor is `shift22_step4` = 2333.
 ///
 /// To move the GLOBAL peak below 2457 ALL THREE must drop simultaneously
 /// (drop one alone -> another rebinds at 2457). When this flag is ON:
-///   - STEP-4 sub/add: fast measurement-Cuccaro (n-1 carry register) ->
-///     slow in-place Cuccaro (`add_nbit_qq`/`sub_nbit_qq`, 1 ancilla,
+///   - STEP-4 sub/add: fast measurement-RippleAdder (n-1 carry register) ->
+///     slow in-place RippleAdder (`add_nbit_qq`/`sub_nbit_qq`, 1 ancilla,
 ///     maj/uma carry rides in-place on tmp). Removes the ~255-carry register
 ///     from the binder at +~n CCX/op. Phase-clean + emit_inverse-safe (pure
 ///     CCX/CX, no measurement-vent).
 ///   - STEP 6/7/8 r-double: `mod_double_inplace_fast` (const reg + carries)
 ///     -> `mod_double_inplace_direct` (register-free direct const-add).
-///   - pair2_mul + pair1_borrow_dx_mul1: schoolbook ->
+///   - state_b_mul + state_a_borrow_dx_mul1: schoolbook ->
 ///     `mod_mul_add_into_acc_schoolbook_lowscratch_fold` (the proven affine
-///     y-mul peak-saver: lsx mul + lowscratch Solinas folds + direct doubles).
+///     y-mul peak-saver: lsx mul + lowscratch FastModulo folds + direct doubles).
 pub(crate) fn kal_gouzien_9n_enabled() -> bool {
     env_flag_enabled("KAL_GOUZIEN_9N", true)
 }
 
-/// Sub-knob: STEP-4 carry-register elimination (slow in-place Cuccaro). On by
+/// Sub-knob: STEP-4 carry-register elimination (slow in-place RippleAdder). On by
 /// default when the master flag is on. Diagnostic isolation: set to 0 to keep
-/// fast Cuccaro at STEP-4 while still applying the mul/double drops.
+/// fast RippleAdder at STEP-4 while still applying the mul/double drops.
 pub(crate) fn gz_step4_slow() -> bool {
     kal_gouzien_9n_enabled() && env_flag_enabled("KAL_GZ_STEP4_SLOW", true)
 }
@@ -390,24 +390,24 @@ pub(crate) fn gz_double_direct() -> bool {
     kal_gouzien_9n_enabled() && env_flag_enabled("KAL_GZ_DOUBLE_DIRECT", true)
 }
 
-/// Sub-knob: pair2_mul + pair1_borrow_dx_mul1 lowscratch Solinas fold.
+/// Sub-knob: state_b_mul + state_a_borrow_dx_mul1 lowscratch FastModulo fold.
 pub(crate) fn gz_mul_lowscratch() -> bool {
     kal_gouzien_9n_enabled() && env_flag_enabled("KAL_GZ_MUL_LOWSCRATCH", true)
 }
 
 /// Sub-knob: late-iter Toffoli RECOVERY — widen the clean carry-borrow pool of
-/// the STEP-4 q-q s-add/s-sub (the slow-Cuccaro fallback victim) by also
+/// the STEP-4 q-q s-add/s-sub (the slow-RippleAdder fallback victim) by also
 /// borrowing the GCD register `u`'s PROVABLY-|0> high bits.
 ///
-/// Background: the 9n-floor (KAL_GOUZIEN_9N) hosts the fast-Cuccaro carry
+/// Background: the 9n-floor (KAL_GOUZIEN_9N) hosts the fast-RippleAdder carry
 /// register on clean future m_hist bits (`m_future`). The pool shrinks as the
 /// walk advances, so once `(add_width-1) - |m_future|` exceeds KAL_GZ_MAX_FRESH
-/// the s-add/s-sub falls back to a register-FREE in-place Cuccaro (+~n CCX).
+/// the s-add/s-sub falls back to a register-FREE in-place RippleAdder (+~n CCX).
 /// That fallback fires for ALL iters with iter_idx > iters-1-KAL_GZ_MAX_FRESH
 /// (~iter 277..iters) because s is full-width there while m_future is tiny —
 /// it costs +~133k Toffoli (the +3.72% the 9n-floor paid for the 2333 peak).
 ///
-/// Recovery: at the SAME late iters, the GCD walk has SHRUNK. The Kaliski
+/// Recovery: at the SAME late iters, the GCD walk has SHRUNK. The Eea
 /// invariant guarantees `bitlen(u)+bitlen(v_w) <= 2n-iter_idx`, hence
 /// individually `bitlen(u) <= 2n-iter_idx`, so for iter_idx>n the high bits
 /// `u[2n-iter_idx..n)` (= iter_idx-n qubits) are PROVABLY |0>. They are already
@@ -416,26 +416,26 @@ pub(crate) fn gz_mul_lowscratch() -> bool {
 /// and `s`; `u`'s value sits in [0..2n-iter_idx), untouched by the s-op and by
 /// its own transform which runs strictly after (fwd) / before (bwd) the s-op).
 /// The borrow is restored to |0> by the same measurement-uncompute as the
-/// validated `cuccaro_*_fast_borrow`. The clean-bit boundary is a CLASSICAL
+/// validated `ripple_adder_*_fast_borrow`. The clean-bit boundary is a CLASSICAL
 /// function of iter_idx (no data-dependent branch), so validity is structural.
 ///
 /// Pool size becomes `|m_future| + (iter_idx-n) = iters-1-n` (~144-146) which is
 /// constant across the late tail and keeps the fresh shortfall (255-pool ~110)
-/// strictly below KAL_GZ_MAX_FRESH everywhere => NO slow Cuccaro at all, and
+/// strictly below KAL_GZ_MAX_FRESH everywhere => NO slow RippleAdder at all, and
 /// fewer fresh carries than before => per-step peak can only DROP, never rise.
 pub(crate) fn gz_late_recover() -> bool {
     kal_gouzien_9n_enabled() && env_flag_enabled("KAL_GZ_LATE_RECOVER", true)
 }
 
-/// Sub-knob: shift22 (rshift22) Solinas reduction LOW-SCRATCH path. Replaces
+/// Sub-knob: shift22 (rshift22) FastModulo reduction LOW-SCRATCH path. Replaces
 /// the ~256-wide loaded-constant register of the shift22 STEP-3 const-add and
 /// STEP-4 conditional const-sub (the 2333 binder) with Gidney venting
-/// dirty-borrow const adders, and replaces the STEP-2 cuccaro spill-add's
-/// ~257-wide `padded` register (the 2330 cuccaro_op_0 floor) with a narrow
+/// dirty-borrow const adders, and replaces the STEP-2 ripple_adder spill-add's
+/// ~257-wide `padded` register (the 2330 ripple_adder_op_0 floor) with a narrow
 /// k-bit spill add plus a venting dirty-borrow controlled-increment. Both cut
-/// ~256 clean transient qubits at the affine y-mul Solinas-fold binder.
+/// ~256 clean transient qubits at the affine y-mul FastModulo-fold binder.
 /// Gate KAL_GZ_SOLINAS_LOWSCRATCH (default on; set =0 to restore the byte-identical 1df6866 shift22).
-pub(crate) fn gz_solinas_lowscratch() -> bool {
+pub(crate) fn gz_fast_modulo_lowscratch() -> bool {
     kal_gouzien_9n_enabled() && env_flag_enabled("KAL_GZ_SOLINAS_LOWSCRATCH", true)
 }
 
@@ -447,11 +447,11 @@ pub(crate) fn shift22_collapse() -> bool {
 }
 
 /// SOL_EXT_PRODUCT_POS32_FAST (default ON): use mod_add/sub_qq_fast for the
-/// position-32 fold in mod_add/sub_solinas_ext_product. The Kaliski state is
+/// position-32 fold in mod_add/sub_fast_modulo_ext_product. The Eea state is
 /// not co-resident at the affine fold instant so the +512 transient is safe.
 /// Set SOL_EXT_PRODUCT_POS32_FAST=0 to restore the slow fold.
 pub(crate) fn sol_ext_product_pos32_fast() -> bool {
-    gz_solinas_lowscratch() && env_flag_enabled("SOL_EXT_PRODUCT_POS32_FAST", true)
+    gz_fast_modulo_lowscratch() && env_flag_enabled("SOL_EXT_PRODUCT_POS32_FAST", true)
 }
 
 /// Provably-|0> high bits of the GCD register `u` at the late-iter STEP-4
@@ -467,7 +467,7 @@ pub(crate) fn gz_u_clean_high(u: &[QubitId], iter_idx: usize) -> &[QubitId] {
 }
 
 /// Sub-knob (lever C*): EARLY-iter carry-pool RELOCATION. The wide STEP-4
-/// `v_w -= u` SUB (forward) / `v_w += u` ADD (backward) hosts its fast-Cuccaro
+/// `v_w -= u` SUB (forward) / `v_w += u` ADD (backward) hosts its fast-RippleAdder
 /// carry register on the GCD coefficient register `s`'s PROVABLY-|0> high bits
 /// instead of the `m_future` (m_hist tail) pool, exactly mirroring
 /// `gz_late_recover` (which hosts the LATE s-add/s-sub on u's |0> high bits).
@@ -477,12 +477,12 @@ pub(crate) fn gz_u_clean_high(u: &[QubitId], iter_idx: usize) -> &[QubitId] {
 /// & dedicated). Moving those carries onto s-high frees ~n m_hist slots to fold,
 /// dropping the inversion sweep peak at ~0 Toffoli (a pure carry-host relabel).
 ///
-/// The s-high bits are clean by the SAME Kaliski invariant the late-recover and
+/// The s-high bits are clean by the SAME Eea invariant the late-recover and
 /// the W-TRUNC layer already rely on: at iter i, the (r,s) step-3 cswap is width
 /// `i+1` and the s +/-= tmp is width `i+2`, so `bitlen(s) <= i+1` at the v_w
 /// SUB/ADD instant (forward: before the s-add; backward: after the s-sub undoes
 /// it) ⇒ `s[i+1 .. n)` is |0> exactly when borrowed, and is restored to |0> by
-/// the same measurement-uncompute as the validated `cuccaro_*_fast_borrow`.
+/// the same measurement-uncompute as the validated `ripple_adder_*_fast_borrow`.
 /// The boundary is a CLASSICAL function of iter_idx (no data-dependent branch),
 /// so validity is structural. BAKED DEFAULT ON (the validated C* construction);
 /// `KAL_GZ_EARLY_RECOVER=0` restores the m_future-pool carry hosting.
@@ -521,7 +521,7 @@ pub(crate) fn gz_r_clean_high(r: &[QubitId], iter_idx: usize) -> &[QubitId] {
 }
 
 /// STEP-4 load/SUB width: `(i<n ? n : 2n-i).min(wtrunc(i))`. Single source of
-/// truth shared by the walk (kaliski_walk.rs) and the C* clean-pool sizing.
+/// truth shared by the walk (eea_walk.rs) and the C* clean-pool sizing.
 #[inline]
 pub(crate) fn gz_load_width(iter_idx: usize, n: usize) -> usize {
     (if iter_idx < n { n } else { 2 * n - iter_idx }).min(kal_wtrunc_width(iter_idx, n))
@@ -578,11 +578,11 @@ pub(crate) fn gz_s_clean_pool(r: &[QubitId], u: &[QubitId], iter_idx: usize) -> 
 
 /// Master switch for the stacked sub-2708-peak construction (default ON).
 /// When ON (no env / != "0"):
-///   - pair1 inverse borrows dx as in-place v_w  (drops pair1-backward carrier)
-///   - pair2 inverse borrows tx as in-place v_w  (drops pair2-forward carrier)
-///   - pair1_mul1 + pair2_mul use schoolbook (no Karatsuba z1_reg) so the mul
-///     Solinas boundary frees ~258q  -> drops sol_sub6 / kara_z1_add below 2565
-///   - Kaliski iters bumped (405/403) to clear the in-place-v + schoolbook +
+///   - state_a inverse borrows dx as in-place v_w  (drops state_a-backward carrier)
+///   - state_b inverse borrows tx as in-place v_w  (drops state_b-forward carrier)
+///   - state_a_mul1 + state_b_mul use schoolbook (no Karatsuba z1_reg) so the mul
+///     FastModulo boundary frees ~258q  -> drops sol_sub6 / kara_z1_add below 2565
+///   - Eea iters bumped (405/403) to clear the in-place-v + schoolbook +
 ///     direct-const-halve correctness/phase margin (9024-shot validated).
 /// Net: global peak 2708 -> 2565, score 9.604e9 -> 9.361e9 (-11.34% vs baseline).
 /// Set POINT_ADD_STACK_2565=0 to restore the byte-identical C1 circuit.
@@ -590,15 +590,15 @@ pub(crate) fn stack_2565_enabled() -> bool {
     env_flag_enabled("POINT_ADD_STACK_2565", true)
 }
 
-pub(crate) fn pair1_mul1_karatsuba_enabled(n: usize) -> bool {
+pub(crate) fn state_a_mul1_karatsuba_enabled(n: usize) -> bool {
     let min_n = std::env::var("POINT_ADD_KARATSUBA_MIN_N")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(256);
-    // Stack default: pair1_mul1 is schoolbook (frees the Karatsuba z1_reg from
+    // Stack default: state_a_mul1 is schoolbook (frees the Karatsuba z1_reg from
     // the binding sol_sub6 boundary). User can force Karatsuba via the knob.
     let karatsuba_default = !stack_2565_enabled();
-    point_add_karatsuba_enabled()
+    ec_add_karatsuba_enabled()
         && n >= min_n
         && env_flag_enabled("KAL_PAIR1_MUL1_KARATSUBA", karatsuba_default)
 }
@@ -606,31 +606,31 @@ pub(crate) fn pair1_mul1_karatsuba_enabled(n: usize) -> bool {
 pub(crate) fn direct_const_halve_enabled() -> bool {
     // The direct constant subtract halve is very slightly lower-peak by itself,
     // but older guarded Karatsuba attempts found that combining it with
-    // pair1_mul1 Karatsuba can hit a phase-cleanliness cliff on alternate
+    // state_a_mul1 Karatsuba can hit a phase-cleanliness cliff on alternate
     // seeds.  Prefer the revived Karatsuba win by default; both knobs remain
     // independently overrideable for diagnostics.
-    env_flag_enabled("KAL_DIRECT_CONST_HALVE", !pair1_mul1_karatsuba_enabled(N))
+    env_flag_enabled("KAL_DIRECT_CONST_HALVE", !state_a_mul1_karatsuba_enabled(N))
 }
 
-pub(crate) fn pair1_mul2_karatsuba_enabled(n: usize) -> bool {
+pub(crate) fn state_a_mul2_karatsuba_enabled(n: usize) -> bool {
     let min_n = std::env::var("POINT_ADD_KARATSUBA_MIN_N")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(256);
-    point_add_karatsuba_enabled()
+    ec_add_karatsuba_enabled()
         && n >= min_n
         && env_flag_enabled("KAL_PAIR1_MUL2_KARATSUBA", true)
 }
 
-pub(crate) fn pair2_mul_karatsuba_enabled(n: usize) -> bool {
+pub(crate) fn state_b_mul_fast_enabled(n: usize) -> bool {
     let min_n = std::env::var("POINT_ADD_KARATSUBA_MIN_N")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(256);
-    // Stack default: pair2_mul is schoolbook (frees the Karatsuba z1_reg from
+    // Stack default: state_b_mul is schoolbook (frees the Karatsuba z1_reg from
     // the binding kara_z1_add boundary). User can force Karatsuba via the knob.
     let karatsuba_default = !stack_2565_enabled();
-    point_add_karatsuba_enabled()
+    ec_add_karatsuba_enabled()
         && n >= min_n
         && env_flag_enabled("KAL_PAIR2_MUL_KARATSUBA", karatsuba_default)
 }

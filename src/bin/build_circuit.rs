@@ -1,13 +1,13 @@
 //! UNTRUSTED stage of the challenge harness.
 //!
-//! Invokes `point_add::build()` (the contestant's editable code) and
+//! Invokes `ec_add::build()` (the contestant's editable code) and
 //! writes the resulting op stream to `ops.bin`. Nothing else runs here:
 //! no simulation, no scoring, no `score.json`. The trusted `eval_circuit`
 //! binary re-reads `ops.bin` from disk in a separate process so contestant
 //! code cannot influence the score.
 
 use quantum_ecc::circuit::Op;
-use quantum_ecc::point_add;
+use quantum_ecc::ec_add;
 use std::fs;
 use std::path::Path;
 
@@ -47,7 +47,7 @@ fn write_ops(ops: &[Op], path: &Path) -> std::io::Result<()> {
 fn main() {
     println!("=== quantum_ecc: build_circuit (untrusted stage) ===\n");
     println!("-- building circuit --");
-    let ops = point_add::build();
+    let ops = ec_add::build();
     println!("  emitted ops : {}", ops.len());
 
     let path = Path::new(OPS_PATH);

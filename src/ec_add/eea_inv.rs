@@ -1,6 +1,6 @@
-//! (refactor) Mechanically extracted from kaliski.rs. No logic changes.
+//! (refactor) Mechanically extracted from eea.rs. No logic changes.
 use super::*;
-/// Phase-clean variant of [`mul_by_const_acc`].  It uses exact Cuccaro based
+/// Phase-clean variant of [`mul_by_const_acc`].  It uses exact RippleAdder based
 /// add/double/halve blocks rather than the measurement-based fast variants.
 /// This is too costly for production, but useful as an algebra-validating
 /// fallback when the fast constant multiplier introduces alt-seed phase.
@@ -69,10 +69,10 @@ pub(crate) fn undo_sparse_const_shifts(b: &mut B, tmp: &[QubitId], p: U256, undo
 }
 
 /// `acc ±= x * c mod p` using exact q-q add/sub at sparse constant bits, but
-/// jumping between distant bit positions with the Solinas k-bit shifter instead
+/// jumping between distant bit positions with the FastModulo k-bit shifter instead
 /// of one modular double per zero bit.  This borrows `x` itself as the moving
 /// 2^i*x lane and restores it before returning, removing the field-sized tmp
-/// register from prescaled Kaliski initialization.
+/// register from prescaled Eea initialization.
 pub(crate) fn mul_by_const_acc_chunked_shifts_inplace_src(
     b: &mut B,
     x: &[QubitId],
@@ -178,10 +178,10 @@ pub(crate) fn mul_by_const_acc_impl(
     b.free_vec(&tmp);
 }
 
-pub(crate) fn kaliski_forward_with_coeff_caps(
+pub(crate) fn eea_forward_with_coeff_caps(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiState,
+    st: &EeaState,
     p: U256,
     iters: usize,
     coeff: Option<(&[QubitId], &[QubitId])>,
@@ -216,7 +216,7 @@ pub(crate) fn kaliski_forward_with_coeff_caps(
     for i in 0..iters {
         let is_last = i + 1 == iters;
         if use_bulk_prefix3 && i < bulk_caps.forward {
-            kaliski_iteration_bulk_prefix3(
+            eea_iteration_bulk_prefix3(
                 b,
                 p,
                 &st.u,
@@ -231,7 +231,7 @@ pub(crate) fn kaliski_forward_with_coeff_caps(
                 is_last,
             );
         } else {
-            kaliski_iteration(
+            eea_iteration(
                 b,
                 p,
                 &st.u,
@@ -248,7 +248,7 @@ pub(crate) fn kaliski_forward_with_coeff_caps(
             );
         }
     }
-    debug_assert!(frame.is_none(), "kaliski forward frame not consumed");
+    debug_assert!(frame.is_none(), "eea forward frame not consumed");
 
     // After the loop for nonzero v_in, classical invariants give:
     //   u = 1, v_w = 0, f = 0, a = b = add = 0
@@ -260,10 +260,10 @@ pub(crate) fn kaliski_forward_with_coeff_caps(
     // +inv become `mul_sub` with -inv, and vice versa.
 }
 
-pub(crate) fn kaliski_backward_caps(
+pub(crate) fn eea_backward_caps(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiState,
+    st: &EeaState,
     p: U256,
     iters: usize,
     bulk_caps: BulkPrefixCaps,
@@ -277,7 +277,7 @@ pub(crate) fn kaliski_backward_caps(
     for i in (0..iters).rev() {
         let is_last = i + 1 == iters;
         if use_bulk_prefix3 && i < bulk_caps.backward {
-            kaliski_iteration_bulk_prefix3_backward(
+            eea_iteration_bulk_prefix3_backward(
                 b,
                 p,
                 &st.u,
@@ -291,7 +291,7 @@ pub(crate) fn kaliski_backward_caps(
                 is_last,
             );
         } else {
-            kaliski_iteration_backward(
+            eea_iteration_backward(
                 b,
                 p,
                 &st.u,
@@ -307,7 +307,7 @@ pub(crate) fn kaliski_backward_caps(
             );
         }
     }
-    debug_assert!(frame.is_none(), "kaliski backward frame not consumed");
+    debug_assert!(frame.is_none(), "eea backward frame not consumed");
 
     // ─── Reverse Init ───
     b.x(st.f_flag);
@@ -323,13 +323,13 @@ pub(crate) fn kaliski_backward_caps(
 }
 
 /// Run `body` with `inv` holding `v_in^{-1} mod p`, leaving `v_in`
-/// unchanged. Allocates the kaliski state and `inv` register itself, then
+/// unchanged. Allocates the eea state and `inv` register itself, then
 /// frees them at the end. The body must NOT touch `st` or `v_in`.
 ///
 /// Implementation keeps `st` live across the body, so we only run
-/// `kaliski_forward` ONCE (and its emit_inverse once), instead of the
+/// `eea_forward` ONCE (and its emit_inverse once), instead of the
 /// 4-call structure of the previous Bennett-cleaned `kal_compute_into`.
-/// Halves the dominant kaliski cost.
+/// Halves the dominant eea cost.
 pub(crate) fn emit_inverse_hmr_safe<F: FnOnce(&mut B)>(b: &mut B, f: F) {
     let start = b.ops.len();
     f(b);
@@ -365,7 +365,7 @@ pub(crate) fn with_kal_inv_raw<F: FnOnce(&mut B, &[QubitId])>(
     iters: usize,
     body: F,
 ) {
-    with_kal_inv_raw_coeff_caps(b, v_in, p, iters, None, bulk_prefix_caps(KalPair::Default), body);
+    with_kal_inv_raw_coeff_caps(b, v_in, p, iters, None, bulk_prefix_caps(KalAlgoState::Default), body);
 }
 
 pub(crate) fn with_kal_inv_raw_pair<F: FnOnce(&mut B, &[QubitId])>(
@@ -373,15 +373,15 @@ pub(crate) fn with_kal_inv_raw_pair<F: FnOnce(&mut B, &[QubitId])>(
     v_in: &[QubitId],
     p: U256,
     iters: usize,
-    pair: KalPair,
+    pair: KalAlgoState,
     body: F,
 ) {
     with_kal_inv_raw_coeff_caps(b, v_in, p, iters, None, bulk_prefix_caps(pair), body);
 }
 
-pub(crate) fn kaliski_forward_alias_v_w_caps(
+pub(crate) fn eea_forward_alias_v_w_caps(
     b: &mut B,
-    st: &KaliskiState,
+    st: &EeaState,
     p: U256,
     iters: usize,
     bulk_caps: BulkPrefixCaps,
@@ -402,7 +402,7 @@ pub(crate) fn kaliski_forward_alias_v_w_caps(
     for i in 0..iters {
         let is_last = i + 1 == iters;
         if use_bulk_prefix3 && i < bulk_caps.forward {
-            kaliski_iteration_bulk_prefix3(
+            eea_iteration_bulk_prefix3(
                 b,
                 p,
                 &st.u,
@@ -417,7 +417,7 @@ pub(crate) fn kaliski_forward_alias_v_w_caps(
                 is_last,
             );
         } else {
-            kaliski_iteration(
+            eea_iteration(
                 b,
                 p,
                 &st.u,
@@ -434,12 +434,12 @@ pub(crate) fn kaliski_forward_alias_v_w_caps(
             );
         }
     }
-    debug_assert!(frame.is_none(), "kaliski alias forward frame not consumed");
+    debug_assert!(frame.is_none(), "eea alias forward frame not consumed");
 }
 
-pub(crate) fn kaliski_backward_alias_v_w_caps(
+pub(crate) fn eea_backward_alias_v_w_caps(
     b: &mut B,
-    st: &KaliskiState,
+    st: &EeaState,
     p: U256,
     iters: usize,
     bulk_caps: BulkPrefixCaps,
@@ -451,7 +451,7 @@ pub(crate) fn kaliski_backward_alias_v_w_caps(
     for i in (0..iters).rev() {
         let is_last = i + 1 == iters;
         if use_bulk_prefix3 && i < bulk_caps.backward {
-            kaliski_iteration_bulk_prefix3_backward(
+            eea_iteration_bulk_prefix3_backward(
                 b,
                 p,
                 &st.u,
@@ -465,7 +465,7 @@ pub(crate) fn kaliski_backward_alias_v_w_caps(
                 is_last,
             );
         } else {
-            kaliski_iteration_backward(
+            eea_iteration_backward(
                 b,
                 p,
                 &st.u,
@@ -481,7 +481,7 @@ pub(crate) fn kaliski_backward_alias_v_w_caps(
             );
         }
     }
-    debug_assert!(frame.is_none(), "kaliski alias backward frame not consumed");
+    debug_assert!(frame.is_none(), "eea alias backward frame not consumed");
 
     b.x(st.f_flag);
     b.x(st.s[0]);
@@ -497,11 +497,11 @@ pub(crate) fn with_kal_inv_raw_borrow_v_w_pair<F: FnOnce(&mut B, &[QubitId])>(
     alias_v_w: &[QubitId],
     p: U256,
     iters: usize,
-    pair: KalPair,
+    pair: KalAlgoState,
     body: F,
 ) {
     let n = alias_v_w.len();
-    // Borrow the live denominator register as Kaliski's v_w. The callback must
+    // Borrow the live denominator register as Eea's v_w. The callback must
     // not read or write alias_v_w: it is consumed to zero until backward restores it.
     //
     // DIALOG HISTORY-FOLD (KAL_DIALOG_FOLD=1): route foldable m_hist[j] into idle
@@ -531,7 +531,7 @@ pub(crate) fn with_kal_inv_raw_borrow_v_w_pair<F: FnOnce(&mut B, &[QubitId])>(
         v
     };
     let f_flag = b.alloc_qubit();
-    let mut st = KaliskiState {
+    let mut st = EeaState {
         u,
         v_w: alias_v_w.to_vec(),
         r,
@@ -544,7 +544,7 @@ pub(crate) fn with_kal_inv_raw_borrow_v_w_pair<F: FnOnce(&mut B, &[QubitId])>(
     let keep_u = keep_full_state || std::env::var("KAL_KEEP_U").ok().as_deref() == Some("1");
     let free_s = !keep_full_state && std::env::var("KAL_FREE_S").ok().as_deref() != Some("0");
 
-    kaliski_forward_alias_v_w_caps(b, &st, p, iters, bulk_caps);
+    eea_forward_alias_v_w_caps(b, &st, p, iters, bulk_caps);
 
     // Keep f_flag live across the body. Free/realloc of the terminal sentinel is
     // phase-fragile in alias envelopes.
@@ -577,7 +577,7 @@ pub(crate) fn with_kal_inv_raw_borrow_v_w_pair<F: FnOnce(&mut B, &[QubitId])>(
         }
     }
 
-    kaliski_backward_alias_v_w_caps(b, &st, p, iters, bulk_caps);
+    eea_backward_alias_v_w_caps(b, &st, p, iters, bulk_caps);
 
     b.free(st.f_flag);
     // Free only the DEDICATED m_hist qubits; folded slots are alias_v_w high
@@ -589,32 +589,32 @@ pub(crate) fn with_kal_inv_raw_borrow_v_w_pair<F: FnOnce(&mut B, &[QubitId])>(
     b.free_vec(&st.u);
 }
 
-pub(crate) fn kaliski_forward_prescaled_mixed(
+pub(crate) fn eea_forward_prescaled_mixed(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiState,
+    st: &EeaState,
     p: U256,
     iters: usize,
     scale: U256,
 ) {
-    kaliski_forward_prescaled_kind(b, v_in, st, p, iters, scale, false);
+    eea_forward_prescaled_kind(b, v_in, st, p, iters, scale, false);
 }
 
-pub(crate) fn kaliski_forward_prescaled_chunked(
+pub(crate) fn eea_forward_prescaled_chunked(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiState,
+    st: &EeaState,
     p: U256,
     iters: usize,
     scale: U256,
 ) {
-    kaliski_forward_prescaled_kind(b, v_in, st, p, iters, scale, true);
+    eea_forward_prescaled_kind(b, v_in, st, p, iters, scale, true);
 }
 
-pub(crate) fn kaliski_forward_prescaled_kind(
+pub(crate) fn eea_forward_prescaled_kind(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiState,
+    st: &EeaState,
     p: U256,
     iters: usize,
     scale: U256,
@@ -642,7 +642,7 @@ pub(crate) fn kaliski_forward_prescaled_kind(
     for i in 0..iters {
         let is_last = i + 1 == iters;
         if use_bulk_prefix3 && i < bulk_prefix_iters {
-            kaliski_iteration_bulk_prefix3(
+            eea_iteration_bulk_prefix3(
                 b,
                 p,
                 &st.u,
@@ -657,7 +657,7 @@ pub(crate) fn kaliski_forward_prescaled_kind(
                 is_last,
             );
         } else {
-            kaliski_iteration(
+            eea_iteration(
                 b,
                 p,
                 &st.u,
@@ -674,35 +674,35 @@ pub(crate) fn kaliski_forward_prescaled_kind(
             );
         }
     }
-    debug_assert!(frame.is_none(), "kaliski prescaled forward frame not consumed");
+    debug_assert!(frame.is_none(), "eea prescaled forward frame not consumed");
 }
 
-pub(crate) fn kaliski_backward_prescaled_mixed(
+pub(crate) fn eea_backward_prescaled_mixed(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiState,
+    st: &EeaState,
     p: U256,
     iters: usize,
     scale: U256,
 ) {
-    kaliski_backward_prescaled_kind(b, v_in, st, p, iters, scale, false);
+    eea_backward_prescaled_kind(b, v_in, st, p, iters, scale, false);
 }
 
-pub(crate) fn kaliski_backward_prescaled_chunked(
+pub(crate) fn eea_backward_prescaled_chunked(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiState,
+    st: &EeaState,
     p: U256,
     iters: usize,
     scale: U256,
 ) {
-    kaliski_backward_prescaled_kind(b, v_in, st, p, iters, scale, true);
+    eea_backward_prescaled_kind(b, v_in, st, p, iters, scale, true);
 }
 
-pub(crate) fn kaliski_backward_prescaled_kind(
+pub(crate) fn eea_backward_prescaled_kind(
     b: &mut B,
     v_in: &[QubitId],
-    st: &KaliskiState,
+    st: &EeaState,
     p: U256,
     iters: usize,
     scale: U256,
@@ -717,7 +717,7 @@ pub(crate) fn kaliski_backward_prescaled_kind(
     for i in (0..iters).rev() {
         let is_last = i + 1 == iters;
         if use_bulk_prefix3 && i < bulk_prefix_iters {
-            kaliski_iteration_bulk_prefix3_backward(
+            eea_iteration_bulk_prefix3_backward(
                 b,
                 p,
                 &st.u,
@@ -731,7 +731,7 @@ pub(crate) fn kaliski_backward_prescaled_kind(
                 is_last,
             );
         } else {
-            kaliski_iteration_backward(
+            eea_iteration_backward(
                 b,
                 p,
                 &st.u,
@@ -747,7 +747,7 @@ pub(crate) fn kaliski_backward_prescaled_kind(
             );
         }
     }
-    debug_assert!(frame.is_none(), "kaliski prescaled backward frame not consumed");
+    debug_assert!(frame.is_none(), "eea prescaled backward frame not consumed");
 
     b.x(st.f_flag);
     b.x(st.s[0]);
@@ -792,7 +792,7 @@ pub(crate) fn with_kal_inv_raw_prescaled_kind<F: FnOnce(&mut B, &[QubitId])>(
     body: F,
 ) {
     let n = v_in.len();
-    let mut st = alloc_kaliski_state(b, n, iters);
+    let mut st = alloc_eea_state(b, n, iters);
     let scale = pow_mod_2_k(p, iters);
     let keep_full_state = std::env::var("KAL_KEEP_FULL_STATE").ok().as_deref() == Some("1");
     let keep_u = keep_full_state || std::env::var("KAL_KEEP_U").ok().as_deref() == Some("1");
@@ -801,9 +801,9 @@ pub(crate) fn with_kal_inv_raw_prescaled_kind<F: FnOnce(&mut B, &[QubitId])>(
     let free_s = !keep_full_state && std::env::var("KAL_FREE_S").ok().as_deref() != Some("0");
 
     if chunked {
-        kaliski_forward_prescaled_chunked(b, v_in, &st, p, iters, scale);
+        eea_forward_prescaled_chunked(b, v_in, &st, p, iters, scale);
     } else {
-        kaliski_forward_prescaled_mixed(b, v_in, &st, p, iters, scale);
+        eea_forward_prescaled_mixed(b, v_in, &st, p, iters, scale);
     }
 
     if !keep_v {
@@ -848,27 +848,27 @@ pub(crate) fn with_kal_inv_raw_prescaled_kind<F: FnOnce(&mut B, &[QubitId])>(
     }
 
     if chunked {
-        kaliski_backward_prescaled_chunked(b, v_in, &st, p, iters, scale);
+        eea_backward_prescaled_chunked(b, v_in, &st, p, iters, scale);
     } else {
-        kaliski_backward_prescaled_mixed(b, v_in, &st, p, iters, scale);
+        eea_backward_prescaled_mixed(b, v_in, &st, p, iters, scale);
     }
-    free_kaliski_state(b, st);
+    free_eea_state(b, st);
 }
 
-pub(crate) fn kaliski_xor_inv_raw_into_keep_alias_vw(
+pub(crate) fn eea_xor_inv_raw_into_keep_alias_vw(
     b: &mut B,
     v_in: &[QubitId],
     alias_v_w: &[QubitId],
     p: U256,
     iters: usize,
-    pair: KalPair,
+    pair: KalAlgoState,
     inv_keep: &[QubitId],
     caller_owns_v_w: bool,
 ) {
     let n = v_in.len();
     assert_eq!(alias_v_w.len(), n);
     assert_eq!(inv_keep.len(), n);
-    let mut st = KaliskiState {
+    let mut st = EeaState {
         u: b.alloc_qubits(n),
         v_w: alias_v_w.to_vec(),
         r: b.alloc_qubits(n),
@@ -879,7 +879,7 @@ pub(crate) fn kaliski_xor_inv_raw_into_keep_alias_vw(
     let bulk_caps = cleanup_bulk_prefix_caps(pair);
 
     // H194/H199: mirror with_kal_inv_raw_coeff_caps's keep_u/keep_v/keep_f/free_s
-    // envelope inside the cleanup helper so the forward Kaliski round-trip is
+    // envelope inside the cleanup helper so the forward Eea round-trip is
     // structurally identical to the production primary-helper round-trip.
     //
     // H199 bisect (attempt-198, this branch's 8-cell sweep) located the unique
@@ -937,7 +937,7 @@ pub(crate) fn kaliski_xor_inv_raw_into_keep_alias_vw(
 
     if std::env::var("TRACE_PHASE_LOCAL_PEAK")
         .ok()
-        .map(|v| v.starts_with("pair1_invkeep") || v.starts_with("pair1_outside"))
+        .map(|v| v.starts_with("state_a_invkeep") || v.starts_with("state_a_outside"))
         .unwrap_or(false)
     {
         eprintln!(
@@ -950,7 +950,7 @@ pub(crate) fn kaliski_xor_inv_raw_into_keep_alias_vw(
         );
     }
 
-    kaliski_forward_with_coeff_caps(b, v_in, &st, p, iters, None, bulk_caps);
+    eea_forward_with_coeff_caps(b, v_in, &st, p, iters, None, bulk_caps);
 
     // Free envelope components between forward and backward, mirroring
     // with_kal_inv_raw_coeff_caps.  v_w is never freed here because it aliases
@@ -1000,10 +1000,10 @@ pub(crate) fn kaliski_xor_inv_raw_into_keep_alias_vw(
 
     if std::env::var("KAL_BULK3_GENERALIZED_REVERSE").is_ok() {
         emit_inverse_hmr_safe(b, |b| {
-            kaliski_forward_with_coeff_caps(b, v_in, &st, p, iters, None, bulk_caps)
+            eea_forward_with_coeff_caps(b, v_in, &st, p, iters, None, bulk_caps)
         });
     } else {
-        kaliski_backward_caps(b, v_in, &st, p, iters, bulk_caps);
+        eea_backward_caps(b, v_in, &st, p, iters, bulk_caps);
     }
     b.free(st.f_flag);
     b.free_vec(&st.m_hist);
@@ -1029,7 +1029,7 @@ pub(crate) fn with_kal_inv_raw_coeff<F: FnOnce(&mut B, &[QubitId])>(
         p,
         iters,
         coeff,
-        bulk_prefix_caps(KalPair::Default),
+        bulk_prefix_caps(KalAlgoState::Default),
         body,
     );
 }
@@ -1045,22 +1045,22 @@ pub(crate) fn with_kal_inv_raw_coeff_caps<F: FnOnce(&mut B, &[QubitId])>(
     body: F,
 ) {
     let n = v_in.len();
-    let mut st = alloc_kaliski_state(b, n, iters);
+    let mut st = alloc_eea_state(b, n, iters);
     let keep_full_state = std::env::var("KAL_KEEP_FULL_STATE").ok().as_deref() == Some("1");
     let keep_u = keep_full_state || std::env::var("KAL_KEEP_U").ok().as_deref() == Some("1");
     let keep_v = keep_full_state || std::env::var("KAL_KEEP_V").ok().as_deref() == Some("1");
     let keep_f = keep_full_state || std::env::var("KAL_KEEP_F").ok().as_deref() == Some("1");
-    // KAL_FREE_S=1 (default ON in this branch): at end of forward Kaliski,
+    // KAL_FREE_S=1 (default ON in this branch): at end of forward Eea,
     // the s register provably equals p (the modulus) when iters >= ~407
-    // (verified classically for our specific Kaliski variant). Free s by
+    // (verified classically for our specific Eea variant). Free s by
     // X-ing the bits of p, then re-load before backward.
     let free_s = !keep_full_state && std::env::var("KAL_FREE_S").ok().as_deref() != Some("0");
 
-    // Forward kaliski. st.r[..n] holds raw = v_in^{-1} * 2^(2n) mod p.
+    // Forward eea. st.r[..n] holds raw = v_in^{-1} * 2^(2n) mod p.
     // If coeff is supplied, the same branch controls also transform that
     // external coefficient pair, but the ordinary qrisp sentinel state remains
     // available for clean branch-flag uncomputation.
-    kaliski_forward_with_coeff_caps(b, v_in, &st, p, iters, coeff, bulk_caps);
+    eea_forward_with_coeff_caps(b, v_in, &st, p, iters, coeff, bulk_caps);
 
     if !keep_v {
         b.free_vec(&st.v_w);
@@ -1112,15 +1112,15 @@ pub(crate) fn with_kal_inv_raw_coeff_caps<F: FnOnce(&mut B, &[QubitId])>(
     // single contract. The hope is to eliminate the residual phase mismatch.
     if std::env::var("KAL_BULK3_GENERALIZED_REVERSE").is_ok() {
         emit_inverse_hmr_safe(b, |b| {
-            kaliski_forward_with_coeff_caps(b, v_in, &st, p, iters, None, bulk_caps)
+            eea_forward_with_coeff_caps(b, v_in, &st, p, iters, None, bulk_caps)
         });
     } else {
         // Explicit backward pass (uses measurement-based uncompute, saves
         // ~511 CCX per iteration vs the emit_inverse version).  Use the same
         // promoted/pair-specific cap family selected for the forward pass so
         // a 378th bulk step can be enabled only where it is phase-clean.
-        kaliski_backward_caps(b, v_in, &st, p, iters, bulk_caps);
+        eea_backward_caps(b, v_in, &st, p, iters, bulk_caps);
     }
 
-    free_kaliski_state(b, st);
+    free_eea_state(b, st);
 }

@@ -3,7 +3,7 @@ use super::*;
 
 /// Symmetric schoolbook for squaring: x² = sum_i x[i]·2^(2i) + sum_{i<j} 2·x[i]·x[j]·2^(i+j).
 /// Each cross-product is computed ONCE (instead of twice in full schoolbook),
-/// halving the AND count + Cuccaro_add length. Saves ~130k CCX per squaring.
+/// halving the AND count + RippleAdder_add length. Saves ~130k CCX per squaring.
 ///
 /// Row i layout (width n-i): bit 0 = diagonal x[i] at position 2i, bit 1 = 0
 /// (gap), bit k+2 = cross-product (x[i] AND x[i+1+k]) at position i+(i+1+k)+1.
@@ -27,7 +27,7 @@ pub(crate) fn schoolbook_square_symmetric(b: &mut B, x: &[QubitId], tmp_ext: &[Q
         row_padded.push(pad);
         let slice: Vec<QubitId> = tmp_ext[2 * i..2 * i + width + 1].to_vec();
         let c_in = b.alloc_qubit();
-        cuccaro_add_fast(b, &row_padded, &slice, c_in);
+        ripple_adder_add_fast(b, &row_padded, &slice, c_in);
         b.free(c_in);
         b.free(pad);
         b.cx(x[i], row[0]);
@@ -55,7 +55,7 @@ pub(crate) fn schoolbook_square_symmetric_inverse(b: &mut B, x: &[QubitId], tmp_
         row_padded.push(pad);
         let slice: Vec<QubitId> = tmp_ext[2 * i..2 * i + width + 1].to_vec();
         let c_in = b.alloc_qubit();
-        cuccaro_sub_fast(b, &row_padded, &slice, c_in);
+        ripple_adder_sub_fast(b, &row_padded, &slice, c_in);
         b.free(c_in);
         b.free(pad);
         b.cx(x[i], row[0]);
@@ -69,13 +69,13 @@ pub(crate) fn schoolbook_square_symmetric_inverse(b: &mut B, x: &[QubitId], tmp_
 }
 
 /// Schoolbook squarer with Bennett uncompute. For squaring `tmp_ext = x*x`
-/// (2n bits, no mod reduction), then ADD with Solinas reduction to acc,
+/// (2n bits, no mod reduction), then ADD with FastModulo reduction to acc,
 /// then uncompute tmp_ext via gate-level inverse.
 /// Peak-bounded symmetric square: identical to `schoolbook_square_symmetric`
 /// except rows whose accumulator slice width exceeds `max_fast_width` use the
-/// register-free in-place Cuccaro (`cuccaro_add`, no ~width carry register), so
+/// register-free in-place RippleAdder (`ripple_adder_add`, no ~width carry register), so
 /// their per-row transient is ~width instead of ~2·width. Narrow rows keep the
-/// cheaper measurement Cuccaro. Used by the AFFINE_SQUARE_RECOMPUTE squares that
+/// cheaper measurement RippleAdder. Used by the AFFINE_SQUARE_RECOMPUTE squares that
 /// co-reside with the 256-bit `breg` register (base ~1536): without this the
 /// widest rows' ~2·257 transient pushes the early-uncompute / recompute squares
 /// to ~2052; clamping wide rows keeps every affine phase <= ~1938 (<= 1952).
@@ -104,9 +104,9 @@ pub(crate) fn schoolbook_square_symmetric_pb(
         let slice: Vec<QubitId> = tmp_ext[2 * i..2 * i + width + 1].to_vec();
         let c_in = b.alloc_qubit();
         if width > max_fast_width {
-            cuccaro_add(b, &row_padded, &slice, c_in);
+            ripple_adder_add(b, &row_padded, &slice, c_in);
         } else {
-            cuccaro_add_fast(b, &row_padded, &slice, c_in);
+            ripple_adder_add_fast(b, &row_padded, &slice, c_in);
         }
         b.free(c_in);
         b.free(pad);
@@ -144,9 +144,9 @@ pub(crate) fn schoolbook_square_symmetric_pb_inverse(
         let slice: Vec<QubitId> = tmp_ext[2 * i..2 * i + width + 1].to_vec();
         let c_in = b.alloc_qubit();
         if width > max_fast_width {
-            cuccaro_sub(b, &row_padded, &slice, c_in);
+            ripple_adder_sub(b, &row_padded, &slice, c_in);
         } else {
-            cuccaro_sub_fast(b, &row_padded, &slice, c_in);
+            ripple_adder_sub_fast(b, &row_padded, &slice, c_in);
         }
         b.free(c_in);
         b.free(pad);
@@ -195,7 +195,7 @@ pub(crate) fn squaring_add_to_acc_schoolbook(b: &mut B, acc: &[QubitId], x: &[Qu
     b.free_vec(&tmp_ext);
 }
 
-pub(crate) fn mod_add_solinas_ext_product(b: &mut B, acc: &[QubitId], tmp_ext: &[QubitId], p: U256) {
+pub(crate) fn mod_add_fast_modulo_ext_product(b: &mut B, acc: &[QubitId], tmp_ext: &[QubitId], p: U256) {
     let n = acc.len();
     debug_assert_eq!(n, 256);
     debug_assert_eq!(tmp_ext.len(), 2 * n);
@@ -230,7 +230,7 @@ pub(crate) fn mod_add_solinas_ext_product(b: &mut B, acc: &[QubitId], tmp_ext: &
     }
 }
 
-pub(crate) fn mod_sub_solinas_ext_product(b: &mut B, acc: &[QubitId], tmp_ext: &[QubitId], p: U256) {
+pub(crate) fn mod_sub_fast_modulo_ext_product(b: &mut B, acc: &[QubitId], tmp_ext: &[QubitId], p: U256) {
     let n = acc.len();
     debug_assert_eq!(n, 256);
     debug_assert_eq!(tmp_ext.len(), 2 * n);
@@ -264,17 +264,17 @@ pub(crate) fn mod_sub_solinas_ext_product(b: &mut B, acc: &[QubitId], tmp_ext: &
     }
 }
 
-/// Low-scratch twin of `mod_add_solinas_ext_product` (acc += tmp_ext mod p).
-/// Uses the SAME validated reduction as the affine y-mul's `gz_solinas_lowscratch`
+/// Low-scratch twin of `mod_add_fast_modulo_ext_product` (acc += tmp_ext mod p).
+/// Uses the SAME validated reduction as the affine y-mul's `gz_fast_modulo_lowscratch`
 /// fold: register-free position folds (`mod_*_qq_lowq_lowscratch`), register-free
 /// direct doublings (`mod_double_inplace_direct`), and a dirty-borrow shift22 that
 /// borrows the product's read-only `lo` half as the venting donor. This drops the
-/// fold's transient from ~515 (the register-loaded shift22 `cuccaro_op_0` padded
+/// fold's transient from ~515 (the register-loaded shift22 `ripple_adder_op_0` padded
 /// register + carries — the breg_red/breg_unred 2051 binder) to ~k+small. `lo` is
 /// restored on exit (dirty-borrow), so the subsequent square uncompute reads an
 /// intact `tmp_ext = lam²`. Used ONLY on the AFFINE_SQUARE_RECOMPUTE path (the
 /// default path keeps the byte-identical regular fold).
-pub(crate) fn mod_add_solinas_ext_product_lowscratch(
+pub(crate) fn mod_add_fast_modulo_ext_product_lowscratch(
     b: &mut B,
     acc: &[QubitId],
     tmp_ext: &[QubitId],
@@ -299,7 +299,7 @@ pub(crate) fn mod_add_solinas_ext_product_lowscratch(
         mod_double_inplace_direct(b, &hi, p);
     }
     mod_add_qq_lowq_lowscratch(b, acc, &hi, p); // position 10
-    if gz_solinas_lowscratch() {
+    if gz_fast_modulo_lowscratch() {
         let (spill, flag_inv, ovf) = mod_shift_left_by_k_dirty(b, &hi, p, 22, &lo);
         b.set_phase("shift22_pos32_dirty");
         mod_add_qq_dirty(b, acc, &hi, p, &lo); // position 32 (venting dirty-borrow)
@@ -315,11 +315,11 @@ pub(crate) fn mod_add_solinas_ext_product_lowscratch(
     }
 }
 
-/// Low-scratch twin of `mod_sub_solinas_ext_product` (acc -= tmp_ext mod p).
-/// Companion to `mod_add_solinas_ext_product_lowscratch`; the position-32 acc-fold
+/// Low-scratch twin of `mod_sub_fast_modulo_ext_product` (acc -= tmp_ext mod p).
+/// Companion to `mod_add_fast_modulo_ext_product_lowscratch`; the position-32 acc-fold
 /// uses the register-free `mod_sub_qq_lowq_lowscratch` (no dirty donor needed),
 /// while the shift22 itself still dirty-borrows `lo`.
-pub(crate) fn mod_sub_solinas_ext_product_lowscratch(
+pub(crate) fn mod_sub_fast_modulo_ext_product_lowscratch(
     b: &mut B,
     acc: &[QubitId],
     tmp_ext: &[QubitId],
@@ -344,7 +344,7 @@ pub(crate) fn mod_sub_solinas_ext_product_lowscratch(
         mod_double_inplace_direct(b, &hi, p);
     }
     mod_sub_qq_lowq_lowscratch(b, acc, &hi, p); // position 10
-    if gz_solinas_lowscratch() {
+    if gz_fast_modulo_lowscratch() {
         let (spill, flag_inv, ovf) = mod_shift_left_by_k_dirty(b, &hi, p, 22, &lo);
         b.set_phase("shift22_pos32_dirty");
         mod_sub_qq_lowq_lowscratch(b, acc, &hi, p); // position 32 (register-free)
@@ -360,19 +360,19 @@ pub(crate) fn mod_sub_solinas_ext_product_lowscratch(
     }
 }
 
-/// CLEAN low-scratch twin of `mod_add_solinas_ext_product` (acc += tmp_ext mod p).
-/// Unlike `mod_add_solinas_ext_product_lowscratch`, uses NO dirty-borrow: every
+/// CLEAN low-scratch twin of `mod_add_fast_modulo_ext_product` (acc += tmp_ext mod p).
+/// Unlike `mod_add_fast_modulo_ext_product_lowscratch`, uses NO dirty-borrow: every
 /// position fold is the register-free, carry-free `mod_add/sub_qq_lowq_lowscratch`
-/// (slow in-place Cuccaro + direct const adders + slow comparator, ~0 wide
+/// (slow in-place RippleAdder + direct const adders + slow comparator, ~0 wide
 /// transient), the doublings are `mod_double_inplace_direct` (register-free), and
 /// the position-32 shift22 uses the ORDINARY clean `mod_shift_left/right_by_k`
-/// (holds only its ~257-wide `padded` cuccaro register, freed before the next op
+/// (holds only its ~257-wide `padded` ripple_adder register, freed before the next op
 /// — no donor borrowed from `lo`). `hi` is doubled then halved back and the shift
 /// is its own inverse, so `tmp_ext` is restored exactly on exit, allowing the
 /// early square uncompute. Correctness does NOT depend on the register-sharing
 /// layout (no aliased donor), so it validates 0/0/0 on the UNPACKED base where the
 /// dirty-borrow `*_lowscratch` variant gives 1-5 classical mismatches.
-pub(crate) fn mod_add_solinas_ext_product_clean_lowscratch(
+pub(crate) fn mod_add_fast_modulo_ext_product_clean_lowscratch(
     b: &mut B,
     acc: &[QubitId],
     tmp_ext: &[QubitId],
@@ -397,7 +397,7 @@ pub(crate) fn mod_add_solinas_ext_product_clean_lowscratch(
         mod_double_inplace_direct(b, &hi, p);
     }
     mod_add_qq_lowq_lowscratch(b, acc, &hi, p); // position 10
-    // position 32: ordinary clean shift22 (lowq slow cuccaro, no dirty donor) +
+    // position 32: ordinary clean shift22 (lowq slow ripple_adder, no dirty donor) +
     // register-free position fold.
     let (spill, flag_inv, ovf) = mod_shift_left_by_k(b, &hi, p, 22);
     mod_add_qq_lowq_lowscratch(b, acc, &hi, p); // position 32 (register-free, clean)
@@ -408,10 +408,10 @@ pub(crate) fn mod_add_solinas_ext_product_clean_lowscratch(
     }
 }
 
-/// CLEAN low-scratch twin of `mod_sub_solinas_ext_product` (acc -= tmp_ext mod p).
-/// Companion to `mod_add_solinas_ext_product_clean_lowscratch`; same NO-dirty
+/// CLEAN low-scratch twin of `mod_sub_fast_modulo_ext_product` (acc -= tmp_ext mod p).
+/// Companion to `mod_add_fast_modulo_ext_product_clean_lowscratch`; same NO-dirty
 /// contract.
-pub(crate) fn mod_sub_solinas_ext_product_clean_lowscratch(
+pub(crate) fn mod_sub_fast_modulo_ext_product_clean_lowscratch(
     b: &mut B,
     acc: &[QubitId],
     tmp_ext: &[QubitId],
@@ -467,7 +467,7 @@ pub(crate) fn square_tx_and_combined_ty_l2minus3qx(
     // fold restores tmp_ext exactly — hi is doubled/shifted then halved/unshifted,
     // lo is read-only — so the gate-level inverse is valid), run the y-mul with NO
     // square co-resident, then RECOMPUTE the square once to zero breg via the
-    // Solinas fold it would have used anyway. The folds are VALUE-identical to the
+    // FastModulo fold it would have used anyway. The folds are VALUE-identical to the
     // validated AFFINE_R_LIFECYCLE path; the only difference is the square is
     // materialized twice (the breg lam²-mod-p register must be both BUILT before
     // and DESTROYED after the y-mul, and lam²-mod-p can only be uncomputed by
@@ -489,20 +489,20 @@ pub(crate) fn square_tx_and_combined_ty_l2minus3qx(
         // Peak-bound the breg-coresident squares: the early-uncompute and the
         // recompute square run while `breg` (256) is live (base ~1536), so their
         // widest rows' ~2·257 fast transient would peak ~2052. Clamp rows wider
-        // than `mfw` to the register-free in-place Cuccaro (~width transient) so
+        // than `mfw` to the register-free in-place RippleAdder (~width transient) so
         // every affine phase stays <= ~1938. 200 leaves margin below 1952
         // (base 1536 + 2·200 + 3 = 1939).
-        // BAKED DEFAULT 234: with SHIFT22_FOLD_DIRTY dropping the pair1_mul1 binder
-        // (was 2025) below the affine, the new global floor is the pair2 inversion
+        // BAKED DEFAULT 234: with SHIFT22_FOLD_DIRTY dropping the state_a_mul1 binder
+        // (was 2025) below the affine, the new global floor is the state_b inversion
         // bulk step4 (kal_bulk_step4 = 2008 at margin=1). 234 is the CHEAPEST affine-
-        // square ceiling (most fast measurement-Cuccaro rows / least Toffoli) that
+        // square ceiling (most fast measurement-RippleAdder rows / least Toffoli) that
         // still drops the affine square-uncompute transient (2*mfw) to that floor;
         // mfw=235 rebinds the affine above 2008. (Prior 243 kept the affine just below
         // the pre-dirty 2025 mul1 binder; mfw=230 reached the floor but cost ~3.7k more
         // Toffoli than 234 for no peak benefit.)
         let mfw = env_usize("AFFINE_SQUARE_RECOMPUTE_MFW").unwrap_or(234);
 
-        // FOLD VARIANT (default CLEAN): the early-uncompute + recompute Solinas
+        // FOLD VARIANT (default CLEAN): the early-uncompute + recompute FastModulo
         // folds must restore `tmp_ext` exactly so the square uncompute is valid.
         // The CLEAN fold (`*_clean_lowscratch`) does this with NO dirty-borrow, so
         // it is correct on the UNPACKED base (the dirty-borrow `*_lowscratch`
@@ -520,9 +520,9 @@ pub(crate) fn square_tx_and_combined_ty_l2minus3qx(
         // Clean (or dirty) low-scratch fold restores tmp_ext exactly (hi doubled
         // then halved back, lo read-only), so the early square uncompute is valid.
         if dirty_fold {
-            mod_add_solinas_ext_product_lowscratch(b, &breg, &tmp_ext, p); // breg = lam² mod p = r
+            mod_add_fast_modulo_ext_product_lowscratch(b, &breg, &tmp_ext, p); // breg = lam² mod p = r
         } else {
-            mod_add_solinas_ext_product_clean_lowscratch(b, &breg, &tmp_ext, p); // breg = lam² mod p = r
+            mod_add_fast_modulo_ext_product_clean_lowscratch(b, &breg, &tmp_ext, p); // breg = lam² mod p = r
         }
         // Early uncompute: the fold restores tmp_ext, so the gate-level inverse is
         // valid. Free the 512 BEFORE the y-mul so the two products never co-reside.
@@ -551,13 +551,13 @@ pub(crate) fn square_tx_and_combined_ty_l2minus3qx(
 
         b.set_phase("affine_combined_breg_unred");
         // Recompute the square (NOT co-resident with the y-mul) to zero breg via
-        // the one Solinas fold it would have used anyway.
+        // the one FastModulo fold it would have used anyway.
         let tmp_ext2 = b.alloc_qubits(2 * n);
         schoolbook_square_symmetric_pb(b, lam, &tmp_ext2, mfw);
         if dirty_fold {
-            mod_sub_solinas_ext_product_lowscratch(b, &breg, &tmp_ext2, p); // breg -= lam² mod p = 0
+            mod_sub_fast_modulo_ext_product_lowscratch(b, &breg, &tmp_ext2, p); // breg -= lam² mod p = 0
         } else {
-            mod_sub_solinas_ext_product_clean_lowscratch(b, &breg, &tmp_ext2, p); // breg -= lam² mod p = 0
+            mod_sub_fast_modulo_ext_product_clean_lowscratch(b, &breg, &tmp_ext2, p); // breg -= lam² mod p = 0
         }
         schoolbook_square_symmetric_pb_inverse(b, lam, &tmp_ext2, mfw);
         b.free_vec(&tmp_ext2);
@@ -576,7 +576,7 @@ pub(crate) fn square_tx_and_combined_ty_l2minus3qx(
 
     b.set_phase("affine_combined_breg_red");
     let breg = b.alloc_qubits(n);
-    mod_add_solinas_ext_product(b, &breg, &tmp_ext, p);
+    mod_add_fast_modulo_ext_product(b, &breg, &tmp_ext, p);
     mod_sub_double_qb(b, &breg, ox, p);
     mod_sub_qb(b, &breg, ox, p);
 
@@ -586,7 +586,7 @@ pub(crate) fn square_tx_and_combined_ty_l2minus3qx(
     } else if env_flag_enabled("AFFINE_Y_MUL_LOWSCRATCH_FOLD", stack_2565_enabled()) {
         // Peak-minimized y-mul: cuts the ~256-wide transient scratch the
         // schoolbook MAC holds on top of its 512 product while the lam² square's
-        // 512 product co-resides (the -x correction pads, the Solinas fold's
+        // 512 product co-resides (the -x correction pads, the FastModulo fold's
         // carry/const registers, and the fold mod_double's const register). The
         // y-mul instant drops 2565 -> ~2333, below the next cluster (2459),
         // breaking the 2565 binder. Default-on under STACK-2565; set
@@ -599,10 +599,10 @@ pub(crate) fn square_tx_and_combined_ty_l2minus3qx(
 
     // r-lifecycle (default): fold lambda^2 once and reuse the reduced value for
     // the tx update so tx_update is a cheap qq-sub instead of a second full
-    // Solinas fold. After the two 3Qx re-adds below, `breg` holds
+    // FastModulo fold. After the two 3Qx re-adds below, `breg` holds
     // r = lambda^2 mod p (the reduced value) -- exactly the constant tx_update
     // must subtract. Consume breg-as-r for tx BEFORE zeroing breg, then zero
-    // breg with the one Solinas fold it would have used anyway. No extra
+    // breg with the one FastModulo fold it would have used anyway. No extra
     // register => peak-neutral. Validated -18,963 Toffoli, peak 2708 unchanged.
     // Set AFFINE_R_LIFECYCLE=0 to fall back to the legacy 3-fold path.
     let affine_r_lifecycle =
@@ -618,8 +618,8 @@ pub(crate) fn square_tx_and_combined_ty_l2minus3qx(
         mod_sub_qq_fast(b, tx, &breg, p);
 
         b.set_phase("affine_combined_breg_unred");
-        // Zero breg via the one Solinas fold it would have used anyway.
-        mod_sub_solinas_ext_product(b, &breg, &tmp_ext, p);
+        // Zero breg via the one FastModulo fold it would have used anyway.
+        mod_sub_fast_modulo_ext_product(b, &breg, &tmp_ext, p);
         b.free_vec(&breg);
 
         b.set_phase("affine_combined_tx_update");
@@ -630,11 +630,11 @@ pub(crate) fn square_tx_and_combined_ty_l2minus3qx(
         b.set_phase("affine_combined_breg_unred");
         mod_add_qb(b, &breg, ox, p);
         mod_add_double_qb(b, &breg, ox, p);
-        mod_sub_solinas_ext_product(b, &breg, &tmp_ext, p);
+        mod_sub_fast_modulo_ext_product(b, &breg, &tmp_ext, p);
         b.free_vec(&breg);
 
         b.set_phase("affine_combined_tx_update");
-        mod_sub_solinas_ext_product(b, tx, &tmp_ext, p);
+        mod_sub_fast_modulo_ext_product(b, tx, &tmp_ext, p);
         mod_add_double_qb(b, tx, ox, p);
         mod_add_qb(b, tx, ox, p);
         mod_neg_inplace_fast(b, tx, p);
@@ -645,10 +645,10 @@ pub(crate) fn square_tx_and_combined_ty_l2minus3qx(
 }
 
 /// Schoolbook squarer with Bennett uncompute. For squaring `tmp_ext = x*x`
-/// (2n bits, no mod reduction), then sub from acc with on-the-fly Solinas
+/// (2n bits, no mod reduction), then sub from acc with on-the-fly FastModulo
 /// reduction, then uncompute tmp_ext via gate-level inverse. Saves ~170k
 /// CCX vs walk-x squaring (459k → 289k) by avoiding 256 expensive
-/// cmod_add_qq calls (each 5n) in favor of 2n²=131k of cheap AND+Cuccaro.
+/// cmod_add_qq calls (each 5n) in favor of 2n²=131k of cheap AND+RippleAdder.
 pub(crate) fn squaring_sub_from_acc_schoolbook(b: &mut B, acc: &[QubitId], x: &[QubitId], p: U256) {
     let n = acc.len();
     debug_assert_eq!(n, 256);

@@ -6,7 +6,7 @@
 //! ancilla cleanup), counts gates, writes `score.json`, and appends one
 //! row to `results.tsv`.
 //!
-//! This binary deliberately does NOT import `quantum_ecc::point_add` —
+//! This binary deliberately does NOT import `quantum_ecc::ec_add` —
 //! contestant code never executes inside the trusted process. `ops.bin`
 //! is treated as fully untrusted input and is bounds-checked before use.
 

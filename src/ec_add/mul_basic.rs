@@ -9,7 +9,7 @@ use super::*;
 ///   ctrl=1 : acc += x  (mod 2^(n+1))
 ///   ctrl=0 : acc -= x  (mod 2^(n+1))
 /// Implementation: conditionally two's-complement (~x + 1) via flip-x plus c_in,
-/// then run a single unconditional Gidney/Cuccaro add. Cost = n-1 Toffoli (same as
+/// then run a single unconditional Gidney/RippleAdder add. Cost = n-1 Toffoli (same as
 /// uncontrolled (n+1)-bit add without carry-out).
 pub(crate) fn controlled_add_subtract_fast(b: &mut B, x: &[QubitId], acc: &[QubitId], ctrl: QubitId) {
     let n = x.len();
@@ -30,7 +30,7 @@ pub(crate) fn controlled_add_subtract_fast(b: &mut B, x: &[QubitId], acc: &[Qubi
     }
     b.cx(ctrl, c_in);
 
-    cuccaro_add_fast(b, &x_ext, acc, c_in);
+    ripple_adder_add_fast(b, &x_ext, acc, c_in);
 
     b.cx(ctrl, c_in);
     for i in 0..n {
@@ -43,9 +43,9 @@ pub(crate) fn controlled_add_subtract_fast(b: &mut B, x: &[QubitId], acc: &[Qubi
 }
 
 /// Low-peak variant of `controlled_add_subtract_fast` using non-fast
-/// Cuccaro (no carry ancillae). Saves ~n qubits of transient peak at the
+/// RippleAdder (no carry ancillae). Saves ~n qubits of transient peak at the
 /// cost of ~n extra Toffolis per call. Useful when called inside the
-/// Kaliski-body mul sites where peak is tight.
+/// Eea-body mul sites where peak is tight.
 pub(crate) fn controlled_add_subtract_lowq(b: &mut B, x: &[QubitId], acc: &[QubitId], ctrl: QubitId) {
     let n = x.len();
     debug_assert_eq!(acc.len(), n + 1);
@@ -62,7 +62,7 @@ pub(crate) fn controlled_add_subtract_lowq(b: &mut B, x: &[QubitId], acc: &[Qubi
     }
     b.cx(ctrl, c_in);
 
-    cuccaro_add(b, &x_ext, acc, c_in);
+    ripple_adder_add(b, &x_ext, acc, c_in);
 
     b.cx(ctrl, c_in);
     for i in 0..n {
@@ -91,7 +91,7 @@ pub(crate) fn controlled_add_subtract_lowq_inverse(b: &mut B, x: &[QubitId], acc
     }
     b.cx(ctrl, c_in);
 
-    cuccaro_sub(b, &x_ext, acc, c_in);
+    ripple_adder_sub(b, &x_ext, acc, c_in);
 
     b.cx(ctrl, c_in);
     for i in 0..n {
@@ -122,7 +122,7 @@ pub(crate) fn controlled_add_subtract_fast_inverse(b: &mut B, x: &[QubitId], acc
     }
     b.cx(ctrl, c_in);
 
-    cuccaro_sub_fast(b, &x_ext, acc, c_in);
+    ripple_adder_sub_fast(b, &x_ext, acc, c_in);
 
     b.cx(ctrl, c_in);
     for i in 0..n {
@@ -140,7 +140,7 @@ pub(crate) fn controlled_add_subtract_fast_inverse(b: &mut B, x: &[QubitId], acc
 /// subtract `x` only from the low n bits and ripple the single borrow up the
 /// high (n+1) bits with a register-free controlled decrement. Transient
 /// scratch ≈ n (one comparator's carries) instead of ~2n. Correct-by-
-/// construction from validated primitives (cmp_lt / cuccaro_sub_fast /
+/// construction from validated primitives (cmp_lt / ripple_adder_sub_fast /
 /// csub_nbit_const_direct_fast).
 ///
 /// Borrow algebra: borrow = (L_old < x); L_new = (L_old - x) mod 2^n;
@@ -158,7 +158,7 @@ pub(crate) fn correction_sub_x_lowscratch(b: &mut B, x: &[QubitId], wide: &[Qubi
     // L -= x  (mod 2^n)
     {
         let c_in = b.alloc_qubit();
-        cuccaro_sub_fast(b, x, &lo, c_in);
+        ripple_adder_sub_fast(b, x, &lo, c_in);
         b.free(c_in);
     }
     // H -= borrow  (register-free controlled decrement of the high n+1 bits)
@@ -195,7 +195,7 @@ pub(crate) fn correction_add_x_lowscratch(b: &mut B, x: &[QubitId], wide: &[Qubi
     // Reverse L -= x  ->  L += x.
     {
         let c_in = b.alloc_qubit();
-        cuccaro_add_fast(b, x, &lo, c_in);
+        ripple_adder_add_fast(b, x, &lo, c_in);
         b.free(c_in);
     }
     // Reverse borrow compute: borrow = (L_old < x) (now L = L_old again).
@@ -229,7 +229,7 @@ pub(crate) fn schoolbook_mul_into_addsub_lsx(b: &mut B, x: &[QubitId], y: &[Qubi
         let slice: Vec<QubitId> = wide[n..2 * n + 1].to_vec();
         let c_in = b.alloc_qubit();
         b.x(c_in);
-        cuccaro_add_fast(b, &y_ext, &slice, c_in);
+        ripple_adder_add_fast(b, &y_ext, &slice, c_in);
         b.x(c_in);
         b.free(c_in);
         b.free(pad);
@@ -248,7 +248,7 @@ pub(crate) fn schoolbook_mul_into_addsub_lsx(b: &mut B, x: &[QubitId], y: &[Qubi
         x_ext.push(pad);
         let slice: Vec<QubitId> = wide[n..2 * n + 1].to_vec();
         let c_in = b.alloc_qubit();
-        cuccaro_add_fast(b, &x_ext, &slice, c_in);
+        ripple_adder_add_fast(b, &x_ext, &slice, c_in);
         b.free(c_in);
         b.free(pad);
     }
@@ -279,7 +279,7 @@ pub(crate) fn schoolbook_mul_into_addsub_lsx_inverse(
         x_ext.push(pad);
         let slice: Vec<QubitId> = wide[n..2 * n + 1].to_vec();
         let c_in = b.alloc_qubit();
-        cuccaro_sub_fast(b, &x_ext, &slice, c_in);
+        ripple_adder_sub_fast(b, &x_ext, &slice, c_in);
         b.free(c_in);
         b.free(pad);
     }
@@ -295,7 +295,7 @@ pub(crate) fn schoolbook_mul_into_addsub_lsx_inverse(
         let slice: Vec<QubitId> = wide[n..2 * n + 1].to_vec();
         let c_in = b.alloc_qubit();
         b.x(c_in);
-        cuccaro_sub_fast(b, &y_ext, &slice, c_in);
+        ripple_adder_sub_fast(b, &y_ext, &slice, c_in);
         b.x(c_in);
         b.free(c_in);
         b.free(pad);
@@ -355,9 +355,9 @@ pub(crate) fn schoolbook_mul_into_addsub(b: &mut B, x: &[QubitId], y: &[QubitId]
         let c_in = b.alloc_qubit();
         b.x(c_in);
         if std::env::var("KAL_VENT_MODADD").ok().as_deref() == Some("1") {
-            cuccaro_add(b, &y_ext, &slice, c_in);
+            ripple_adder_add(b, &y_ext, &slice, c_in);
         } else {
-            cuccaro_add_fast(b, &y_ext, &slice, c_in);
+            ripple_adder_add_fast(b, &y_ext, &slice, c_in);
         }
         b.x(c_in);
         b.free(c_in);
@@ -367,16 +367,16 @@ pub(crate) fn schoolbook_mul_into_addsub(b: &mut B, x: &[QubitId], y: &[QubitId]
     // -2^{2n}: toggle wide[2n].
     b.x(wide[2 * n]);
 
-    // -x as full (2n+1)-bit sub. Use in-place cuccaro_sub (no carry ancillae) to
+    // -x as full (2n+1)-bit sub. Use in-place ripple_adder_sub (no carry ancillae) to
     // keep peak qubits low during this otherwise-expensive full-width correction.
-    // Costs n-1 extra Toffoli vs cuccaro_sub_fast but saves 2n peak qubits.
+    // Costs n-1 extra Toffoli vs ripple_adder_sub_fast but saves 2n peak qubits.
     {
         let mut x_ext: Vec<QubitId> = x.to_vec();
         while x_ext.len() < 2 * n + 1 {
             x_ext.push(b.alloc_qubit());
         }
         let c_in = b.alloc_qubit();
-        cuccaro_sub(b, &x_ext, &wide, c_in);
+        ripple_adder_sub(b, &x_ext, &wide, c_in);
         b.free(c_in);
         for _ in n..2 * n + 1 {
             let q = x_ext.pop().unwrap();
@@ -392,9 +392,9 @@ pub(crate) fn schoolbook_mul_into_addsub(b: &mut B, x: &[QubitId], y: &[QubitId]
         let slice: Vec<QubitId> = wide[n..2 * n + 1].to_vec();
         let c_in = b.alloc_qubit();
         if std::env::var("KAL_VENT_MODADD").ok().as_deref() == Some("1") {
-            cuccaro_add(b, &x_ext, &slice, c_in);
+            ripple_adder_add(b, &x_ext, &slice, c_in);
         } else {
-            cuccaro_add_fast(b, &x_ext, &slice, c_in);
+            ripple_adder_add_fast(b, &x_ext, &slice, c_in);
         }
         b.free(c_in);
         b.free(pad);
@@ -404,8 +404,8 @@ pub(crate) fn schoolbook_mul_into_addsub(b: &mut B, x: &[QubitId], y: &[QubitId]
     b.free(low);
 }
 
-/// Low-peak variant of `schoolbook_mul_into_addsub`: uses non-fast Cuccaro
-/// (`cuccaro_add`) inside the `controlled_add_subtract` core and in the
+/// Low-peak variant of `schoolbook_mul_into_addsub`: uses non-fast RippleAdder
+/// (`ripple_adder_add`) inside the `controlled_add_subtract` core and in the
 /// correction adders. Saves roughly `n` transient qubits at peak vs. the
 /// `_fast` variant at the cost of ~n extra Toffolis per row. Top-level
 /// semantics identical to `schoolbook_mul_into_addsub`.
@@ -432,7 +432,7 @@ pub(crate) fn schoolbook_mul_into_addsub_lowq(b: &mut B, x: &[QubitId], y: &[Qub
         let slice: Vec<QubitId> = wide[n..2 * n + 1].to_vec();
         let c_in = b.alloc_qubit();
         b.x(c_in);
-        cuccaro_add(b, &y_ext, &slice, c_in);
+        ripple_adder_add(b, &y_ext, &slice, c_in);
         b.x(c_in);
         b.free(c_in);
         b.free(pad);
@@ -448,7 +448,7 @@ pub(crate) fn schoolbook_mul_into_addsub_lowq(b: &mut B, x: &[QubitId], y: &[Qub
             x_ext.push(b.alloc_qubit());
         }
         let c_in = b.alloc_qubit();
-        cuccaro_sub(b, &x_ext, &wide, c_in);
+        ripple_adder_sub(b, &x_ext, &wide, c_in);
         b.free(c_in);
         for _ in n..2 * n + 1 {
             let q = x_ext.pop().unwrap();
@@ -463,7 +463,7 @@ pub(crate) fn schoolbook_mul_into_addsub_lowq(b: &mut B, x: &[QubitId], y: &[Qub
         x_ext.push(pad);
         let slice: Vec<QubitId> = wide[n..2 * n + 1].to_vec();
         let c_in = b.alloc_qubit();
-        cuccaro_add(b, &x_ext, &slice, c_in);
+        ripple_adder_add(b, &x_ext, &slice, c_in);
         b.free(c_in);
         b.free(pad);
     }
@@ -494,7 +494,7 @@ pub(crate) fn schoolbook_mul_into_addsub_lowq_inverse(
         x_ext.push(pad);
         let slice: Vec<QubitId> = wide[n..2 * n + 1].to_vec();
         let c_in = b.alloc_qubit();
-        cuccaro_sub(b, &x_ext, &slice, c_in);
+        ripple_adder_sub(b, &x_ext, &slice, c_in);
         b.free(c_in);
         b.free(pad);
     }
@@ -505,7 +505,7 @@ pub(crate) fn schoolbook_mul_into_addsub_lowq_inverse(
             x_ext.push(b.alloc_qubit());
         }
         let c_in = b.alloc_qubit();
-        cuccaro_add(b, &x_ext, &wide, c_in);
+        ripple_adder_add(b, &x_ext, &wide, c_in);
         b.free(c_in);
         for _ in n..2 * n + 1 {
             let q = x_ext.pop().unwrap();
@@ -522,7 +522,7 @@ pub(crate) fn schoolbook_mul_into_addsub_lowq_inverse(
         let slice: Vec<QubitId> = wide[n..2 * n + 1].to_vec();
         let c_in = b.alloc_qubit();
         b.x(c_in);
-        cuccaro_sub(b, &y_ext, &slice, c_in);
+        ripple_adder_sub(b, &y_ext, &slice, c_in);
         b.x(c_in);
         b.free(c_in);
         b.free(pad);
@@ -558,19 +558,19 @@ pub(crate) fn schoolbook_mul_into_addsub_inverse(
         x_ext.push(pad);
         let slice: Vec<QubitId> = wide[n..2 * n + 1].to_vec();
         let c_in = b.alloc_qubit();
-        cuccaro_sub_fast(b, &x_ext, &slice, c_in);
+        ripple_adder_sub_fast(b, &x_ext, &slice, c_in);
         b.free(c_in);
         b.free(pad);
     }
     // Reverse correction 3 (sub x full-width): add x back with borrow propagation.
-    // Use in-place cuccaro_add (no carries) to keep peak low, matching forward.
+    // Use in-place ripple_adder_add (no carries) to keep peak low, matching forward.
     {
         let mut x_ext: Vec<QubitId> = x.to_vec();
         while x_ext.len() < 2 * n + 1 {
             x_ext.push(b.alloc_qubit());
         }
         let c_in = b.alloc_qubit();
-        cuccaro_add(b, &x_ext, &wide, c_in);
+        ripple_adder_add(b, &x_ext, &wide, c_in);
         b.free(c_in);
         for _ in n..2 * n + 1 {
             let q = x_ext.pop().unwrap();
@@ -587,7 +587,7 @@ pub(crate) fn schoolbook_mul_into_addsub_inverse(
         let slice: Vec<QubitId> = wide[n..2 * n + 1].to_vec();
         let c_in = b.alloc_qubit();
         b.x(c_in);
-        cuccaro_sub_fast(b, &y_ext, &slice, c_in);
+        ripple_adder_sub_fast(b, &y_ext, &slice, c_in);
         b.x(c_in);
         b.free(c_in);
         b.free(pad);
@@ -601,7 +601,7 @@ pub(crate) fn schoolbook_mul_into_addsub_inverse(
     b.free(low);
 }
 
-/// Add x*y mod p to acc, via schoolbook into a wide accumulator + Solinas
+/// Add x*y mod p to acc, via schoolbook into a wide accumulator + FastModulo
 /// reduction + Bennett uncompute. Saves ~100k CCX vs Horner-on-acc per call.
 pub(crate) fn mod_mul_add_into_acc_schoolbook(
     b: &mut B,
@@ -621,7 +621,7 @@ pub(crate) fn mod_mul_add_into_acc_schoolbook(
     let hi: Vec<QubitId> = tmp_ext[n..2 * n].to_vec();
     let _ = c;
     mod_add_qq_fast(b, acc, &lo, p);
-    // Solinas with 977 = 2^10 - 2^6 + 2^4 + 2^0. c = 2^32 + 977 = {+2^0, +2^4, -2^6, +2^10, +2^32}.
+    // FastModulo with 977 = 2^10 - 2^6 + 2^4 + 2^0. c = 2^32 + 977 = {+2^0, +2^4, -2^6, +2^10, +2^32}.
     // 5 ops instead of 7 (saves 2 per call). Use shift_left_by_22 for the 10→32 gap.
     mod_add_qq_fast(b, acc, &hi, p); // position 0
     for _ in 0..4 {
@@ -657,9 +657,9 @@ pub(crate) fn mod_mul_add_into_acc_schoolbook(
 /// free equivalent (all near-Toffoli-neutral, measured +0.10% total):
 ///   1. forward/inverse mul: `schoolbook_mul_into_addsub_lsx` — the `-x`
 ///      correction's full-width x_ext pads (~n) -> a 1-qubit borrow ripple.
-///   2. Solinas fold adds/sub: `mod_*_qq_lowq_lowscratch` — carry-free Cuccaro
+///   2. FastModulo fold adds/sub: `mod_*_qq_lowq_lowscratch` — carry-free RippleAdder
 ///      + register-free direct const adders + carry-free comparator.
-///   3. Solinas fold doublings: `mod_double_inplace_direct` — register-free
+///   3. FastModulo fold doublings: `mod_double_inplace_direct` — register-free
 ///      direct const-add (no `load_const` register + 256 add carries co-live).
 /// The binding instant inside the schoolbook fold was the `mod_double` step
 /// (cadd_nbit_const_fast holds a 256-bit const register AND 256 add carries =
@@ -693,8 +693,8 @@ pub(crate) fn mod_mul_add_into_acc_schoolbook_lowscratch_fold(
         mod_double_inplace_direct(b, &hi, p);
     }
     mod_add_qq_lowq_lowscratch(b, acc, &hi, p); // position 10
-    if gz_solinas_lowscratch() {
-        // The shift22 at this Solinas fold is the affine y-mul binder (2333).
+    if gz_fast_modulo_lowscratch() {
+        // The shift22 at this FastModulo fold is the affine y-mul binder (2333).
         // Borrow the co-resident dirty product `lo` half (restored on exit) as
         // the venting dirty donor so the shift22 reduction holds ~k+5 scratch
         // instead of ~257, dropping the binder below the bk_step4 floor (2309).
@@ -719,8 +719,8 @@ pub(crate) fn mod_mul_add_into_acc_schoolbook_lowscratch_fold(
 
 /// From-zero (acc == 0 on entry) twin of
 /// `mod_mul_add_into_acc_schoolbook_lowscratch_fold`. Same three scratch cuts
-/// (lsx mul, lowscratch Solinas folds, register-free direct doubles) but the
-/// first lo-add uses the from-zero CX-copy path. Used for the pair1_borrow_dx
+/// (lsx mul, lowscratch FastModulo folds, register-free direct doubles) but the
+/// first lo-add uses the from-zero CX-copy path. Used for the state_a_borrow_dx
 /// mul1 binder under the 9n-floor flag.
 pub(crate) fn mod_mul_write_into_zero_acc_schoolbook_lowscratch_fold(
     b: &mut B,
@@ -752,8 +752,8 @@ pub(crate) fn mod_mul_write_into_zero_acc_schoolbook_lowscratch_fold(
         mod_double_inplace_direct(b, &hi, p);
     }
     mod_add_qq_lowq_lowscratch(b, acc, &hi, p); // position 10
-    // SHIFT22_FOLD_DIRTY (default ON): the shift22 inside this Solinas fold is the
-    // pair1_mul1 peak binder (base 972 carrier+init + tmp_ext 512 + acc 256 = 1740;
+    // SHIFT22_FOLD_DIRTY (default ON): the shift22 inside this FastModulo fold is the
+    // state_a_mul1 peak binder (base 972 carrier+init + tmp_ext 512 + acc 256 = 1740;
     // the plain shift22's ~257-wide CLEAN `padded` transient lifts it to 2025 — the
     // GLOBAL peak). The product's LOW half `lo` (tmp_ext[0..n]) is DEAD here: it was
     // consumed read-only by the from_zero lo-add above and is not touched again until

@@ -2,7 +2,7 @@
 use super::*;
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Kaliski almost-inverse
+//  Eea almost-inverse
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Fredkin (controlled swap): swap (a, t) if ctrl. Decomposed as CX/CCX/CX.
@@ -95,7 +95,7 @@ pub(crate) fn cmp_lt_into(b: &mut B, u: &[QubitId], v: &[QubitId], flag: QubitId
         b.x(u[i]);
     }
 
-    // Forward MAJ sweep — n MAJs (one more than cuccaro_add, which omits
+    // Forward MAJ sweep — n MAJs (one more than ripple_adder_add, which omits
     // the top one because it doesn't need the carry-out).
     maj(b, c_in, v[0], u[0]);
     for i in 1..n {
@@ -170,7 +170,7 @@ pub(crate) fn or_step(b: &mut B, x: QubitId, y: QubitId, out: QubitId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Primitives for the Kaliski port (qrisp-style)
+//  Primitives for the Eea port (qrisp-style)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 2-controlled X with per-control polarity. `polarity=true` means positive

@@ -15,7 +15,7 @@ pub(crate) fn by_cmod_neg_inplace_fast(b: &mut B, v: &[QubitId], ctrl: QubitId, 
 pub(crate) fn by_cmod_neg_inplace_canonical_for_bench(b: &mut B, v: &[QubitId], ctrl: QubitId, p: U256) {
     // ctrl ? (-v mod p) : v, preserving the canonical zero representative.  The
     // fast BY negation maps 0 -> p; that is fine inside replay scaffolds but not
-    // when the pair2 product-clean path wants to free the slope register after
+    // when the state_b product-clean path wants to free the slope register after
     // inverse replay.  Nonzeroness is invariant under v -> p-v, so the flag can
     // be uncomputed after the controlled negation.
     let nz = b.alloc_qubit();
@@ -784,13 +784,13 @@ pub(crate) fn by_unload_centered_copy_for_bench(
     b.free(center_flag);
 }
 
-pub(crate) fn compute_pair1_lam_with_centered_by_bench(
+pub(crate) fn compute_state_a_lam_with_centered_by_bench(
     b: &mut B,
     tx: &[QubitId],
     ty: &[QubitId],
     p: U256,
 ) -> Vec<QubitId> {
-    // Functional pair1 experiment: compute lam=-dy/dx using denominator-derived
+    // Functional state_a experiment: compute lam=-dy/dx using denominator-derived
     // BY controls and centered tagged numerator replay.  This is Bennett-style:
     // copy the recovered lam, then reverse replay/control generation so only lam
     // remains.  The caller can use the ordinary mul2 cleanup to zero ty.
@@ -801,7 +801,7 @@ pub(crate) fn compute_pair1_lam_with_centered_by_bench(
     // algebra, so 18 signed bits are enough for the raw payload history. The
     // local simulator remains 34 bits wide for reversible signed divsteps.
     const WINDOW_QBITS: usize = 18;
-    b.set_phase("pair1_by_centered_alloc");
+    b.set_phase("state_a_by_centered_alloc");
     let f = b.alloc_qubits(STEPS);
     let g = b.alloc_qubits(STEPS);
     let delta = b.alloc_qubits(DBITS);
@@ -832,7 +832,7 @@ pub(crate) fn compute_pair1_lam_with_centered_by_bench(
     mod_add_qq_fast(b, &num, tx, p); // tagged numerator: dy + dx
     let center_flag = by_load_centered_copy_for_bench(b, &num, &s, p);
 
-    b.set_phase("pair1_by_centered_generate");
+    b.set_phase("state_a_by_centered_generate");
     // Full-width denominator evolution preserves the final f sign needed by
     // tagged quotient recovery.  With BY_CENTERED_WINDOW_DENOM_REPLACE=1 the
     // branch decisions are sourced from 16-step lowword window oracles, then
@@ -843,27 +843,27 @@ pub(crate) fn compute_pair1_lam_with_centered_by_bench(
         .map(|(q0, q1)| (q0.as_slice(), q1.as_slice()));
     by_generate_signed_controls_for_bench(b, &f, &g, &delta, &odd, &a_ctrl, q_hist_slices);
 
-    b.set_phase("pair1_by_centered_forward");
+    b.set_phase("state_a_by_centered_forward");
     for i in 0..STEPS {
         centered_signed_by_microstep_for_bench(b, &r, &s, odd[i], a_ctrl[i], parity[i], p);
     }
 
-    b.set_phase("pair1_by_centered_copy_lam");
+    b.set_phase("state_a_by_centered_copy_lam");
     by_write_neg_quotient_from_centered_r_for_bench(b, &lam, &r, f[STEPS - 1], p);
 
-    b.set_phase("pair1_by_centered_inverse_replay");
+    b.set_phase("state_a_by_centered_inverse_replay");
     for i in (0..STEPS).rev() {
         centered_signed_by_microstep_inverse_for_bench(b, &r, &s, odd[i], a_ctrl[i], parity[i], p);
         centered_signed_by_clear_parity_after_inverse_for_bench(b, &r, &s, odd[i], parity[i]);
     }
 
-    b.set_phase("pair1_by_centered_reverse_den");
+    b.set_phase("state_a_by_centered_reverse_den");
     let q_hist_slices = q_hist
         .as_ref()
         .map(|(q0, q1)| (q0.as_slice(), q1.as_slice()));
     by_reverse_signed_controls_for_bench(b, &f, &g, &delta, &odd, &a_ctrl, q_hist_slices);
 
-    b.set_phase("pair1_by_centered_clear");
+    b.set_phase("state_a_by_centered_clear");
     by_unload_centered_copy_for_bench(b, &num, &s, p, center_flag);
     mod_sub_qq_fast(b, &num, tx, p);
     for i in 0..N {
@@ -890,7 +890,7 @@ pub(crate) fn compute_pair1_lam_with_centered_by_bench(
     lam
 }
 
-pub(crate) fn write_pair2_product_and_clean_lam_with_scaled_by_bench(
+pub(crate) fn write_state_b_product_and_clean_lam_with_scaled_by_bench(
     b: &mut B,
     lam: &[QubitId],
     denom: &[QubitId],
@@ -898,15 +898,15 @@ pub(crate) fn write_pair2_product_and_clean_lam_with_scaled_by_bench(
     p: U256,
 ) {
     // Last-shot BY architecture: use scaled BY inverse/product-clean directly
-    // for pair2.  Given q=lam and denominator x, the inverse scaled replay maps
+    // for state_b.  Given q=lam and denominator x, the inverse scaled replay maps
     // (sign(f)*q, 0) -> (0, q*x).  In the u=-r frame the input is
-    // u = -sign(f)*q, so f>0 selects -q and f<0 leaves q.  This deletes pair2's
+    // u = -sign(f)*q, so f>0 selects -q and f<0 leaves q.  This deletes state_b's
     // old q*x multiplication and avoids centered parity history; it still uses
     // the direct 576-step denominator generator and is therefore a correctness
     // probe, not yet SOTA-shaped.
     const STEPS: usize = 576;
     const DBITS: usize = 12;
-    b.set_phase("pair2_by_scaled_product_alloc");
+    b.set_phase("state_b_by_scaled_product_alloc");
     let f = b.alloc_qubits(STEPS);
     let g = b.alloc_qubits(STEPS);
     let delta = b.alloc_qubits(DBITS);
@@ -921,31 +921,31 @@ pub(crate) fn write_pair2_product_and_clean_lam_with_scaled_by_bench(
     }
     b.x(delta[0]);
 
-    b.set_phase("pair2_by_scaled_product_generate");
+    b.set_phase("state_b_by_scaled_product_generate");
     by_generate_signed_controls_for_bench(b, &f, &g, &delta, &odd, &a_ctrl, None);
 
-    b.set_phase("pair2_by_scaled_product_frame");
+    b.set_phase("state_b_by_scaled_product_frame");
     let f_pos = b.alloc_qubit();
     b.x(f_pos);
     b.cx(f[STEPS - 1], f_pos);
     by_cmod_neg_inplace_canonical_for_bench(b, lam, f_pos, p);
 
-    b.set_phase("pair2_by_scaled_product_inverse");
+    b.set_phase("state_b_by_scaled_product_inverse");
     for i in (0..STEPS).rev() {
         scaled_by_controlled_microstep_inverse_negr_for_bench(
             b, lam, product, odd[i], a_ctrl[i], p,
         );
     }
 
-    b.set_phase("pair2_by_scaled_product_clear_frame");
+    b.set_phase("state_b_by_scaled_product_clear_frame");
     b.cx(f[STEPS - 1], f_pos);
     b.x(f_pos);
     b.free(f_pos);
 
-    b.set_phase("pair2_by_scaled_product_reverse_den");
+    b.set_phase("state_b_by_scaled_product_reverse_den");
     by_reverse_signed_controls_for_bench(b, &f, &g, &delta, &odd, &a_ctrl, None);
 
-    b.set_phase("pair2_by_scaled_product_clear");
+    b.set_phase("state_b_by_scaled_product_clear");
     for i in 0..N {
         b.cx(denom[i], g[i]);
         if bit(p, i) {
@@ -967,9 +967,9 @@ pub(crate) fn add_neg_quotient_into_acc_with_centered_by_bench(
     numer: &[QubitId],
     p: U256,
 ) {
-    // Functional pair2-style experiment: add -(numer/denom) into an existing
+    // Functional state_b-style experiment: add -(numer/denom) into an existing
     // accumulator, then Bennett-clean the BY denominator/replay scratch.  For
-    // pair2, acc is lam and numer = lam*denom, so this zeros lam without a
+    // state_b, acc is lam and numer = lam*denom, so this zeros lam without a
     // separate quotient output register that would need uncomputation.
     const STEPS: usize = 576;
     const DBITS: usize = 12;
