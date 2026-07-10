@@ -1,5 +1,6 @@
-//! (refactor r2) Mechanically extracted from mul.rs. No logic changes.
-use super::*;
+use crate::ec_add::*;
+/// (refactor r2) Mechanically extracted from mul.rs. No logic changes.
+use crate::ec_add::*;
 
 /// Symmetric schoolbook for squaring: x² = sum_i x[i]·2^(2i) + sum_{i<j} 2·x[i]·x[j]·2^(i+j).
 /// Each cross-product is computed ONCE (instead of twice in full schoolbook),

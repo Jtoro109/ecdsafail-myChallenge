@@ -1,143 +1,87 @@
-//! Reversible secp256k1 point addition circuit.
-//!
-//! THE editable file for the research loop. Everything else in `src/` is
-//! stable harness; all circuit construction lives here.
-//!
-//! This circuit is specialized to secp256k1. The curve parameters
-//!   p = 2^256 - 2^32 - 977
-//!   a = 0, b = 7
-//! are hard-coded. Specialization lets later optimization passes exploit
-//! the FastModulo structure of p (sparse low word, mostly-ones upper words)
-//! for faster modular reduction. Generalizing is an explicit non-goal.
-//!
-//! # Interface
-//! `build(b)` allocates four 256-wide registers in declaration order —
-//! target_x (qubits), target_y (qubits), offset_x (bits), offset_y (bits)
-//! — and emits gates that mutate the target registers into (P + Q) where
-//! P is the quantum point in targets and Q is the classical point in
-//! offsets. The harness validates against `WeierstrassEllipticCurve::add`.
-//!
-//! # Algorithm
-//! Standard affine addition with Roetteler-style two-Eea uncomputation:
-//!
-//!   1. Px -= Qx,  Py -= Qy          (register now holds dx, dy)
-//!   2. eea_inv_inplace(Px)       (Px ← dx^{-1})
-//!   3. lam += Py * Px                (lam ← (dy)(dx^{-1}) = λ)
-//!   4. eea_inv_inplace(Px)       (Px ← dx)
-//!   5. Py -= lam * Px                (Py ← 0)
-//!   6. Px -= lam*lam                 (Px ← dx - λ²)
-//!   7. Px ← -Px                      (Px ← λ² - dx)
-//!   8. Px -= 2*Qx                    (Px ← λ² - Px_orig - Qx = Rx)
-//!   9. Py += lam * Qx                (Py ← λ·Qx)
-//!  10. Py -= lam * Px                (Py ← λ·Qx - λ·Rx)
-//!  11. Py -= Qy                      (Py ← Ry, via the identity
-//!                                      Ry = λ(Qx - Rx) - Qy)
-//!  12. Uncompute lam via the inverse path using the (Rx, Ry) state.
-//!
-//! Step 12 in detail (uses the identity λ = (Qy + Ry) / (Qx - Rx)):
-//!     a. Px -= Qx; Px ← -Px            (Px ← Qx - Rx)
-//!     b. eea_inv_inplace(Px)       (Px ← (Qx - Rx)^{-1})
-//!     c. lam -= Py * Px                (lam -= Ry / (Qx - Rx))
-//!     d. lam -= Qy * Px                (lam -= Qy / (Qx - Rx))
-//!                                        → lam = 0
-//!     e. eea_inv_inplace(Px)       (Px ← Qx - Rx)
-//!     f. Px ← -Px; Px += Qx            (Px ← Rx)
-//!
-//! # Primitive layer
-//! All modular arithmetic is built on a single RippleAdder ripple-carry
-//! adder operating on `(n+1)`-wide extended registers. Subtract =
-//! forward complement + add + back complement. Modular reduction
-//! after add/sub is: (cond-sub p) + (cond-add p) controlled by the
-//! resulting sign bit.
-//!
-//! # Current status
-//! First-pass baseline: correctness-first, no optimization. Eea is
-//! implemented as the textbook binary almost-inverse (2n iterations).
-//! Expected gate counts far exceed zenodo's targets; the research loop
-//! reduces them.
-
+/// Reversible secp256k1 point addition circuit.
+///
+/// THE editable file for the research loop. Everything else in `src/` is
+/// stable harness; all circuit construction lives here.
+///
+/// This circuit is specialized to secp256k1. The curve parameters
+///   p = 2^256 - 2^32 - 977
+///   a = 0, b = 7
+/// are hard-coded. Specialization lets later optimization passes exploit
+/// the FastModulo structure of p (sparse low word, mostly-ones upper words)
+/// for faster modular reduction. Generalizing is an explicit non-goal.
+///
+/// # Interface
+/// `build(b)` allocates four 256-wide registers in declaration order —
+/// target_x (qubits), target_y (qubits), offset_x (bits), offset_y (bits)
+/// — and emits gates that mutate the target registers into (P + Q) where
+/// P is the quantum point in targets and Q is the classical point in
+/// offsets. The harness validates against `WeierstrassEllipticCurve::add`.
+///
+/// # Algorithm
+/// Standard affine addition with Roetteler-style two-Eea uncomputation:
+///
+///   1. Px -= Qx,  Py -= Qy          (register now holds dx, dy)
+///   2. eea_inv_inplace(Px)       (Px ← dx^{-1})
+///   3. lam += Py * Px                (lam ← (dy)(dx^{-1}) = λ)
+///   4. eea_inv_inplace(Px)       (Px ← dx)
+///   5. Py -= lam * Px                (Py ← 0)
+///   6. Px -= lam*lam                 (Px ← dx - λ²)
+///   7. Px ← -Px                      (Px ← λ² - dx)
+///   8. Px -= 2*Qx                    (Px ← λ² - Px_orig - Qx = Rx)
+///   9. Py += lam * Qx                (Py ← λ·Qx)
+///  10. Py -= lam * Px                (Py ← λ·Qx - λ·Rx)
+///  11. Py -= Qy                      (Py ← Ry, via the identity
+///                                      Ry = λ(Qx - Rx) - Qy)
+///  12. Uncompute lam via the inverse path using the (Rx, Ry) state.
+///
+/// Step 12 in detail (uses the identity λ = (Qy + Ry) / (Qx - Rx)):
+///     a. Px -= Qx; Px ← -Px            (Px ← Qx - Rx)
+///     b. eea_inv_inplace(Px)       (Px ← (Qx - Rx)^{-1})
+///     c. lam -= Py * Px                (lam -= Ry / (Qx - Rx))
+///     d. lam -= Qy * Px                (lam -= Qy / (Qx - Rx))
+///                                        → lam = 0
+///     e. eea_inv_inplace(Px)       (Px ← Qx - Rx)
+///     f. Px ← -Px; Px += Qx            (Px ← Rx)
+///
+/// # Primitive layer
+/// All modular arithmetic is built on a single RippleAdder ripple-carry
+/// adder operating on `(n+1)`-wide extended registers. Subtract =
+/// forward complement + add + back complement. Modular reduction
+/// after add/sub is: (cond-sub p) + (cond-add p) controlled by the
+/// resulting sign bit.
+///
+/// # Current status
+/// First-pass baseline: correctness-first, no optimization. Eea is
+/// implemented as the textbook binary almost-inverse (2n iterations).
+/// Expected gate counts far exceed zenodo's targets; the research loop
+/// reduces them.
 use alloy_primitives::U256;
-#[allow(unused_imports)]
 use sha3::{
     digest::{ExtendableOutput, Update, XofReader},
     Shake256,
 };
-
-#[allow(unused_imports)]
 use crate::circuit::{analyze_ops, BitId, Op, OperationType, QubitId, QubitOrBit, RegisterId};
-#[allow(unused_imports)]
 use crate::sim::Simulator;
 use crate::weierstrass_elliptic_curve::WeierstrassEllipticCurve;
 
-mod fermat_inv;
-mod venting;
-
-mod bench_by;
+mod core;
 #[allow(unused_imports)]
-pub(crate) use bench_by::*;
-
-mod bench_scaled;
+pub(crate) use core::*;
+mod math;
 #[allow(unused_imports)]
-pub(crate) use bench_scaled::*;
-
-mod bench_probe;
+pub(crate) use math::*;
+mod algo;
 #[allow(unused_imports)]
-pub(crate) use bench_probe::*;
-
-mod ec_add;
+pub(crate) use algo::*;
+mod curve;
 #[allow(unused_imports)]
-pub(crate) use ec_add::*;
-
-mod eea_state;
+pub(crate) use curve::*;
+mod qlogic;
 #[allow(unused_imports)]
-pub(crate) use eea_state::*;
-
-mod eea_walk;
+pub(crate) use qlogic::*;
+mod bench;
 #[allow(unused_imports)]
-pub(crate) use eea_walk::*;
-
-mod eea_inv;
-#[allow(unused_imports)]
-pub(crate) use eea_inv::*;
-
-mod eea_coeff;
-#[allow(unused_imports)]
-pub(crate) use eea_coeff::*;
-
-mod mul_basic;
-#[allow(unused_imports)]
-pub(crate) use mul_basic::*;
-
-mod mul_fast;
-#[allow(unused_imports)]
-pub(crate) use mul_fast::*;
-
-mod mul_ec;
-#[allow(unused_imports)]
-pub(crate) use mul_ec::*;
-
-mod fast_modulo;
-#[allow(unused_imports)]
-pub(crate) use fast_modulo::*;
-
-mod ripple_adder;
-#[allow(unused_imports)]
-pub(crate) use ripple_adder::*;
-
-mod mod_arithmetic;
-#[allow(unused_imports)]
-pub(crate) use mod_arithmetic::*;
-
-mod comparator;
-#[allow(unused_imports)]
-pub(crate) use comparator::*;
-
-mod builder;
-#[allow(unused_imports)]
-pub(crate) use builder::*;
-
-mod screen;
-
+pub(crate) use bench::*;
 
 pub fn build() -> Vec<Op> {
     // DEV-ONLY: if KAL_SCREEN is set, run the in-process reroll/knob sweep and

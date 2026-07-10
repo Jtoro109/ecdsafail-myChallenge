@@ -1,5 +1,6 @@
-//! (refactor) Mechanically extracted from mod.rs. No logic changes.
-use super::*;
+use crate::ec_add::*;
+/// (refactor) Mechanically extracted from mod.rs. No logic changes.
+use crate::ec_add::*;
 
 /// Shift v left by k bits mod p. Returns (spill, flag_inv, ovf) which MUST
 /// be passed to mod_shift_right_by_k for cleanup. Bennett-pattern: flags

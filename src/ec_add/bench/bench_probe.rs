@@ -1,5 +1,6 @@
-//! (refactor) Mechanical split of bench.rs: emit_*_benchmark_scaffold / *_probe scaffolds. No logic changes.
-use super::*;
+use crate::ec_add::*;
+/// (refactor) Mechanical split of bench.rs: emit_*_benchmark_scaffold / *_probe scaffolds. No logic changes.
+use crate::ec_add::*;
 
 pub(crate) fn emit_scaled_by_pattern_replay_benchmark_scaffold(b: &mut B, p: U256) {
     // Benchmark-path integration smoke test for the scaled-BY thesis.  This is

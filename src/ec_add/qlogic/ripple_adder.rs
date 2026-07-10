@@ -1,5 +1,6 @@
-//! (refactor) Mechanically extracted from mod.rs. No logic changes.
-use super::*;
+use crate::ec_add::*;
+/// (refactor) Mechanically extracted from mod.rs. No logic changes.
+use crate::ec_add::*;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  RippleAdder ripple-carry adder

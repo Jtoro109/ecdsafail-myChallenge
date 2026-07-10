@@ -1,5 +1,6 @@
-//! (refactor r2) Mechanically extracted from mul.rs. No logic changes.
-use super::*;
+use crate::ec_add::*;
+/// (refactor r2) Mechanically extracted from mul.rs. No logic changes.
+use crate::ec_add::*;
 
 // ─────────────────────────────────────────────────────────────────────────────────────
 // Litinski add-subtract (arXiv:2410.00899) primitives

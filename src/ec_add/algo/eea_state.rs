@@ -1,5 +1,6 @@
-//! (refactor) Mechanically extracted from eea.rs. No logic changes.
-use super::*;
+use crate::ec_add::*;
+/// (refactor) Mechanically extracted from eea.rs. No logic changes.
+use crate::ec_add::*;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Eea binary almost-inverse (qrisp-style, standard form)

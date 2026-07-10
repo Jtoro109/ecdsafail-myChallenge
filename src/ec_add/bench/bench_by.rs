@@ -1,5 +1,6 @@
-//! (refactor) Mechanical split of bench.rs: by_* / centered_signed_by_* helpers. No logic changes.
-use super::*;
+use crate::ec_add::*;
+/// (refactor) Mechanical split of bench.rs: by_* / centered_signed_by_* helpers. No logic changes.
+use crate::ec_add::*;
 
 pub(crate) fn by_cmod_neg_inplace_fast(b: &mut B, v: &[QubitId], ctrl: QubitId, p: U256) {
     // ctrl ? (p-v) : v.  Like the BY structural tests, this maps v=0 to the

@@ -1,5 +1,6 @@
-//! (refactor) Mechanically extracted from eea.rs. No logic changes.
-use super::*;
+use crate::ec_add::*;
+/// (refactor) Mechanically extracted from eea.rs. No logic changes.
+use crate::ec_add::*;
 /// Specialized real forward primitive for the first few guaranteed-bulk
 /// Eea iterations where `f = 1` and `v_w != 0` are known a priori.
 ///

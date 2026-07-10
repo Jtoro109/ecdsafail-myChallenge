@@ -1,5 +1,6 @@
-//! (refactor r2) Mechanically extracted from mul.rs. No logic changes.
-use super::*;
+use crate::ec_add::*;
+/// (refactor r2) Mechanically extracted from mul.rs. No logic changes.
+use crate::ec_add::*;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  1-level Karatsuba multiplication

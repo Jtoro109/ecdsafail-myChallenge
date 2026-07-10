@@ -1,5 +1,6 @@
-//! (refactor) Mechanical split of bench.rs: scaled_by_* microsteps. No logic changes.
-use super::*;
+use crate::ec_add::*;
+/// (refactor) Mechanical split of bench.rs: scaled_by_* microsteps. No logic changes.
+use crate::ec_add::*;
 
 pub(crate) fn scaled_by_controlled_microstep(
     b: &mut B,

@@ -1,5 +1,6 @@
-//! (refactor) Mechanically extracted from eea.rs. No logic changes.
-use super::*;
+use crate::ec_add::*;
+/// (refactor) Mechanically extracted from eea.rs. No logic changes.
+use crate::ec_add::*;
 /// Phase-clean variant of [`mul_by_const_acc`].  It uses exact RippleAdder based
 /// add/double/halve blocks rather than the measurement-based fast variants.
 /// This is too costly for production, but useful as an algebra-validating

@@ -1,23 +1,24 @@
-//! DEV-ONLY in-process screener (gated by `KAL_SCREEN`).
-//!
-//! Never runs on the scored path: `maybe_run_screen()` returns immediately
-//! unless `KAL_SCREEN` is set, and removes the var before rebuilding so a nested
-//! `build()` cannot re-enter. It exists so the optimizer can sweep the free
-//! `KAL_REROLL` Fiat-Shamir island lottery (and any truncation knob set in the
-//! env) without the 28s official `benchmark.sh` round-trip per trial.
-//!
-//! Key speedups vs the harness:
-//!   * builds the circuit ONCE (the reroll only appends trailing X;X pairs on
-//!     qubit 0, so every reroll shares the same multi-million-op prefix), and
-//!   * runs trials in PARALLEL across cores (each thread re-derives the
-//!     Fiat-Shamir seed + inputs + simulation for its rerolls; the op prefix is
-//!     shared read-only).
-//!
-//! The Fiat-Shamir derivation and validity checks are byte-faithful replicas of
-//! `src/bin/eval_circuit.rs`. Truth is ALWAYS re-confirmed with the official
-//! `./benchmark.sh` before any commit — this is only a search accelerator.
+use crate::ec_add::*;
+/// DEV-ONLY in-process screener (gated by `KAL_SCREEN`).
+///
+/// Never runs on the scored path: `maybe_run_screen()` returns immediately
+/// unless `KAL_SCREEN` is set, and removes the var before rebuilding so a nested
+/// `build()` cannot re-enter. It exists so the optimizer can sweep the free
+/// `KAL_REROLL` Fiat-Shamir island lottery (and any truncation knob set in the
+/// env) without the 28s official `benchmark.sh` round-trip per trial.
+///
+/// Key speedups vs the harness:
+///   * builds the circuit ONCE (the reroll only appends trailing X;X pairs on
+///     qubit 0, so every reroll shares the same multi-million-op prefix), and
+///   * runs trials in PARALLEL across cores (each thread re-derives the
+///     Fiat-Shamir seed + inputs + simulation for its rerolls; the op prefix is
+///     shared read-only).
+///
+/// The Fiat-Shamir derivation and validity checks are byte-faithful replicas of
+/// `src/bin/eval_circuit.rs`. Truth is ALWAYS re-confirmed with the official
+/// `./benchmark.sh` before any commit — this is only a search accelerator.
 
-use super::*;
+use crate::ec_add::*;
 use crate::circuit::{analyze_ops, QubitId, QubitOrBit};
 use crate::sim::Simulator;
 use crate::weierstrass_elliptic_curve::WeierstrassEllipticCurve;
@@ -279,9 +280,9 @@ pub fn maybe_run_screen() {
     // Build the shared op prefix ONCE (reroll=0) and extract the X;X reroll
     // pair as the diff between reroll=1 and reroll=0 builds (byte-exact).
     std::env::set_var("KAL_REROLL", "0");
-    let base = super::build();
+    let base = crate::ec_add::build();
     std::env::set_var("KAL_REROLL", "1");
-    let one = super::build();
+    let one = crate::ec_add::build();
     if one.len() != base.len() + 2 || one[..base.len()] != base[..] {
         eprintln!(
             "KAL_SCREEN: reroll diff unexpected (base={} one={}); aborting",

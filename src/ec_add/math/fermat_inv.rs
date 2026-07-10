@@ -1,21 +1,22 @@
-//! Compact point-add circuit using Fermat inversion (x^{p-2} mod p)
-//! with Horner-style modular multiplication.
-//!
-//! ARCHITECTURE:
-//! - Replaces both Eea inversions with Fermat x^{p-2}
-//! - Uses Horner mul (no 2n workspace, ~2n² CCX per mul)
-//! - In-place squaring/multiplication via 3-register Bennett:
-//!   C = A; B = A*A (Horner); swap(A,B); B -= C → 0; free B,C
-//! - Peak estimate: ~1280-1536 qubits (vs 2716 current)
-//! - Toffoli estimate: ~60-130M (vs 4.18M current)
-//!
-//! This represents the qubit-optimized frontier. Toffoli can be
-//! improved later by replacing Fermat with a more efficient inversion
-//! once the register layout is proven.
+use crate::ec_add::*;
+/// Compact point-add circuit using Fermat inversion (x^{p-2} mod p)
+/// with Horner-style modular multiplication.
+///
+/// ARCHITECTURE:
+/// - Replaces both Eea inversions with Fermat x^{p-2}
+/// - Uses Horner mul (no 2n workspace, ~2n² CCX per mul)
+/// - In-place squaring/multiplication via 3-register Bennett:
+///   C = A; B = A*A (Horner); swap(A,B); B -= C → 0; free B,C
+/// - Peak estimate: ~1280-1536 qubits (vs 2716 current)
+/// - Toffoli estimate: ~60-130M (vs 4.18M current)
+///
+/// This represents the qubit-optimized frontier. Toffoli can be
+/// improved later by replacing Fermat with a more efficient inversion
+/// once the register layout is proven.
 
 use alloy_primitives::U256;
 
-use super::{
+use crate::ec_add::{
     bit, mod_add_qq_fast, mod_double_inplace_fast, mod_halve_inplace_fast, mod_sub_qq_fast,
     QubitId, B,
 };

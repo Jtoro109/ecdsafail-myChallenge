@@ -1,24 +1,25 @@
-//! Gidney 2025 venting adder primitives (arxiv 2507.23079).
-//!
-//! These primitives implement classical-quantum addition with O(1) clean
-//! ancilla qubits, by "venting" carry qubits (measuring them in X basis
-//! and deferring the corresponding phase-flip tasks to the end via
-//! Häner-Roetteler-Soeken's carry-xor construction).
-//!
-//! Python reference: https://zenodo.org/doi/10.5281/zenodo.15866587
-//!
-//! The key primitives:
-//! - [`xor_right_shifted_carries_into`]: Häner carry-xor.
-//!   Performs `Q_dst ^= carry(Q_src, offset, carry_in) >> 1` in ~2n CCX
-//!   using 0 clean ancilla.
-//! - [`add_vented_2clean`]: streaming vented add. 2 clean ancilla, ~n CCX,
-//!   leaves n-2 phase-flip tasks behind.
-//! - [`iadd_3clean`]: full const-quantum add. 3 clean ancilla, 4n CCX.
-//!
-//! Status: initial port, API subject to change. Tests in the unit-test
-//! module at the bottom.
+use crate::ec_add::*;
+/// Gidney 2025 venting adder primitives (arxiv 2507.23079).
+///
+/// These primitives implement classical-quantum addition with O(1) clean
+/// ancilla qubits, by "venting" carry qubits (measuring them in X basis
+/// and deferring the corresponding phase-flip tasks to the end via
+/// Häner-Roetteler-Soeken's carry-xor construction).
+///
+/// Python reference: https://zenodo.org/doi/10.5281/zenodo.15866587
+///
+/// The key primitives:
+/// - [`xor_right_shifted_carries_into`]: Häner carry-xor.
+///   Performs `Q_dst ^= carry(Q_src, offset, carry_in) >> 1` in ~2n CCX
+///   using 0 clean ancilla.
+/// - [`add_vented_2clean`]: streaming vented add. 2 clean ancilla, ~n CCX,
+///   leaves n-2 phase-flip tasks behind.
+/// - [`iadd_3clean`]: full const-quantum add. 3 clean ancilla, 4n CCX.
+///
+/// Status: initial port, API subject to change. Tests in the unit-test
+/// module at the bottom.
 
-use super::{BitId, QubitId, B};
+use crate::ec_add::{BitId, QubitId, B};
 use crate::circuit::{Op, OperationType};
 
 /// Performs `Q_dst ^= carry(Q_src, offset, carry_in) >> 1` in-place.

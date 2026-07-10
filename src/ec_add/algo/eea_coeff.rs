@@ -1,5 +1,6 @@
-//! (refactor) Mechanically extracted from eea.rs. No logic changes.
-use super::*;
+use crate::ec_add::*;
+/// (refactor) Mechanically extracted from eea.rs. No logic changes.
+use crate::ec_add::*;
 /// Optional side-channel coefficient transform used by the tagged-DIV probe.
 /// It applies the same linear Eea coefficient update to an external
 /// `(cr, cs)` pair while the ordinary inverse state still carries the
