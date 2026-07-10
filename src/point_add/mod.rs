@@ -221,7 +221,7 @@ pub fn build() -> Vec<Op> {
         let r: usize = std::env::var("KAL_REROLL")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(0);
+            .unwrap_or(47);
         if r > 0 {
             let q = tx[0];
             for _ in 0..r {

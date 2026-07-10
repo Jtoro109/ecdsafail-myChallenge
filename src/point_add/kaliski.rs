@@ -2369,7 +2369,7 @@ pub(crate) fn with_eq_const_fast<F: FnOnce(&mut B)>(
 /// a plain shift (0 Toffoli) for ~255 CCX savings per iter.
 // bxue-l2 island (peak 2310 after reverting the f1-drop): R_SMALL=326,
 // BULK_PREFIX_SAFE_ITERS=400, pair1=399, pair2=397.
-pub(crate) const R_SMALL_THRESHOLD: usize = 328;
+pub(crate) const R_SMALL_THRESHOLD: usize = 321;
 
 pub(crate) fn r_small_threshold() -> usize {
     std::env::var("KAL_R_SMALL_THRESHOLD")
@@ -2406,7 +2406,7 @@ pub(crate) fn kal_wtrunc_enabled() -> bool {
 }
 
 pub(crate) fn kal_wtrunc_k0() -> usize {
-    env_usize("KAL_WTRUNC_K0").unwrap_or(20)
+    env_usize("KAL_WTRUNC_K0").unwrap_or(21)
 }
 
 pub(crate) fn kal_wtrunc_margin() -> usize {
@@ -2466,7 +2466,7 @@ pub(crate) fn kal_cswap_uv_merge_safe_iters() -> usize {
     // guaranteed. With gcd=1, equality implies (u,v_w)=(1,1), which can appear
     // near the terminal precursor. 254 is the highest clean 9024-shot prefix
     // on the modular shift22/sol-ext island; keep tunable for future sweeps.
-    env_usize("KAL_CSWAP_UV_MERGE_SAFE_ITERS").unwrap_or(254)
+    env_usize("KAL_CSWAP_UV_MERGE_SAFE_ITERS").unwrap_or(331)
 }
 
 /// For nonzero secp256k1 inputs, the first 256 Kaliski iterations are always
@@ -2487,7 +2487,7 @@ pub(crate) fn kal_dialog_fold_enabled() -> bool {
 }
 
 pub(crate) fn kal_dialog_fold_slack() -> usize {
-    env_usize("KAL_DIALOG_FOLD_SLACK").unwrap_or(3)
+    env_usize("KAL_DIALOG_FOLD_SLACK").unwrap_or(4)
 }
 
 pub(crate) fn majfold_sub_enabled() -> bool {

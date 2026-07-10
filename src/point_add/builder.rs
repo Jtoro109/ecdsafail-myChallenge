@@ -466,6 +466,57 @@ pub(crate) fn gz_u_clean_high(u: &[QubitId], iter_idx: usize) -> &[QubitId] {
     &u[lo..]
 }
 
+pub(crate) fn gz_early_recover() -> bool {
+    kal_gouzien_9n_enabled() && env_flag_enabled("KAL_GZ_EARLY_RECOVER", true)
+}
+
+pub(crate) fn gz_s_clean_lo(iter_idx: usize, n: usize) -> usize {
+    (iter_idx + 1).min(n)
+}
+
+pub(crate) fn gz_s_clean_high(s: &[QubitId], iter_idx: usize) -> &[QubitId] {
+    let n = s.len();
+    let lo = gz_s_clean_lo(iter_idx, n);
+    &s[lo..]
+}
+
+pub(crate) fn gz_r_clean_high(r: &[QubitId], iter_idx: usize) -> &[QubitId] {
+    let n = r.len();
+    let lo = gz_s_clean_lo(iter_idx, n);
+    &r[lo..]
+}
+
+pub(crate) fn gz_load_width(iter_idx: usize, n: usize) -> usize {
+    (if iter_idx < n { n } else { 2 * n - iter_idx }).min(kal_wtrunc_width(iter_idx, n))
+}
+
+pub(crate) fn gz_u_clean_high_wtrunc(u: &[QubitId], iter_idx: usize) -> &[QubitId] {
+    let n = u.len();
+    let lo = gz_load_width(iter_idx, n).min(n);
+    &u[lo..]
+}
+
+pub(crate) fn gz_vw_clean_pool(
+    s: &[QubitId],
+    r: &[QubitId],
+    u: &[QubitId],
+    iter_idx: usize,
+) -> Vec<QubitId> {
+    let mut v: Vec<QubitId> = Vec::new();
+    v.extend_from_slice(gz_s_clean_high(s, iter_idx));
+    v.extend_from_slice(gz_r_clean_high(r, iter_idx));
+    v.extend_from_slice(gz_u_clean_high_wtrunc(u, iter_idx));
+    v
+}
+
+pub(crate) fn gz_s_clean_pool(r: &[QubitId], u: &[QubitId], iter_idx: usize) -> Vec<QubitId> {
+    let mut v: Vec<QubitId> = Vec::new();
+    v.extend_from_slice(gz_r_clean_high(r, iter_idx));
+    v.extend_from_slice(gz_u_clean_high_wtrunc(u, iter_idx));
+    v
+}
+
+
 /// Master switch for the stacked sub-2708-peak construction (default ON).
 /// When ON (no env / != "0"):
 ///   - pair1 inverse borrows dx as in-place v_w  (drops pair1-backward carrier)

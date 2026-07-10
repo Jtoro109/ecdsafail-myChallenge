@@ -1651,6 +1651,232 @@ pub(crate) fn mod_sub_solinas_ext_product(b: &mut B, acc: &[QubitId], tmp_ext: &
     }
 }
 
+pub(crate) fn schoolbook_square_symmetric_pb(
+    b: &mut B,
+    x: &[QubitId],
+    tmp_ext: &[QubitId],
+    max_fast_width: usize,
+) {
+    let n = x.len();
+    debug_assert_eq!(tmp_ext.len(), 2 * n);
+    for i in 0..n {
+        let width = if i == n - 1 { 1 } else { n - i + 1 };
+        let num_cross = if i + 1 < n { n - i - 1 } else { 0 };
+        let row = b.alloc_qubits(width);
+        b.cx(x[i], row[0]);
+        for k in 0..num_cross {
+            b.ccx(x[i], x[i + 1 + k], row[k + 2]);
+        }
+        let pad = b.alloc_qubit();
+        let mut row_padded = row.clone();
+        row_padded.push(pad);
+        let slice: Vec<QubitId> = tmp_ext[2 * i..2 * i + width + 1].to_vec();
+        let c_in = b.alloc_qubit();
+        if width > max_fast_width {
+            cuccaro_add(b, &row_padded, &slice, c_in);
+        } else {
+            cuccaro_add_fast(b, &row_padded, &slice, c_in);
+        }
+        b.free(c_in);
+        b.free(pad);
+        b.cx(x[i], row[0]);
+        for k in 0..num_cross {
+            let m = b.alloc_bit();
+            b.hmr(row[k + 2], m);
+            b.cz_if(x[i], x[i + 1 + k], m);
+        }
+        b.free_vec(&row);
+    }
+}
+
+pub(crate) fn schoolbook_square_symmetric_pb_inverse(
+    b: &mut B,
+    x: &[QubitId],
+    tmp_ext: &[QubitId],
+    max_fast_width: usize,
+) {
+    let n = x.len();
+    debug_assert_eq!(tmp_ext.len(), 2 * n);
+    for i in (0..n).rev() {
+        let width = if i == n - 1 { 1 } else { n - i + 1 };
+        let num_cross = if i + 1 < n { n - i - 1 } else { 0 };
+        let row = b.alloc_qubits(width);
+        b.cx(x[i], row[0]);
+        for k in 0..num_cross {
+            b.ccx(x[i], x[i + 1 + k], row[k + 2]);
+        }
+        let pad = b.alloc_qubit();
+        let mut row_padded = row.clone();
+        row_padded.push(pad);
+        let slice: Vec<QubitId> = tmp_ext[2 * i..2 * i + width + 1].to_vec();
+        let c_in = b.alloc_qubit();
+        if width > max_fast_width {
+            cuccaro_sub(b, &row_padded, &slice, c_in);
+        } else {
+            cuccaro_sub_fast(b, &row_padded, &slice, c_in);
+        }
+        b.free(c_in);
+        b.free(pad);
+        b.cx(x[i], row[0]);
+        for k in 0..num_cross {
+            let m = b.alloc_bit();
+            b.hmr(row[k + 2], m);
+            b.cz_if(x[i], x[i + 1 + k], m);
+        }
+        b.free_vec(&row);
+    }
+}
+
+pub(crate) fn mod_add_solinas_ext_product_lowscratch(
+    b: &mut B,
+    acc: &[QubitId],
+    tmp_ext: &[QubitId],
+    p: U256,
+) {
+    let n = acc.len();
+    debug_assert_eq!(n, 256);
+    debug_assert_eq!(tmp_ext.len(), 2 * n);
+    let lo: Vec<QubitId> = tmp_ext[0..n].to_vec();
+    let hi: Vec<QubitId> = tmp_ext[n..2 * n].to_vec();
+    mod_add_qq_lowq_lowscratch(b, acc, &lo, p);
+    mod_add_qq_lowq_lowscratch(b, acc, &hi, p);
+    for _ in 0..4 {
+        mod_double_inplace_direct(b, &hi, p);
+    }
+    mod_add_qq_lowq_lowscratch(b, acc, &hi, p);
+    for _ in 0..2 {
+        mod_double_inplace_direct(b, &hi, p);
+    }
+    mod_sub_qq_lowq_lowscratch(b, acc, &hi, p);
+    for _ in 0..4 {
+        mod_double_inplace_direct(b, &hi, p);
+    }
+    mod_add_qq_lowq_lowscratch(b, acc, &hi, p);
+    if gz_solinas_lowscratch() {
+        let (spill, flag_inv, ovf) = mod_shift_left_by_k_dirty(b, &hi, p, 22, &lo);
+        b.set_phase("shift22_pos32_dirty");
+        mod_add_qq_dirty(b, acc, &hi, p, &lo);
+        mod_shift_right_by_k_dirty(b, &hi, p, 22, spill, flag_inv, ovf, &lo);
+    } else {
+        let (spill, flag_inv, ovf) = mod_shift_left_by_k(b, &hi, p, 22);
+        mod_add_qq(b, acc, &hi, p);
+        mod_shift_right_by_k(b, &hi, p, 22, spill, flag_inv, ovf);
+    }
+    b.set_phase("sol_halve_tail");
+    for _ in 0..10 {
+        mod_halve_inplace_fast(b, &hi, p);
+    }
+}
+
+pub(crate) fn mod_sub_solinas_ext_product_lowscratch(
+    b: &mut B,
+    acc: &[QubitId],
+    tmp_ext: &[QubitId],
+    p: U256,
+) {
+    let n = acc.len();
+    debug_assert_eq!(n, 256);
+    debug_assert_eq!(tmp_ext.len(), 2 * n);
+    let lo: Vec<QubitId> = tmp_ext[0..n].to_vec();
+    let hi: Vec<QubitId> = tmp_ext[n..2 * n].to_vec();
+    mod_sub_qq_lowq_lowscratch(b, acc, &lo, p);
+    mod_sub_qq_lowq_lowscratch(b, acc, &hi, p);
+    for _ in 0..4 {
+        mod_double_inplace_direct(b, &hi, p);
+    }
+    mod_sub_qq_lowq_lowscratch(b, acc, &hi, p);
+    for _ in 0..2 {
+        mod_double_inplace_direct(b, &hi, p);
+    }
+    mod_add_qq_lowq_lowscratch(b, acc, &hi, p);
+    for _ in 0..4 {
+        mod_double_inplace_direct(b, &hi, p);
+    }
+    mod_sub_qq_lowq_lowscratch(b, acc, &hi, p);
+    if gz_solinas_lowscratch() {
+        let (spill, flag_inv, ovf) = mod_shift_left_by_k_dirty(b, &hi, p, 22, &lo);
+        b.set_phase("shift22_pos32_dirty");
+        mod_sub_qq_lowq_lowscratch(b, acc, &hi, p);
+        mod_shift_right_by_k_dirty(b, &hi, p, 22, spill, flag_inv, ovf, &lo);
+    } else {
+        let (spill, flag_inv, ovf) = mod_shift_left_by_k(b, &hi, p, 22);
+        mod_sub_qq(b, acc, &hi, p);
+        mod_shift_right_by_k(b, &hi, p, 22, spill, flag_inv, ovf);
+    }
+    b.set_phase("sol_halve_tail");
+    for _ in 0..10 {
+        mod_halve_inplace_fast(b, &hi, p);
+    }
+}
+
+pub(crate) fn mod_add_solinas_ext_product_clean_lowscratch(
+    b: &mut B,
+    acc: &[QubitId],
+    tmp_ext: &[QubitId],
+    p: U256,
+) {
+    let n = acc.len();
+    debug_assert_eq!(n, 256);
+    debug_assert_eq!(tmp_ext.len(), 2 * n);
+    let lo: Vec<QubitId> = tmp_ext[0..n].to_vec();
+    let hi: Vec<QubitId> = tmp_ext[n..2 * n].to_vec();
+    mod_add_qq_lowq_lowscratch(b, acc, &lo, p);
+    mod_add_qq_lowq_lowscratch(b, acc, &hi, p);
+    for _ in 0..4 {
+        mod_double_inplace_direct(b, &hi, p);
+    }
+    mod_add_qq_lowq_lowscratch(b, acc, &hi, p);
+    for _ in 0..2 {
+        mod_double_inplace_direct(b, &hi, p);
+    }
+    mod_sub_qq_lowq_lowscratch(b, acc, &hi, p);
+    for _ in 0..4 {
+        mod_double_inplace_direct(b, &hi, p);
+    }
+    mod_add_qq_lowq_lowscratch(b, acc, &hi, p);
+    let (spill, flag_inv, ovf) = mod_shift_left_by_k(b, &hi, p, 22);
+    mod_add_qq_lowq_lowscratch(b, acc, &hi, p);
+    mod_shift_right_by_k(b, &hi, p, 22, spill, flag_inv, ovf);
+    b.set_phase("sol_halve_tail");
+    for _ in 0..10 {
+        mod_halve_inplace_fast(b, &hi, p);
+    }
+}
+
+pub(crate) fn mod_sub_solinas_ext_product_clean_lowscratch(
+    b: &mut B,
+    acc: &[QubitId],
+    tmp_ext: &[QubitId],
+    p: U256,
+) {
+    let n = acc.len();
+    debug_assert_eq!(n, 256);
+    debug_assert_eq!(tmp_ext.len(), 2 * n);
+    let lo: Vec<QubitId> = tmp_ext[0..n].to_vec();
+    let hi: Vec<QubitId> = tmp_ext[n..2 * n].to_vec();
+    mod_sub_qq_lowq_lowscratch(b, acc, &lo, p);
+    mod_sub_qq_lowq_lowscratch(b, acc, &hi, p);
+    for _ in 0..4 {
+        mod_double_inplace_direct(b, &hi, p);
+    }
+    mod_sub_qq_lowq_lowscratch(b, acc, &hi, p);
+    for _ in 0..2 {
+        mod_double_inplace_direct(b, &hi, p);
+    }
+    mod_add_qq_lowq_lowscratch(b, acc, &hi, p);
+    for _ in 0..4 {
+        mod_double_inplace_direct(b, &hi, p);
+    }
+    mod_sub_qq_lowq_lowscratch(b, acc, &hi, p);
+    let (spill, flag_inv, ovf) = mod_shift_left_by_k(b, &hi, p, 22);
+    mod_sub_qq_lowq_lowscratch(b, acc, &hi, p);
+    mod_shift_right_by_k(b, &hi, p, 22, spill, flag_inv, ovf);
+    b.set_phase("sol_halve_tail");
+    for _ in 0..10 {
+        mod_halve_inplace_fast(b, &hi, p);
+    }
+}
+
 pub(crate) fn square_tx_and_combined_ty_l2minus3qx(
     b: &mut B,
     tx: &[QubitId],
@@ -1663,6 +1889,67 @@ pub(crate) fn square_tx_and_combined_ty_l2minus3qx(
     debug_assert_eq!(n, 256);
     debug_assert_eq!(ty.len(), n);
     debug_assert_eq!(lam.len(), n);
+
+    let affine_square_recompute = env_flag_enabled("AFFINE_SQUARE_RECOMPUTE", true)
+        && std::env::var("AFFINE_R_LIFECYCLE").ok().as_deref() != Some("0");
+
+    if affine_square_recompute {
+        let mfw = env_usize("AFFINE_SQUARE_RECOMPUTE_MFW").unwrap_or(234);
+        let dirty_fold = env_flag_enabled("AFFINE_RECOMPUTE_DIRTY_FOLD", false);
+
+        b.set_phase("affine_combined_square");
+        let tmp_ext = b.alloc_qubits(2 * n);
+        schoolbook_square_symmetric_pb(b, lam, &tmp_ext, mfw);
+
+        b.set_phase("affine_combined_breg_red");
+        let breg = b.alloc_qubits(n);
+        if dirty_fold {
+            mod_add_solinas_ext_product_lowscratch(b, &breg, &tmp_ext, p);
+        } else {
+            mod_add_solinas_ext_product_clean_lowscratch(b, &breg, &tmp_ext, p);
+        }
+
+        b.set_phase("affine_combined_square_unc");
+        schoolbook_square_symmetric_pb_inverse(b, lam, &tmp_ext, mfw);
+        b.free_vec(&tmp_ext);
+
+        mod_sub_double_qb(b, &breg, ox, p);
+        mod_sub_qb(b, &breg, ox, p);
+
+        b.set_phase("affine_combined_y_mul");
+        if env_flag_enabled("POINT_ADD_AFFINE_COMBINED_Y_KARATSUBA_LOWQ", false) {
+            mod_mul_add_into_acc_karatsuba_lowq(b, ty, lam, &breg, p);
+        } else if env_flag_enabled("AFFINE_Y_MUL_LOWSCRATCH_FOLD", stack_2565_enabled()) {
+            mod_mul_add_into_acc_schoolbook_lowscratch_fold(b, ty, lam, &breg, p);
+        } else {
+            mod_mul_add_into_acc_schoolbook(b, ty, lam, &breg, p);
+        }
+
+        b.set_phase("affine_combined_breg_unred");
+        mod_add_qb(b, &breg, ox, p);
+        mod_add_double_qb(b, &breg, ox, p);
+
+        b.set_phase("affine_combined_tx_update");
+        mod_sub_qq_fast(b, tx, &breg, p);
+
+        b.set_phase("affine_combined_breg_unred");
+        let tmp_ext2 = b.alloc_qubits(2 * n);
+        schoolbook_square_symmetric_pb(b, lam, &tmp_ext2, mfw);
+        if dirty_fold {
+            mod_sub_solinas_ext_product_lowscratch(b, &breg, &tmp_ext2, p);
+        } else {
+            mod_sub_solinas_ext_product_clean_lowscratch(b, &breg, &tmp_ext2, p);
+        }
+        schoolbook_square_symmetric_pb_inverse(b, lam, &tmp_ext2, mfw);
+        b.free_vec(&tmp_ext2);
+        b.free_vec(&breg);
+
+        b.set_phase("affine_combined_tx_update");
+        mod_add_double_qb(b, tx, ox, p);
+        mod_add_qb(b, tx, ox, p);
+        mod_neg_inplace_fast(b, tx, p);
+        return;
+    }
 
     b.set_phase("affine_combined_square");
     let tmp_ext = b.alloc_qubits(2 * n);
@@ -1678,41 +1965,23 @@ pub(crate) fn square_tx_and_combined_ty_l2minus3qx(
     if env_flag_enabled("POINT_ADD_AFFINE_COMBINED_Y_KARATSUBA_LOWQ", false) {
         mod_mul_add_into_acc_karatsuba_lowq(b, ty, lam, &breg, p);
     } else if env_flag_enabled("AFFINE_Y_MUL_LOWSCRATCH_FOLD", stack_2565_enabled()) {
-        // Peak-minimized y-mul: cuts the ~256-wide transient scratch the
-        // schoolbook MAC holds on top of its 512 product while the lam² square's
-        // 512 product co-resides (the -x correction pads, the Solinas fold's
-        // carry/const registers, and the fold mod_double's const register). The
-        // y-mul instant drops 2565 -> ~2333, below the next cluster (2459),
-        // breaking the 2565 binder. Default-on under STACK-2565; set
-        // AFFINE_Y_MUL_LOWSCRATCH_FOLD=0 to restore the byte-identical
-        // fast-fold schoolbook MAC (peak 2565).
         mod_mul_add_into_acc_schoolbook_lowscratch_fold(b, ty, lam, &breg, p);
     } else {
         mod_mul_add_into_acc_schoolbook(b, ty, lam, &breg, p);
     }
 
-    // r-lifecycle (default): fold lambda^2 once and reuse the reduced value for
-    // the tx update so tx_update is a cheap qq-sub instead of a second full
-    // Solinas fold. After the two 3Qx re-adds below, `breg` holds
-    // r = lambda^2 mod p (the reduced value) -- exactly the constant tx_update
-    // must subtract. Consume breg-as-r for tx BEFORE zeroing breg, then zero
-    // breg with the one Solinas fold it would have used anyway. No extra
-    // register => peak-neutral. Validated -18,963 Toffoli, peak 2708 unchanged.
-    // Set AFFINE_R_LIFECYCLE=0 to fall back to the legacy 3-fold path.
     let affine_r_lifecycle =
         std::env::var("AFFINE_R_LIFECYCLE").ok().as_deref() != Some("0");
 
     if affine_r_lifecycle {
         b.set_phase("affine_combined_breg_unred");
-        mod_add_qb(b, &breg, ox, p); // breg = lambda^2 mod p = r
+        mod_add_qb(b, &breg, ox, p);
         mod_add_double_qb(b, &breg, ox, p);
 
         b.set_phase("affine_combined_tx_update");
-        // tx -= r  (== tx -= lambda^2 mod p), reusing breg=r, cheap qq sub.
         mod_sub_qq_fast(b, tx, &breg, p);
 
         b.set_phase("affine_combined_breg_unred");
-        // Zero breg via the one Solinas fold it would have used anyway.
         mod_sub_solinas_ext_product(b, &breg, &tmp_ext, p);
         b.free_vec(&breg);
 
