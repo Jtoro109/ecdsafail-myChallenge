@@ -23,6 +23,8 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
   git push -u personal myCircuit:main
   ```
 - **Documentar:** Actualizar la tabla comparativa de puntajes en el [README.md](file:///home/emanuel/Documents/Universidad/Cripto/ellipticCurve/README.md).
+- **Prohibición de Acceso (Seguridad):** Está terminantemente prohibido ver, leer, analizar o interactuar de cualquier forma con la carpeta [ecdsafail-challenge](file:///home/emanuel/Documents/Universidad/Cripto/ecdsafail-challenge). Está completamente prohibido interactuar con ella o su contenido.
+
 
 ## 3. Estrategias de Optimización Estructural (Roadmap)
 - **Ruta A (Eliminación de `m_hist`):** Reemplazar el vector de ~400 qubits con un qubit ancila local o cálculo on-the-fly. *Nota: Nuestros tests clásicos de determinismo del estado final revelaron que la información del bit menos significativo (LSB) se pierde en el desplazamiento a la derecha (Step 6) cuando add_f=0, haciendo que la recuperación de m_i en backward requiera pebbling de Bennett o información adicional.*

@@ -147,6 +147,22 @@ pub(crate) fn kal_cswap_uv_merge_safe_iters() -> usize {
 // pair1=399, pair2=397). Our shift22-collapse + sol-ext-pos32-fast stay default-on.
 pub(crate) const BULK_PREFIX_SAFE_ITERS: usize = 400;
 
+pub(crate) fn kal_dialog_fold_enabled() -> bool {
+    std::env::var("KAL_DIALOG_FOLD").ok().as_deref() == Some("1")
+}
+
+pub(crate) fn kal_dialog_fold_slack() -> usize {
+    env_usize("KAL_DIALOG_FOLD_SLACK").unwrap_or(3)
+}
+
+pub(crate) fn majfold_sub_enabled() -> bool {
+    std::env::var("KAL_MAJFOLD_SUB").ok().as_deref() == Some("1")
+}
+
+pub(crate) fn majfold_add_enabled() -> bool {
+    std::env::var("KAL_MAJFOLD_ADD").ok().as_deref() == Some("1")
+}
+
 pub(crate) fn env_usize(name: &str) -> Option<usize> {
     std::env::var(name).ok().and_then(|s| s.parse::<usize>().ok())
 }

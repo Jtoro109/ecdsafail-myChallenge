@@ -699,9 +699,18 @@ pub(crate) fn csub_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256, c
         if bit(c, i) {
             b.x(acc[i]);
             if let Some(bi) = borrow_in {
-                b.ccx(acc[i], bi, target);
-                b.ccx(ctrl, acc[i], target);
-                b.ccx(ctrl, bi, target);
+                if majfold_sub_enabled() {
+                    b.cx(bi, acc[i]);
+                    b.cx(bi, ctrl);
+                    b.ccx(acc[i], ctrl, target);
+                    b.cx(bi, target);
+                    b.cx(bi, ctrl);
+                    b.cx(bi, acc[i]);
+                } else {
+                    b.ccx(acc[i], bi, target);
+                    b.ccx(ctrl, acc[i], target);
+                    b.ccx(ctrl, bi, target);
+                }
             } else {
                 b.ccx(acc[i], ctrl, target);
             }
@@ -784,9 +793,18 @@ pub(crate) fn cadd_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256, c
         let carry_in = if i == 0 { None } else { Some(carries[i - 1]) };
         if bit(c, i) {
             if let Some(ci) = carry_in {
-                b.ccx(acc[i], ci, target);
-                b.ccx(ctrl, acc[i], target);
-                b.ccx(ctrl, ci, target);
+                if majfold_add_enabled() {
+                    b.cx(ci, acc[i]);
+                    b.cx(ci, ctrl);
+                    b.ccx(acc[i], ctrl, target);
+                    b.cx(ci, target);
+                    b.cx(ci, ctrl);
+                    b.cx(ci, acc[i]);
+                } else {
+                    b.ccx(acc[i], ci, target);
+                    b.ccx(ctrl, acc[i], target);
+                    b.ccx(ctrl, ci, target);
+                }
             } else {
                 b.ccx(acc[i], ctrl, target);
             }

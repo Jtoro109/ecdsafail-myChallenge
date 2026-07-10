@@ -71,6 +71,7 @@ use crate::weierstrass_elliptic_curve::WeierstrassEllipticCurve;
 
 mod fermat_inv;
 mod venting;
+pub(crate) mod kaliski_classical_replay;
 
 mod bench_by;
 #[allow(unused_imports)]
@@ -246,6 +247,22 @@ pub fn build() -> Vec<Op> {
             b.free(c);
         }
     }
+
+    // ── KAL_REROLL: inject dummy X gates on tx[0] to shift Fiat-Shamir hash seed.
+    {
+        let r: usize = std::env::var("KAL_REROLL")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0);
+        if r > 0 {
+            let q = tx[0];
+            for _ in 0..r {
+                b.x(q);
+                b.x(q);
+            }
+        }
+    }
+
 
     if std::env::var("TRACE_PHASE_LOCAL_PEAK").is_ok() {
         for (ph, (a, op)) in b.phase_local_peaks.iter() {
