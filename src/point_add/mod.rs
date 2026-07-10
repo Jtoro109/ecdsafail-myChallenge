@@ -89,49 +89,17 @@ mod point_add;
 #[allow(unused_imports)]
 pub(crate) use point_add::*;
 
-mod kaliski_state;
+mod kaliski;
 #[allow(unused_imports)]
-pub(crate) use kaliski_state::*;
+pub(crate) use kaliski::*;
 
-mod kaliski_walk;
+mod multiplication;
 #[allow(unused_imports)]
-pub(crate) use kaliski_walk::*;
+pub(crate) use multiplication::*;
 
-mod kaliski_inv;
+mod arithmetic;
 #[allow(unused_imports)]
-pub(crate) use kaliski_inv::*;
-
-mod kaliski_coeff;
-#[allow(unused_imports)]
-pub(crate) use kaliski_coeff::*;
-
-mod mul_schoolbook;
-#[allow(unused_imports)]
-pub(crate) use mul_schoolbook::*;
-
-mod mul_karatsuba;
-#[allow(unused_imports)]
-pub(crate) use mul_karatsuba::*;
-
-mod mul_affine;
-#[allow(unused_imports)]
-pub(crate) use mul_affine::*;
-
-mod solinas;
-#[allow(unused_imports)]
-pub(crate) use solinas::*;
-
-mod cuccaro;
-#[allow(unused_imports)]
-pub(crate) use cuccaro::*;
-
-mod modular;
-#[allow(unused_imports)]
-pub(crate) use modular::*;
-
-mod compare;
-#[allow(unused_imports)]
-pub(crate) use compare::*;
+pub(crate) use arithmetic::*;
 
 mod builder;
 #[allow(unused_imports)]
