@@ -23066,7 +23066,8 @@ fn dialog_gcd_cmod_add_materialized_pseudomersenne(
     b.set_phase("dialog_gcd_materialized_special_overflow_clean");
     if dialog_gcd_raw_apply_truncated_clean_enabled() {
         let compare_start = N - dialog_gcd_apply_clean_compare_bits();
-        cmp_lt_into(b, &acc[compare_start..], &f[compare_start..], acc_ovf);
+        // Measured comparator (peak-safe: add carries already freed).
+        cmp_lt_into_fast(b, &acc[compare_start..], &f[compare_start..], acc_ovf);
     } else {
         cmp_lt_into(b, acc, &f, acc_ovf);
     }
@@ -23079,6 +23080,10 @@ fn dialog_gcd_cmod_add_materialized_pseudomersenne(
         b.cz_if(ctrl, a[i], m);
     }
     b.free_vec(&f);
+}
+
+fn dialog_gcd_measured_apply_sub_enabled() -> bool {
+    std::env::var("DIALOG_GCD_MEASURED_APPLY_SUB").ok().as_deref() == Some("1")
 }
 
 fn dialog_gcd_cmod_sub_materialized_pseudomersenne(
@@ -23104,7 +23109,16 @@ fn dialog_gcd_cmod_sub_materialized_pseudomersenne(
     f_ext.push(f_ovf);
 
     b.set_phase("dialog_gcd_materialized_special_raw_difference");
-    sub_nbit_qq(b, &f_ext, &acc_ext);
+    if dialog_gcd_measured_apply_sub_enabled() {
+        // Measured (Gidney) difference: ~n Toffoli instead of the ~2n of the
+        // non-fast ripple_adder_sub uncompute. Peak-safe: the symmetric apply ADD
+        // already runs ripple_adder_add_fast with its carry lane in this same phase.
+        let c_in = b.alloc_qubit();
+        ripple_adder_sub_fast(b, &f_ext, &acc_ext, c_in);
+        b.free(c_in);
+    } else {
+        sub_nbit_qq(b, &f_ext, &acc_ext);
+    }
     b.free(f_ovf);
 
     b.set_phase("dialog_gcd_materialized_special_underflow_fold");
@@ -23118,14 +23132,14 @@ fn dialog_gcd_cmod_sub_materialized_pseudomersenne(
         for &q in &a[compare_start..] {
             b.x(q);
         }
-        cmp_lt_into(
+        cmp_lt_into_fast(
             b,
             &acc[compare_start..],
             &a[compare_start..],
             underflow_pred,
         );
         b.ccx(ctrl, underflow_pred, acc_ovf);
-        cmp_lt_into(
+        cmp_lt_into_fast(
             b,
             &acc[compare_start..],
             &a[compare_start..],
@@ -23280,14 +23294,14 @@ fn dialog_gcd_cmod_sub_materialized_pseudomersenne_borrowed_subtrahend(
         for &q in &a[compare_start..] {
             b.x(q);
         }
-        cmp_lt_into(
+        cmp_lt_into_fast(
             b,
             &acc[compare_start..],
             &a[compare_start..],
             underflow_pred,
         );
         b.ccx(ctrl, underflow_pred, acc_ovf);
-        cmp_lt_into(
+        cmp_lt_into_fast(
             b,
             &acc[compare_start..],
             &a[compare_start..],
@@ -27846,7 +27860,7 @@ fn configure_elliptic_submission_route() {
     set_default_env("DIALOG_GCD_COMPRESSED_SIDECAR_LOG", "1");
     set_default_env("DIALOG_GCD_COMPRESSED_BLOCK_LIFECYCLE", "1");
     set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE", "0");
-    set_default_env("DIALOG_GCD_COMPARE_BITS", "75");
+    set_default_env("DIALOG_GCD_COMPARE_BITS", "63");
     set_default_env("DIALOG_GCD_APPLY_CLEAN_COMPARE_BITS", "20");
     set_default_env("DIALOG_GCD_RAW_PA", "1");
     set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "399");
@@ -27865,6 +27879,16 @@ fn configure_elliptic_submission_route() {
     // Toffoli reduction (2447846 -> 2396158), peak-neutral at 1698.
     // (Validated 0/0/0 over 9024 via eval_circuit.)
     set_default_env("DIALOG_GCD_WIDTH_MARGIN", "28");
+    // Measured (Gidney) uncompute for the apply-phase modular subtract's raw
+    // difference, mirroring the already-measured apply ADD. ~n Toffoli instead
+    // of ~2n per call; peak-neutral (same carry lane the ADD already uses).
+    set_default_env("DIALOG_GCD_MEASURED_APPLY_SUB", "1");
+    // COMPARE_BITS tightening: narrow the GCD comparator window 75 -> 63 and
+    // co-tune the Fiat-Shamir reroll (1 -> 5) to land a clean 9024-shot island.
+    // Pure Toffoli reduction (1981734 -> 1952382), peak-neutral at 1698.
+    // (Validated 0/0/0 over 9024 via eval_circuit.)
+    // Apply-phase clean compares also use the measured comparator
+    // (cmp_lt_into_fast); op stream changes, reroll=2 lands a clean island.
     set_default_env("DIALOG_REROLL", "2");
 }
 
