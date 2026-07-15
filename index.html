@@ -931,39 +931,41 @@
                     var shaShort = c.sha ? c.sha.substring(0, 7) : "";
                     var metrics = benchmarkData[shaShort] || (c.sha ? benchmarkData[c.sha] : null);
                     
-                    var authorName = (c.commit && c.commit.author && c.commit.author.name || "").toLowerCase();
-                    var login = (c.author && c.author.login || "").toLowerCase();
-                    var email = (c.commit && c.commit.author && c.commit.author.email || "").toLowerCase();
-                    
-                    var isUserOrGemini = 
-                        authorName.indexOf("jtoro") !== -1 || 
-                        authorName.indexOf("gemini") !== -1 || 
-                        authorName.indexOf("emanuel") !== -1 ||
-                        authorName.indexOf("toro") !== -1 ||
-                        login.indexOf("jtoro") !== -1 || 
-                        login.indexOf("gemini") !== -1 || 
-                        login.indexOf("emanuel") !== -1 || 
-                        email.indexOf("jtoro") !== -1 ||
-                        email.indexOf("toro") !== -1 ||
-                        email.indexOf("gemini") !== -1 ||
-                        email.indexOf("emanuel") !== -1;
-                    
-                    if (!isUserOrGemini) {
-                        return;
-                    }
+                    if (metrics) {
+                        var authorName = (c.commit && c.commit.author && c.commit.author.name || "").toLowerCase();
+                        var login = (c.author && c.author.login || "").toLowerCase();
+                        var email = (c.commit && c.commit.author && c.commit.author.email || "").toLowerCase();
+                        
+                        var isUserOrGemini = 
+                            authorName.indexOf("jtoro") !== -1 || 
+                            authorName.indexOf("gemini") !== -1 || 
+                            authorName.indexOf("emanuel") !== -1 ||
+                            authorName.indexOf("toro") !== -1 ||
+                            login.indexOf("jtoro") !== -1 || 
+                            login.indexOf("gemini") !== -1 || 
+                            login.indexOf("emanuel") !== -1 || 
+                            email.indexOf("jtoro") !== -1 ||
+                            email.indexOf("toro") !== -1 ||
+                            email.indexOf("gemini") !== -1 ||
+                            email.indexOf("emanuel") !== -1;
+                        
+                        if (!isUserOrGemini) {
+                            return;
+                        }
 
-                    processed.push({
-                        shaShort: shaShort,
-                        shaLong: c.sha,
-                        message: (c.commit && c.commit.message) || "Optimización de rutina",
-                        authorName: (c.commit && c.commit.author && c.commit.author.name) || "Jtoro109",
-                        authorAvatar: (c.author && c.author.avatar_url) || 'https://github.com/Jtoro109.png',
-                        date: new Date((c.commit && c.commit.author && c.commit.author.date) || (metrics ? metrics.timestamp * 1000 : new Date())),
-                        htmlUrl: c.html_url || ("https://github.com/" + owner + "/" + repo + "/commit/" + shaShort),
-                        toffoli: metrics ? metrics.toffoli : null,
-                        qubits: metrics ? metrics.qubits : null,
-                        score: metrics ? metrics.score : null
-                    });
+                        processed.push({
+                            shaShort: shaShort,
+                            shaLong: c.sha,
+                            message: (c.commit && c.commit.message) || "Optimización de rutina",
+                            authorName: (c.commit && c.commit.author && c.commit.author.name) || "Jtoro109",
+                            authorAvatar: (c.author && c.author.avatar_url) || 'https://github.com/Jtoro109.png',
+                            date: new Date((c.commit && c.commit.author && c.commit.author.date) || (metrics.timestamp * 1000)),
+                            htmlUrl: c.html_url || ("https://github.com/" + owner + "/" + repo + "/commit/" + shaShort),
+                            toffoli: metrics.toffoli,
+                            qubits: metrics.qubits,
+                            score: metrics.score
+                        });
+                    }
                 } catch (err) {
                     console.error("Error al procesar commit individual:", err);
                 }
