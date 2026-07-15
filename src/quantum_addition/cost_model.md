@@ -151,7 +151,7 @@ second `with_kal_inv_raw` call.
 
 ### 4.1 Why we currently need TWO invocations
 
-The current scaffold (`build_standard_ec_add`) does:
+The current scaffold (`build_standard_quantum_addition`) does:
 
 1. `with_kal_inv_raw(tx = dx)`: produces `inv_raw = dx⁻¹ · scale`. Inside
    the body: `lam = ty · inv_raw` (+halve loop), then `ty += lam · tx`

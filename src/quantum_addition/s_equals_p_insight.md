@@ -14,7 +14,7 @@ contain known values of 0, 1, and the modulus p."
 
 ## Implementation
 
-`with_kal_inv_raw` in `src/ec_add/mod.rs` now:
+`with_kal_inv_raw` in `src/quantum_addition/mod.rs` now:
 1. After forward Eea: X-flips bits of p to zero out s, then frees s
    (256 qubits freed during body, ~128 X gates, 0 Toffoli).
 2. Before backward Eea: re-allocates s, X-flips bits of p to load.

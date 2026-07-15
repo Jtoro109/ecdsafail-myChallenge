@@ -20,7 +20,7 @@ This means `bitlen(r_{i-1}) + bitlen(t_i) ≤ n+1`, so the two values
 **share a single n+2 qubit register** with a known split. Luo pushes
 this further: `(r_{i-1}, t_i, q_i)` can all share one n+2 register.
 
-I added `src/ec_add/luo_proto.rs` to budget this numerically against our
+I added `src/quantum_addition/luo_proto.rs` to budget this numerically against our
 current scaffold. Results at n=256:
 - conservative swap-in estimate: **2084q** total,
 - optimistic overlap estimate: **1828q** total,
@@ -35,7 +35,7 @@ Eea's halving-based one, so the per-round Toffoli profile is
 different. Their full Shor-algorithm Toffoli count is ~976 n³ =
 ~1.6·10¹⁰ for n=256 whole-algorithm; extracting per-point-add requires
 dividing by the 2n=512 point-adds, giving ~3.2·10⁷ Toffoli per point-add
-— worse than our 4.18M on raw count.  `luo_pz_gate_slope_is_not_ec_add_sota_shaped`
+— worse than our 4.18M on raw count.  `luo_pz_gate_slope_is_not_quantum_addition_sota_shaped`
 records this as 31,981,568 Toffoli, 11.85× the Google low-qubit point-add
 budget and 15.23× the low-gate budget.  So this is a qubit-vs-Toffoli
 tradeoff: Luo wins qubits by 50%, loses Toffoli by ~7x vs us and >10× vs
@@ -48,7 +48,7 @@ rewrite of `with_kal_inv_raw` and friends. Multi-week effort.
 
 ## 2. Kim 2026 — unconditional execution + postponed modular reduction
 
-**Update from this session:** I added `src/ec_add/kim_proto.rs` and split the question in two:
+**Update from this session:** I added `src/quantum_addition/kim_proto.rs` and split the question in two:
 
 1. **Naive narrow-r port** (wrong model): FAILS. If we keep `r` truncated to 256 bits, then
    - unconditional tail ≠ fixed doubling of the conditional result,
@@ -239,7 +239,7 @@ inversion — no saving.
 ## Prioritised moves for next session
 
 Ranked by impact × ease, updated after the falsification work in
-`src/ec_add/kim_proto.rs` and `src/ec_add/luo_proto.rs`:
+`src/quantum_addition/kim_proto.rs` and `src/quantum_addition/luo_proto.rs`:
 
 | # | trick | impact (CCX save) | qubit ∆ | implementation risk |
 |---|-------|------------------:|--------:|----------------------|
@@ -287,7 +287,7 @@ by simply X-measuring `t=x*y` and phase-correcting from preserved `x,y`.  The
 phase for a measurement mask is `mask·(x*y)`.
 
 Executable test: `raw_product_measurement_phase_is_dense_not_free_kickmix` in
-`src/ec_add/venting.rs`.
+`src/quantum_addition/venting.rs`.
 
 Toy exhaustive result at `n=10`:
 
@@ -323,7 +323,7 @@ retargeted from `Q` to `Q'`:
 ```
 
 Executable test: `slope_carried_coordinate_retargeting_is_dense_division` in
-`src/ec_add/single_inv_numeric.rs`.
+`src/quantum_addition/single_inv_numeric.rs`.
 
 Toy results:
 

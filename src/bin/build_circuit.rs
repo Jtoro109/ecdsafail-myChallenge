@@ -7,7 +7,7 @@
 //! code cannot influence the score.
 
 use quantum_ecc::circuit::Op;
-use quantum_ecc::ec_add;
+use quantum_ecc::quantum_addition;
 use std::fs;
 use std::path::Path;
 
@@ -47,7 +47,7 @@ fn write_ops(ops: &[Op], path: &Path) -> std::io::Result<()> {
 fn main() {
     println!("=== quantum_ecc: build_circuit (untrusted stage) ===\n");
     println!("-- building circuit --");
-    let ops = ec_add::build();
+    let ops = quantum_addition::build();
     println!("  emitted ops : {}", ops.len());
 
     let path = Path::new(OPS_PATH);

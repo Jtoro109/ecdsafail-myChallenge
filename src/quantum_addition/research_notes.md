@@ -1,14 +1,14 @@
-# Research notes — inversion moonshots inside `src/ec_add/`
+# Research notes — inversion moonshots inside `src/quantum_addition/`
 
 Session: 2026-04-22 (continued, moonshot-only work).
 
 This file keeps all moonshot literature / classical-analysis work under
-`src/ec_add/`, per the current scope rules.
+`src/quantum_addition/`, per the current scope rules.
 
 ## Deliverable 1 (classical B-Y on secp256k1) — confirmed
 
 Implemented classical `divstep2` reference and modular-inverse recovery in
-`src/ec_add/by.rs`, then ran a 10,000-input secp256k1 survey.
+`src/quantum_addition/by.rs`, then ran a 10,000-input secp256k1 survey.
 
 Results:
 
@@ -179,7 +179,7 @@ The remaining practical question is whether the raw key `(u mod 2^w, v mod 2^w)`
 is already enough to select the local transition class, or whether we need extra
 metadata (which would cost qubits / logic in the eventual quantum version).
 
-I added `src/ec_add/eea_jump_extra.rs` and measured how much the branch-
+I added `src/quantum_addition/eea_jump_extra.rs` and measured how much the branch-
 sequence ambiguity drops as we augment the key.
 
 For `w = 8`, `t = 4` on 10,000 real secp256k1 trajectories:
@@ -206,7 +206,7 @@ This is a huge deal:
 
 ## New result: brute-force feature search still ranks `(cmp0, cmp1, cmp2)` best
 
-I added `src/ec_add/eea_key_search.rs` and brute-forced feature subsets
+I added `src/quantum_addition/eea_key_search.rs` and brute-forced feature subsets
 of size up to 4 over a reasonable feature family built from:
 - compare bits `cmp0, cmp1, cmp2`,
 - a few low bits of `(u1, v1)` and `(u2, v2)`.
@@ -227,7 +227,7 @@ ambiguity on the full 10,000-trajectory dataset.
 
 ## New strongest result: the 125 four-step classes split into 108 bulk classes + 17 tiny tail classes
 
-I added `src/ec_add/eea_window_decomp.rs` and decomposed the actual
+I added `src/quantum_addition/eea_window_decomp.rs` and decomposed the actual
 `w = 8`, `t = 4` class family over 10,000 real secp256k1 trajectories.
 
 ### Window-length census
@@ -380,8 +380,8 @@ inversion budget.
 
 ## New strongest result: the exact bulk key shrank to 9 bits, but the branch-free 385 CCX core does **not** survive stress-testing
 
-I added `src/ec_add/eea_prefix_key.rs` and extended
-`src/ec_add/eea_hybrid_proto.rs` to test two hidden assumptions behind
+I added `src/quantum_addition/eea_prefix_key.rs` and extended
+`src/quantum_addition/eea_hybrid_proto.rs` to test two hidden assumptions behind
 the optimistic exact-3 bulk-core story.
 
 ## Exact bulk key width: now much smaller than expected
@@ -456,7 +456,7 @@ Interpretation:
 This is the most important correction in the project so far.
 
 ## Assumption A fallout in the real builder
-I extended `src/ec_add/eea_hybrid_proto.rs` to profile a more realistic
+I extended `src/quantum_addition/eea_hybrid_proto.rs` to profile a more realistic
 builder-level staged exact-3 skeleton:
 
 ```text
@@ -510,7 +510,7 @@ Interpretation:
 ## New strongest result: a naive “real” exact-step controlization is terrible, but a specialized nonterminal bulk primitive is genuinely cheaper
 
 I pushed one step beyond cost-modeling and built two more **real builder-level**
-prototypes in `src/ec_add/eea_hybrid_proto.rs`.
+prototypes in `src/quantum_addition/eea_hybrid_proto.rs`.
 
 ### 1. Naive real forward bulk-3 keep-live prototype
 This prototype literally controlizes the case-specific exact operations using
@@ -557,7 +557,7 @@ This is the first genuinely cheaper **real builder-level** bulk primitive in the
 project.
 
 ### Direct main-path integration: now working with a matching specialized backward
-I added `src/ec_add/eea_equiv.rs` to diagnose the real blocker. This is
+I added `src/quantum_addition/eea_equiv.rs` to diagnose the real blocker. This is
 not a generic profiler; it checks whether the specialized bulk primitive is
 **state-equivalent** to the generic Eea step on reachable secp256k1 states.
 

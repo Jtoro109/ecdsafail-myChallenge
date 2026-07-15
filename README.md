@@ -25,7 +25,7 @@ secures Bitcoin and Ethereum.
 
 The Rust harness:
 
-1. **Builds** a reversible circuit by calling `ec_add::build()`.
+1. **Builds** a reversible circuit by calling `quantum_addition::build()`.
    The circuit must consume four 256-element registers — `target_x`
    (qubits), `target_y` (qubits), `offset_x` (classical bits),
    `offset_y` (classical bits) — and overwrite `(target_x, target_y)`
@@ -65,7 +65,7 @@ run fail, not faster.
 
 | | Toffoli (avg/shot) | Peak qubits | Score |
 |---|---|---|---|
-| **Current optimized** | **1,915,738** | **1,698** | **3.25 × 10⁹** |
+| **Current optimized** | **1,691,097** | **1,698** | **2.87 × 10⁹** |
 
 ---
 
@@ -82,7 +82,7 @@ cargo run --release --bin eval_circuit     # validates and scores
 
 ### What you can edit
 
-You may modify **anything inside `src/ec_add/`** — split it into
+You may modify **anything inside `src/quantum_addition/`** — split it into
 submodules, rewrite primitives, swap algorithms, refactor freely.
 
 You may **not** touch the harness:

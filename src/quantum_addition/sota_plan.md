@@ -24,7 +24,7 @@ qubits each, total 2n transient.
 
 ### Session 2: port Gidney's venting adder (arxiv 2507.23079)
 
-Primitives to implement in Rust under `src/ec_add/venting.rs`:
+Primitives to implement in Rust under `src/quantum_addition/venting.rs`:
 
 1. **`xor_right_shifted_carries_into`** — Häner carry-xor: `Q_dst ^= carry(Q_src, offset, cin) >> 1`. ~n CCX, 0 ancilla. Direct port from
    `/tmp/gidney_venting/code/src/constadd/_carry_xor.py`.
@@ -116,8 +116,8 @@ single primitive. Gidney's Python code is reference quality. Porting
 4-5 functions into Rust + tests = 1 session of focused work.
 
 Target delivery:
-- `src/ec_add/venting.rs`: ~500 lines
-- `src/ec_add/venting_test.rs`: ~300 lines
+- `src/quantum_addition/venting.rs`: ~500 lines
+- `src/quantum_addition/venting_test.rs`: ~300 lines
 - Wired into `mod_halve_inplace_fast` and `schoolbook_mul` as opt-in
   behind env var.
 - Peak reduction from 2716 → ~2460 demonstrated in autoresearch.

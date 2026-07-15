@@ -16,7 +16,7 @@ use sha3::digest::{ExtendableOutput, Update};
 
 use crate::sim::Simulator;
 
-use super::eea_jump::Sampler;
+use super::gcd_jump_state::Sampler;
 use super::test_timeout::{check_deadline, two_min_deadline};
 use super::{
     eea_iteration, eea_iteration_backward, eea_iteration_bulk_prefix3,

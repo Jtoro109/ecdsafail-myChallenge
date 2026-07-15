@@ -1369,7 +1369,7 @@ route still needs a proof, a rare-tail fallback, or a different compressed
 history cleanup.
 
 The first whole-point budget with this primitive is now explicit in
-`scaled_by_div_ec_add_budget_has_sota_margin_if_history_workspace_solved`:
+`scaled_by_div_quantum_addition_budget_has_sota_margin_if_history_workspace_solved`:
 
 ```text
 current total                   = 4,111,918
@@ -2025,7 +2025,7 @@ postponed-reduction arithmetic but enumerates exact local inverse branches for
 `swap`/`both_odd`, finding `5178/10240 = 50.6%` ambiguous reached secp
 poststates.  Thus Kim removes the terminal flag but does not by itself remove
 branch history.  Luo/PZ register sharing is also not a hidden low-gate SOTA
-route: `luo_pz_gate_slope_is_not_ec_add_sota_shaped` converts the published
+route: `luo_pz_gate_slope_is_not_quantum_addition_sota_shaped` converts the published
 ~976 n^3 whole-ECDLP slope into `31,981,568` Toffoli per point-add proxy, about
 11.85x/15.23x above Google low-qubit/low-gate point-add budgets.
 

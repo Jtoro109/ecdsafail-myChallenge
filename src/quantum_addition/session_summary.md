@@ -3,7 +3,7 @@
 ## Achievement: venting adder infrastructure ported + tested
 
 Gidney's 2025 venting adder (arxiv 2507.23079) now has **9 working
-primitives** in `src/ec_add/venting.rs`:
+primitives** in `src/quantum_addition/venting.rs`:
 
 1. `xor_right_shifted_carries_into_classical` (Häner carry-xor)
 2. `add_vented_2clean_classical` + `_cxt` (streaming vented add with
@@ -97,14 +97,14 @@ Not directly applicable to single-point-add.
 
 Via `cargo test --bin experiment venting`:
 ```
-test ec_add::venting::tests::test_xor_rsh_carries_small ... ok
-test ec_add::venting::tests::test_vented_add_2clean_small ... ok
-test ec_add::venting::tests::test_iadd_linear_clean_small ... ok
-test ec_add::venting::tests::test_iadd_dirty_2clean_small ... ok
-test ec_add::venting::tests::test_ciadd_dirty_2clean_small ... ok
-test ec_add::venting::tests::test_cisub_dirty_small ... ok
-test ec_add::venting::tests::test_cisub_dirty_large ... ok
-test ec_add::venting::tests::test_cisub_dirty_eea_pattern ... ok
-test ec_add::venting::tests::test_iadd_qoffset_dirty_small ... ok
+test quantum_addition::venting::tests::test_xor_rsh_carries_small ... ok
+test quantum_addition::venting::tests::test_vented_add_2clean_small ... ok
+test quantum_addition::venting::tests::test_iadd_linear_clean_small ... ok
+test quantum_addition::venting::tests::test_iadd_dirty_2clean_small ... ok
+test quantum_addition::venting::tests::test_ciadd_dirty_2clean_small ... ok
+test quantum_addition::venting::tests::test_cisub_dirty_small ... ok
+test quantum_addition::venting::tests::test_cisub_dirty_large ... ok
+test quantum_addition::venting::tests::test_cisub_dirty_eea_pattern ... ok
+test quantum_addition::venting::tests::test_iadd_qoffset_dirty_small ... ok
 test result: ok. 9 passed; 0 failed
 ```

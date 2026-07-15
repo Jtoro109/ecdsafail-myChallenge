@@ -12,7 +12,7 @@ cargo test kim_inv_ -- --nocapture
 
 ## Measured results
 
-From `src/ec_add/kim_inv_circuit.rs` tests:
+From `src/quantum_addition/kim_inv_circuit.rs` tests:
 
 - **Kim forward inversion at n=256, 2n rounds**
   - Toffoli: **1,252,352**

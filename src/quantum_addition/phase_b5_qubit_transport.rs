@@ -12,8 +12,8 @@ use crate::circuit::{BitId, Op, OperationType, QubitId, NO_BIT, NO_QUBIT};
 
 use super::{
     mod_add_double_qb, mod_add_qb, mod_double_inplace_fast_with_dirty, mod_mul_add_qq,
-    mod_mul_sub_qq, mod_neg_inplace_fast, mod_sub_qb, round218_b5_program, round218_b5_selector,
-    source_live_d1, B, N, SECP256K1_P,
+    mod_mul_sub_qq, mod_neg_inplace_fast, mod_sub_qb, phase_b5_execution, phase_b5_state_selector,
+    quantum_d1_data_source, B, N, SECP256K1_P,
 };
 
 pub const ROUND218_B5_SOURCE_LIVE_TRANSPORT_PA_ENV: &str = "ROUND218_B5_SOURCE_LIVE_TRANSPORT_PA";
@@ -61,11 +61,11 @@ pub const ROUND404_QTAIL_ROUND217_HPREFIX_APPLICATION_TOFFOLI_BOUND: usize =
     ROUND404_QTAIL_ROUND217_HPREFIX_ONE_WAY_TOFFOLI_BOUND
         - ROUND404_QTAIL_ROUND217_HPREFIX_PARSER_TOFFOLI_BOUND;
 pub const ROUND406_QTAIL_ROUND217_PRODUCT_M2_ONE_WAY_TOFFOLI_BOUND: usize =
-    source_live_d1::ROUND217_SOURCE_LIVE_TRANSPORT_ONE_WAY_TOFFOLI_MAX;
+    quantum_d1_data_source::ROUND217_SOURCE_LIVE_TRANSPORT_ONE_WAY_TOFFOLI_MAX;
 pub const ROUND406_QTAIL_ROUND217_PRODUCT_M2_PARSER_TOFFOLI_BOUND: usize =
-    source_live_d1::ROUND217_SOURCE_LIVE_TRANSPORT_PARSER_TOFFOLI;
+    quantum_d1_data_source::ROUND217_SOURCE_LIVE_TRANSPORT_PARSER_TOFFOLI;
 pub const ROUND406_QTAIL_ROUND217_PRODUCT_M2_APPLICATION_TOFFOLI_BOUND: usize =
-    source_live_d1::ROUND217_SOURCE_LIVE_TRANSPORT_MAX_APPLICATION_TOFFOLI;
+    quantum_d1_data_source::ROUND217_SOURCE_LIVE_TRANSPORT_MAX_APPLICATION_TOFFOLI;
 pub const ROUND406_B5_SOURCE_LIVE_PRODUCT_LOWERER_BODY_PLAN_CLASSIFICATION: &str =
     "ROUND442_SOURCE_LIVE_PRODUCT_LOWERER_HASH_HISTORY_BODY_EMITS_GATES";
 
@@ -193,7 +193,7 @@ pub const ROUND406_B5_SOURCE_LIVE_PRODUCT_LOWERER_BODY_PHASE_BLOCKS:
 ];
 
 pub fn round218_b5_transport_contract() -> B5TransportContract {
-    let row = round218_b5_program::ROUND218_B5_RESOURCE_ROW;
+    let row = phase_b5_execution::ROUND218_B5_RESOURCE_ROW;
     B5TransportContract {
         classification: ROUND218_B5_TRANSPORT_CLASSIFICATION,
         target_classification: row.classification,
@@ -208,7 +208,7 @@ pub fn round218_b5_transport_contract() -> B5TransportContract {
 }
 
 pub fn round218_b5_source_live_product_lowerer_contract() -> B5SourceLiveProductLowererContract {
-    let budget = source_live_d1::round398_qtail_round217_product_budget_gate();
+    let budget = quantum_d1_data_source::round398_qtail_round217_product_budget_gate();
     let proof_projected_pa_toffoli =
         budget.non_product_toffoli + ROUND404_QTAIL_ROUND217_HPREFIX_ONE_WAY_TOFFOLI_BOUND;
     B5SourceLiveProductLowererContract {
@@ -281,7 +281,7 @@ pub(super) fn emit_round218_b5_source_live_transport_pa_or_fail(
         panic!("{}", round218_b5_transport_blocker_message(tx, ty, ox, oy));
     }
 
-    let source_steps = round218_b5_program::ROUND218_B5_STEPS;
+    let source_steps = phase_b5_execution::ROUND218_B5_STEPS;
     let mut zeta = b.alloc_qubits(11);
     let mut f = b.alloc_qubits(source_steps);
     let mut g = b.alloc_qubits(source_steps);
@@ -301,9 +301,9 @@ pub(super) fn emit_round218_b5_source_live_transport_pa_or_fail(
 
     b.set_phase("round218_b5_source_live_transport_state_a_quotient");
     let scaled_quotient = b.alloc_qubits(N);
-    for block in 0..round218_b5_program::ROUND218_B5_BLOCKS {
-        let lo = block * round218_b5_program::ROUND218_B5_BLOCK_BITS;
-        let hi = lo + round218_b5_program::ROUND218_B5_BLOCK_BITS;
+    for block in 0..phase_b5_execution::ROUND218_B5_BLOCKS {
+        let lo = block * phase_b5_execution::ROUND218_B5_BLOCK_BITS;
+        let hi = lo + phase_b5_execution::ROUND218_B5_BLOCK_BITS;
         emit_round218_b5_source_live_transport_block(
             b,
             &f[lo..hi],
@@ -320,7 +320,7 @@ pub(super) fn emit_round218_b5_source_live_transport_pa_or_fail(
     let final_f_sign = round218_b5_final_f_sign(&f);
     emit_round218_cmod_neg_canonical(b, &scaled_quotient, final_f_sign, p);
     b.set_phase("round218_b5_source_live_transport_state_a_unscale");
-    for _ in 0..round218_b5_program::ROUND218_B5_STEPS {
+    for _ in 0..phase_b5_execution::ROUND218_B5_STEPS {
         super::mod_halve_inplace_fast(b, &scaled_quotient, p);
     }
     b.set_phase("round218_b5_source_live_transport_state_a_quotient_swap");
@@ -411,9 +411,9 @@ pub(super) fn emit_round218_b5_source_live_transport_pa_or_fail(
     for _ in 0..source_steps {
         super::mod_double_inplace_fast(b, ty, p);
     }
-    for block in 0..round218_b5_program::ROUND218_B5_BLOCKS {
-        let lo = block * round218_b5_program::ROUND218_B5_BLOCK_BITS;
-        let hi = lo + round218_b5_program::ROUND218_B5_BLOCK_BITS;
+    for block in 0..phase_b5_execution::ROUND218_B5_BLOCKS {
+        let lo = block * phase_b5_execution::ROUND218_B5_BLOCK_BITS;
+        let hi = lo + phase_b5_execution::ROUND218_B5_BLOCK_BITS;
         emit_round218_b5_source_live_transport_block(
             b,
             &f[lo..hi],
@@ -500,11 +500,11 @@ pub(super) fn round218_b5_transport_blocker_message(
 }
 
 fn emit_round218_b5_quantum_zeta_update(b: &mut B, zeta: &[QubitId], branch: QubitId) {
-    round218_b5_selector::emit_round218_b5_twos_zeta_update_step(b, zeta, branch);
+    phase_b5_state_selector::emit_round218_b5_twos_zeta_update_step(b, zeta, branch);
 }
 
 fn emit_round218_b5_quantum_zeta_update_inverse(b: &mut B, zeta: &[QubitId], branch: QubitId) {
-    round218_b5_selector::emit_round218_b5_twos_zeta_update_step_inverse(b, zeta, branch);
+    phase_b5_state_selector::emit_round218_b5_twos_zeta_update_step_inverse(b, zeta, branch);
 }
 
 fn emit_round218_b5_controlled_scaled_coefficient_step(
@@ -581,7 +581,7 @@ fn emit_round218_b5_reverse_product_endpoint_cleanup(
     b.set_phase("round218_b5_reverse_product_endpoint_cleanup");
     b.set_phase("round218_b5_reverse_product_endpoint_cleanup_inverse");
     let inverse_iters =
-        super::eea_effective_iters(h.len(), round218_b5_program::ROUND218_B5_STEPS);
+        super::eea_effective_iters(h.len(), phase_b5_execution::ROUND218_B5_STEPS);
     let mut dirty: Vec<QubitId> = h.to_vec();
     dirty.extend_from_slice(final_product);
     super::with_kal_inv_raw_borrowing_v(b, h, p, inverse_iters, |b, inv_raw| {
@@ -611,7 +611,7 @@ fn emit_round218_b5_source_low_state_parser(
     );
     assert_eq!(
         f.len(),
-        round218_b5_program::ROUND218_B5_STEPS,
+        phase_b5_execution::ROUND218_B5_STEPS,
         "source-live parser work register width"
     );
     assert_eq!(g.len(), f.len(), "source-live parser state register width");
@@ -619,7 +619,7 @@ fn emit_round218_b5_source_low_state_parser(
     assert_eq!(p, SECP256K1_P, "source-live parser is secp256k1-only");
 
     let expected_hist =
-        round218_b5_program::ROUND218_B5_BLOCK_BITS * round218_b5_program::ROUND218_B5_BLOCKS;
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS * phase_b5_execution::ROUND218_B5_BLOCKS;
     assert_eq!(
         branch_hist.len(),
         expected_hist,
@@ -641,17 +641,17 @@ fn emit_round218_b5_source_low_state_parser(
         b.cx(dx[i], g[i]);
     }
 
-    for block in 0..round218_b5_program::ROUND218_B5_BLOCKS {
-        let lo = block * round218_b5_program::ROUND218_B5_BLOCK_BITS;
-        let hi = lo + round218_b5_program::ROUND218_B5_BLOCK_BITS;
+    for block in 0..phase_b5_execution::ROUND218_B5_BLOCKS {
+        let lo = block * phase_b5_execution::ROUND218_B5_BLOCK_BITS;
+        let hi = lo + phase_b5_execution::ROUND218_B5_BLOCK_BITS;
         b.set_phase("round218_b5_source_live_transport_source_block_parse");
-        for j in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+        for j in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
             let step = lo + j;
             let width = f.len() - step;
             b.cx(g[0], old_g0_hist[step]);
             let sign = zeta[zeta.len() - 1];
             b.ccx(sign, g[0], branch_hist[step]);
-            round218_b5_selector::emit_round218_b5_low_window_apply_step(
+            phase_b5_state_selector::emit_round218_b5_low_window_apply_step(
                 b,
                 f,
                 g,
@@ -681,7 +681,7 @@ fn emit_round218_b5_source_low_state_parser_cleanup(
     );
     assert_eq!(
         f.len(),
-        round218_b5_program::ROUND218_B5_STEPS,
+        phase_b5_execution::ROUND218_B5_STEPS,
         "source-live parser cleanup width"
     );
     assert_eq!(g.len(), f.len(), "source-live parser cleanup state width");
@@ -692,7 +692,7 @@ fn emit_round218_b5_source_low_state_parser_cleanup(
     );
 
     let expected_hist =
-        round218_b5_program::ROUND218_B5_BLOCK_BITS * round218_b5_program::ROUND218_B5_BLOCKS;
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS * phase_b5_execution::ROUND218_B5_BLOCKS;
     assert_eq!(
         branch_hist.len(),
         expected_hist,
@@ -704,15 +704,15 @@ fn emit_round218_b5_source_low_state_parser_cleanup(
         "source-live parser must retain all forward old-g0 bits"
     );
 
-    for block in (0..round218_b5_program::ROUND218_B5_BLOCKS).rev() {
-        let lo = block * round218_b5_program::ROUND218_B5_BLOCK_BITS;
-        let hi = lo + round218_b5_program::ROUND218_B5_BLOCK_BITS;
+    for block in (0..phase_b5_execution::ROUND218_B5_BLOCKS).rev() {
+        let lo = block * phase_b5_execution::ROUND218_B5_BLOCK_BITS;
+        let hi = lo + phase_b5_execution::ROUND218_B5_BLOCK_BITS;
         b.set_phase("round218_b5_source_live_transport_source_block_unparse");
-        for j in (0..round218_b5_program::ROUND218_B5_BLOCK_BITS).rev() {
+        for j in (0..phase_b5_execution::ROUND218_B5_BLOCK_BITS).rev() {
             let step = lo + j;
             let width = f.len() - step;
             emit_round218_b5_quantum_zeta_update_inverse(b, zeta, branch_hist[step]);
-            round218_b5_selector::emit_round218_b5_low_window_unapply_step(
+            phase_b5_state_selector::emit_round218_b5_low_window_unapply_step(
                 b,
                 f,
                 g,
@@ -754,29 +754,29 @@ pub(super) fn emit_round218_b5_source_live_transport_block(
     );
     assert_eq!(
         f_low.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "source-live f_low must be a B=5 window"
     );
     assert_eq!(
         g_low.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "source-live g_low must be a B=5 window"
     );
     assert_eq!(v.len(), N, "coefficient V must be 256 qubits");
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "branch word must be a B=5 word"
     );
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "old_g0 word must be a B=5 word"
     );
 
     b.set_phase("round218_b5_source_live_block_select");
-    round218_b5_selector::emit_round218_b5_low_state_selector(
+    phase_b5_state_selector::emit_round218_b5_low_state_selector(
         b,
         f_low,
         g_low,
@@ -819,39 +819,39 @@ pub(super) fn emit_round218_b5_source_window_transport_block(
     );
     assert_eq!(
         f_window.len(),
-        round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS,
+        phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS,
         "source-window f must be a 2B=10-bit window"
     );
     assert_eq!(
         g_window.len(),
-        round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS,
+        phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS,
         "source-window g must be a 2B=10-bit window"
     );
     assert_eq!(v.len(), N, "coefficient V must be 256 qubits");
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "branch word must be a B=5 word"
     );
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "old_g0 word must be a B=5 word"
     );
     assert_eq!(
         next_f_low.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "next f low word must be a B=5 word"
     );
     assert_eq!(
         next_g_low.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "next g low word must be a B=5 word"
     );
 
     b.set_phase("round218_b5_source_window_block_parse");
-    round218_b5_selector::emit_round218_b5_low_window_parser(
+    phase_b5_state_selector::emit_round218_b5_low_window_parser(
         b,
         f_window,
         g_window,
@@ -879,7 +879,7 @@ pub(super) fn emit_round218_b5_source_window_transport_block(
 
 pub(super) fn emit_round218_b5_dynamic_source_window_transport_block(
     b: &mut B,
-    spec: round218_b5_selector::Round218B5DynamicZetaTransducerSpec,
+    spec: phase_b5_state_selector::Round218B5DynamicZetaTransducerSpec,
     zeta_start: &[QubitId],
     f_window: &[QubitId],
     g_window: &[QubitId],
@@ -898,7 +898,7 @@ pub(super) fn emit_round218_b5_dynamic_source_window_transport_block(
     );
     assert_eq!(zeta_start.len(), spec.start_zeta_bits());
     assert!(
-        f_window.len() >= round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        f_window.len() >= phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "dynamic source-window block needs at least B=5 source bits"
     );
     assert_eq!(g_window.len(), f_window.len());
@@ -906,24 +906,24 @@ pub(super) fn emit_round218_b5_dynamic_source_window_transport_block(
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "branch word must be a B=5 word"
     );
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "old_g0 word must be a B=5 word"
     );
     assert_eq!(end_zeta.len(), spec.end_zeta_bits());
     assert_eq!(
         next_f.len(),
-        f_window.len() - round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        f_window.len() - phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "next f word must retain window_bits-B bits"
     );
     assert_eq!(next_g.len(), next_f.len());
 
     b.set_phase("round218_b5_dynamic_source_window_block_parse");
-    round218_b5_selector::emit_round218_b5_dynamic_window_parser(
+    phase_b5_state_selector::emit_round218_b5_dynamic_window_parser(
         b,
         spec,
         zeta_start,
@@ -962,7 +962,7 @@ pub(super) fn emit_round218_b5_twos_zeta_source_window_transport_block(
         "two's-complement zeta register needs at least 3 signed bits"
     );
     assert!(
-        f_window.len() >= round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        f_window.len() >= phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "two's-complement source-window block needs at least B=5 source bits"
     );
     assert_eq!(g_window.len(), f_window.len());
@@ -970,23 +970,23 @@ pub(super) fn emit_round218_b5_twos_zeta_source_window_transport_block(
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "branch word must be a B=5 word"
     );
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "old_g0 word must be a B=5 word"
     );
     assert_eq!(
         next_f.len(),
-        f_window.len() - round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        f_window.len() - phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "next f word must retain window_bits-B bits"
     );
     assert_eq!(next_g.len(), next_f.len());
 
     b.set_phase("round218_b5_twos_zeta_source_window_block_parse");
-    round218_b5_selector::emit_round218_b5_twos_zeta_window_parser(
+    phase_b5_state_selector::emit_round218_b5_twos_zeta_window_parser(
         b,
         zeta,
         f_window,
@@ -1010,7 +1010,7 @@ pub(super) fn emit_round218_b5_twos_zeta_source_window_transport_block(
 }
 
 const ROUND314_B5_HASH_BITS: usize = 8;
-const ROUND314_B5_CONTROL_BITS: usize = 2 * round218_b5_program::ROUND218_B5_BLOCK_BITS;
+const ROUND314_B5_CONTROL_BITS: usize = 2 * phase_b5_execution::ROUND218_B5_BLOCK_BITS;
 const ROUND314_B5_HASH_MASKS: [u16; ROUND314_B5_HASH_BITS] = [513, 258, 128, 64, 32, 16, 8, 7];
 const ROUND314_B5_KERNEL_A: u16 = 262;
 const ROUND314_B5_KERNEL_B: u16 = 517;
@@ -1193,7 +1193,7 @@ fn round314_b5_control_wire(
     old_g0_word: &[QubitId],
     control_bit: usize,
 ) -> QubitId {
-    let b_bits = round218_b5_program::ROUND218_B5_BLOCK_BITS;
+    let b_bits = phase_b5_execution::ROUND218_B5_BLOCK_BITS;
     if control_bit < b_bits {
         branch_word[control_bit]
     } else {
@@ -1362,11 +1362,11 @@ fn emit_round314_b5_post_hash_control_cleaner(
     );
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
     let helper = b.alloc_qubit();
     let scratch = b.alloc_qubits(zeta.len() + ROUND314_B5_HASH_BITS - 2);
@@ -1447,7 +1447,7 @@ pub(super) fn emit_round315_b5_source_stream_backward_block_from_hash(
 ) {
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
     assert_eq!(old_g0_word.len(), branch_word.len());
     assert_eq!(l_hash.len(), ROUND314_B5_HASH_BITS);
@@ -1464,12 +1464,12 @@ pub(super) fn emit_round315_b5_source_stream_backward_block_from_hash(
     for j in (0..branch_word.len()).rev() {
         let step = step0 + j;
         let width = f.len() - step;
-        round218_b5_selector::emit_round218_b5_twos_zeta_update_step_inverse(
+        phase_b5_state_selector::emit_round218_b5_twos_zeta_update_step_inverse(
             b,
             zeta,
             branch_word[j],
         );
-        round218_b5_selector::emit_round218_b5_low_window_unapply_step(
+        phase_b5_state_selector::emit_round218_b5_low_window_unapply_step(
             b,
             f,
             g,
@@ -1481,7 +1481,7 @@ pub(super) fn emit_round315_b5_source_stream_backward_block_from_hash(
         emit_round315_b5_control_bit_hash_into_l(b, j, branch_word[j], l_hash);
         emit_round315_b5_control_bit_hash_into_l(
             b,
-            round218_b5_program::ROUND218_B5_BLOCK_BITS + j,
+            phase_b5_execution::ROUND218_B5_BLOCK_BITS + j,
             old_g0_word[j],
             l_hash,
         );
@@ -1622,7 +1622,7 @@ pub(super) fn emit_round326_b5_live_l_rank_exact_cover(
 ) {
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "Round326 live-L old_g0 word must be B=5"
     );
     assert_eq!(l_rank.len(), 4, "Round326 live-L rank must be 4 bits");
@@ -1693,12 +1693,12 @@ pub(super) fn emit_round326_b5_branch_rank_exact_cover_cleaner(
 ) {
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "Round326 branch cleaner old_g0 word must be B=5"
     );
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "Round326 branch cleaner target word must be B=5"
     );
     assert_eq!(
@@ -1731,7 +1731,7 @@ pub(super) fn emit_round326_b5_branch_rank_exact_cover_cleaner(
     }
 
     let mid_flag = flags[8];
-    for bit in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    for bit in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         emit_round326_b5_rank_one_controls(
             b,
             mid_flag,
@@ -1745,7 +1745,7 @@ pub(super) fn emit_round326_b5_branch_rank_exact_cover_cleaner(
     }
     for tail_idx in 0..5 {
         let flag = flags[9 + tail_idx];
-        for bit in tail_idx..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+        for bit in tail_idx..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
             emit_round326_b5_rank_one_controls(
                 b,
                 flag,
@@ -1785,7 +1785,7 @@ pub(super) fn emit_round314_b5_source_live_hash_transport_window_block(
         "two's-complement zeta register needs at least 3 signed bits"
     );
     assert!(
-        f_window.len() >= round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        f_window.len() >= phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "Round314 source-live hash block needs at least B=5 source bits"
     );
     assert_eq!(g_window.len(), f_window.len());
@@ -1798,16 +1798,16 @@ pub(super) fn emit_round314_b5_source_live_hash_transport_window_block(
     );
     assert_eq!(
         next_f.len(),
-        f_window.len() - round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        f_window.len() - phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "next f word must retain window_bits-B bits"
     );
     assert_eq!(next_g.len(), next_f.len());
 
-    let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
-    let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
 
     b.set_phase("round314_b5_source_live_hash_parse_and_advance");
-    round218_b5_selector::emit_round218_b5_twos_zeta_window_parser(
+    phase_b5_state_selector::emit_round218_b5_twos_zeta_window_parser(
         b,
         zeta,
         f_window,
@@ -1857,18 +1857,18 @@ pub(super) fn emit_round218_b5_source_live_projective_scalar_transport_block(
         "two's-complement zeta register needs at least 3 signed bits"
     );
     assert!(
-        f_window.len() >= round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        f_window.len() >= phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "source-live projective-scalar transport block needs at least B=5 source bits"
     );
     assert_eq!(g_window.len(), f_window.len());
     assert_eq!(v.len(), N, "coefficient V must be 256 qubits");
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
 
-    let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
-    let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
 
     b.set_phase("round218_b5_source_live_projective_scalar_parse");
-    round218_b5_selector::emit_round218_b5_twos_zeta_control_word_parser(
+    phase_b5_state_selector::emit_round218_b5_twos_zeta_control_word_parser(
         b,
         zeta,
         f_window,
@@ -1894,7 +1894,7 @@ pub(super) fn emit_round218_b5_source_live_projective_scalar_transport_block(
     );
 
     b.set_phase("round218_b5_source_live_projective_scalar_unparse");
-    round218_b5_selector::emit_round218_b5_twos_zeta_control_word_parser_uncompute(
+    phase_b5_state_selector::emit_round218_b5_twos_zeta_control_word_parser_uncompute(
         b,
         zeta,
         f_window,
@@ -1925,18 +1925,18 @@ pub(super) fn emit_round379_b5_source_live_cheap_lft_frame_block(
         "two's-complement zeta register needs at least 3 signed bits"
     );
     assert!(
-        f_window.len() >= round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        f_window.len() >= phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "source-live cheap LFT frame block needs at least B=5 source bits"
     );
     assert_eq!(g_window.len(), f_window.len());
     assert_eq!(v.len(), N, "coefficient V must be 256 qubits");
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
 
-    let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
-    let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
 
     b.set_phase("round379_b5_source_live_cheap_lft_parse");
-    round218_b5_selector::emit_round218_b5_twos_zeta_control_word_parser(
+    phase_b5_state_selector::emit_round218_b5_twos_zeta_control_word_parser(
         b,
         zeta,
         f_window,
@@ -1954,7 +1954,7 @@ pub(super) fn emit_round379_b5_source_live_cheap_lft_frame_block(
     }
 
     b.set_phase("round379_b5_source_live_cheap_lft_unparse");
-    round218_b5_selector::emit_round218_b5_twos_zeta_control_word_parser_uncompute(
+    phase_b5_state_selector::emit_round218_b5_twos_zeta_control_word_parser_uncompute(
         b,
         zeta,
         f_window,
@@ -1985,17 +1985,17 @@ pub(super) fn emit_round381_b5_source_live_branch_only_cheap_lft_frame_block(
         "two's-complement zeta register needs at least 3 signed bits"
     );
     assert!(
-        f_window.len() >= round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        f_window.len() >= phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "source-live branch-only cheap LFT frame block needs at least B=5 source bits"
     );
     assert_eq!(g_window.len(), f_window.len());
     assert_eq!(v.len(), N, "coefficient V must be 256 qubits");
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
 
-    let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
 
     b.set_phase("round381_b5_source_live_branch_only_cheap_lft_parse");
-    round218_b5_selector::emit_round218_b5_twos_zeta_branch_word_parser(
+    phase_b5_state_selector::emit_round218_b5_twos_zeta_branch_word_parser(
         b,
         zeta,
         f_window,
@@ -2007,7 +2007,7 @@ pub(super) fn emit_round381_b5_source_live_branch_only_cheap_lft_frame_block(
     emit_b5_cheap_lft_frame_from_branch_controls(b, v, r, &branch_word, p);
 
     b.set_phase("round381_b5_source_live_branch_only_cheap_lft_unparse");
-    round218_b5_selector::emit_round218_b5_twos_zeta_branch_word_parser_uncompute(
+    phase_b5_state_selector::emit_round218_b5_twos_zeta_branch_word_parser_uncompute(
         b,
         zeta,
         f_window,
@@ -2039,7 +2039,7 @@ pub(super) fn emit_round383_b5_current_pattern_ranked_cheap_lft_source_block(
     );
     assert_eq!(
         f_window.len(),
-        round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS,
+        phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS,
         "Round383 source block expects a 2B=10 source window"
     );
     assert_eq!(g_window.len(), f_window.len());
@@ -2048,14 +2048,14 @@ pub(super) fn emit_round383_b5_current_pattern_ranked_cheap_lft_source_block(
     assert_eq!(l_rank.len(), 4, "Round383 L rank must be 4 bits");
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "Round383 old_g0 history must be a B=5 word"
     );
 
-    let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
 
     b.set_phase("round383_b5_current_pattern_parse_controls");
-    round218_b5_selector::emit_round218_b5_twos_zeta_control_word_parser(
+    phase_b5_state_selector::emit_round218_b5_twos_zeta_control_word_parser(
         b,
         zeta,
         f_window,
@@ -2068,7 +2068,7 @@ pub(super) fn emit_round383_b5_current_pattern_ranked_cheap_lft_source_block(
     emit_round326_b5_live_l_rank_exact_cover(b, zeta, &old_g0_word, l_rank);
 
     b.set_phase("round383_b5_current_pattern_source_advance");
-    round218_b5_selector::emit_round218_b5_source_stream_forward_block_from_controls(
+    phase_b5_state_selector::emit_round218_b5_source_stream_forward_block_from_controls(
         b,
         zeta,
         f_window,
@@ -2101,18 +2101,18 @@ pub(super) fn emit_round384_b5_current_pattern_ranked_source_rollback_block(
     );
     assert_eq!(
         f_window.len(),
-        round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS,
+        phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS,
         "Round384 rollback expects a 2B=10 source window"
     );
     assert_eq!(g_window.len(), f_window.len());
     assert_eq!(l_rank.len(), 4, "Round384 L rank must be 4 bits");
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "Round384 old_g0 history must be a B=5 word"
     );
 
-    let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
 
     b.set_phase("round384_b5_current_pattern_recover_branch");
     emit_round326_b5_branch_rank_exact_cover_cleaner(b, zeta, old_g0_word, l_rank, &branch_word);
@@ -2122,8 +2122,8 @@ pub(super) fn emit_round384_b5_current_pattern_ranked_source_rollback_block(
     for i in 0..zeta.len() {
         b.cx(zeta[i], start_zeta[i]);
     }
-    for step in (0..round218_b5_program::ROUND218_B5_BLOCK_BITS).rev() {
-        round218_b5_selector::emit_round218_b5_twos_zeta_update_step_inverse(
+    for step in (0..phase_b5_execution::ROUND218_B5_BLOCK_BITS).rev() {
+        phase_b5_state_selector::emit_round218_b5_twos_zeta_update_step_inverse(
             b,
             &start_zeta,
             branch_word[step],
@@ -2134,8 +2134,8 @@ pub(super) fn emit_round384_b5_current_pattern_ranked_source_rollback_block(
     emit_round326_b5_live_l_rank_exact_cover(b, &start_zeta, old_g0_word, l_rank);
 
     b.set_phase("round384_b5_current_pattern_uncompute_start_zeta");
-    for step in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
-        round218_b5_selector::emit_round218_b5_twos_zeta_update_step(
+    for step in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
+        phase_b5_state_selector::emit_round218_b5_twos_zeta_update_step(
             b,
             &start_zeta,
             branch_word[step],
@@ -2147,7 +2147,7 @@ pub(super) fn emit_round384_b5_current_pattern_ranked_source_rollback_block(
     b.free_vec(&start_zeta);
 
     b.set_phase("round384_b5_current_pattern_source_backward_clean_history");
-    round218_b5_selector::emit_round218_b5_source_stream_backward_block(
+    phase_b5_state_selector::emit_round218_b5_source_stream_backward_block(
         b,
         zeta,
         f_window,
@@ -2179,18 +2179,18 @@ pub(super) fn emit_round385_b5_fused_advance_frame_rollback_block(
     );
     assert_eq!(
         f_window.len(),
-        round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS,
+        phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS,
         "Round385 fused block expects a 2B=10 source window"
     );
     assert_eq!(g_window.len(), f_window.len());
     assert_eq!(v.len(), N, "coefficient V must be 256 qubits");
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
 
-    let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
-    let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
 
     b.set_phase("round385_b5_fused_parse_controls");
-    round218_b5_selector::emit_round218_b5_twos_zeta_control_word_parser(
+    phase_b5_state_selector::emit_round218_b5_twos_zeta_control_word_parser(
         b,
         zeta,
         f_window,
@@ -2200,7 +2200,7 @@ pub(super) fn emit_round385_b5_fused_advance_frame_rollback_block(
     );
 
     b.set_phase("round385_b5_fused_source_advance");
-    round218_b5_selector::emit_round218_b5_source_stream_forward_block_from_controls(
+    phase_b5_state_selector::emit_round218_b5_source_stream_forward_block_from_controls(
         b,
         zeta,
         f_window,
@@ -2214,7 +2214,7 @@ pub(super) fn emit_round385_b5_fused_advance_frame_rollback_block(
     emit_b5_cheap_lft_frame_from_branch_controls(b, v, r, &branch_word, p);
 
     b.set_phase("round385_b5_fused_source_rollback_clean_controls");
-    round218_b5_selector::emit_round218_b5_source_stream_backward_block(
+    phase_b5_state_selector::emit_round218_b5_source_stream_backward_block(
         b,
         zeta,
         f_window,
@@ -2243,7 +2243,7 @@ fn emit_b5_cheap_lft_frame_from_branch_controls(
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "branch word must be a B=5 word"
     );
 
@@ -2295,8 +2295,8 @@ const ROUND331_B5_OLD_G0_FULL_ERASER_KMX: &str = include_str!(
 );
 const ROUND331_B5_OLD_G0_ERASER_F_BITS: usize = 10;
 const ROUND331_B5_OLD_G0_ERASER_G_BITS: usize = 10;
-const ROUND331_B5_OLD_G0_ERASER_BRANCH_BITS: usize = round218_b5_program::ROUND218_B5_BLOCK_BITS;
-const ROUND331_B5_OLD_G0_ERASER_OLD_BITS: usize = round218_b5_program::ROUND218_B5_BLOCK_BITS;
+const ROUND331_B5_OLD_G0_ERASER_BRANCH_BITS: usize = phase_b5_execution::ROUND218_B5_BLOCK_BITS;
+const ROUND331_B5_OLD_G0_ERASER_OLD_BITS: usize = phase_b5_execution::ROUND218_B5_BLOCK_BITS;
 const ROUND331_B5_OLD_G0_ERASER_SCRATCH_BASE: usize = 30;
 
 fn round331_b5_old_g0_eraser_scratch_count() -> usize {
@@ -2469,7 +2469,7 @@ fn emit_round218_b5_full_source_stream_transport_with_coeff_and_finish<C, F>(
     assert_eq!(v.len(), N, "coefficient V must be 256 qubits");
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
 
-    let source_bits = round218_b5_program::ROUND218_B5_STEPS;
+    let source_bits = phase_b5_execution::ROUND218_B5_STEPS;
     let zeta_bits = 11usize;
     let zeta = b.alloc_qubits(zeta_bits);
     let f = b.alloc_qubits(source_bits);
@@ -2488,11 +2488,11 @@ fn emit_round218_b5_full_source_stream_transport_with_coeff_and_finish<C, F>(
         b.cx(dx[i], g[i]);
     }
 
-    for block in 0..round218_b5_program::ROUND218_B5_BLOCKS {
-        let lo = block * round218_b5_program::ROUND218_B5_BLOCK_BITS;
-        let hi = lo + round218_b5_program::ROUND218_B5_BLOCK_BITS;
+    for block in 0..phase_b5_execution::ROUND218_B5_BLOCKS {
+        let lo = block * phase_b5_execution::ROUND218_B5_BLOCK_BITS;
+        let hi = lo + phase_b5_execution::ROUND218_B5_BLOCK_BITS;
         b.set_phase("round218_b5_full_source_stream_forward_block");
-        round218_b5_selector::emit_round218_b5_source_stream_forward_block(
+        phase_b5_state_selector::emit_round218_b5_source_stream_forward_block(
             b,
             &zeta,
             &f,
@@ -2507,11 +2507,11 @@ fn emit_round218_b5_full_source_stream_transport_with_coeff_and_finish<C, F>(
 
     finish(b, &zeta, &f, &g, v, r, p);
 
-    for block in (0..round218_b5_program::ROUND218_B5_BLOCKS).rev() {
-        let lo = block * round218_b5_program::ROUND218_B5_BLOCK_BITS;
-        let hi = lo + round218_b5_program::ROUND218_B5_BLOCK_BITS;
+    for block in (0..phase_b5_execution::ROUND218_B5_BLOCKS).rev() {
+        let lo = block * phase_b5_execution::ROUND218_B5_BLOCK_BITS;
+        let hi = lo + phase_b5_execution::ROUND218_B5_BLOCK_BITS;
         b.set_phase("round218_b5_full_source_stream_backward_block");
-        round218_b5_selector::emit_round218_b5_source_stream_backward_block(
+        phase_b5_state_selector::emit_round218_b5_source_stream_backward_block(
             b,
             &zeta,
             &f,
@@ -2560,12 +2560,12 @@ fn emit_round315_b5_hash_history_full_source_stream_transport_with_coeff_and_fin
     assert_eq!(v.len(), N, "coefficient V must be 256 qubits");
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
 
-    let source_bits = round218_b5_program::ROUND218_B5_STEPS;
+    let source_bits = phase_b5_execution::ROUND218_B5_STEPS;
     let zeta_bits = 11usize;
     let zeta = b.alloc_qubits(zeta_bits);
     let f = b.alloc_qubits(source_bits);
     let g = b.alloc_qubits(source_bits);
-    let hash_hist = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCKS * ROUND314_B5_HASH_BITS);
+    let hash_hist = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCKS * ROUND314_B5_HASH_BITS);
 
     b.set_phase("round315_b5_hash_history_full_source_stream_init");
     for &q in &zeta {
@@ -2578,15 +2578,15 @@ fn emit_round315_b5_hash_history_full_source_stream_transport_with_coeff_and_fin
         b.cx(dx[i], g[i]);
     }
 
-    for block in 0..round218_b5_program::ROUND218_B5_BLOCKS {
-        let lo = block * round218_b5_program::ROUND218_B5_BLOCK_BITS;
+    for block in 0..phase_b5_execution::ROUND218_B5_BLOCKS {
+        let lo = block * phase_b5_execution::ROUND218_B5_BLOCK_BITS;
         let hash_lo = block * ROUND314_B5_HASH_BITS;
         let hash_hi = hash_lo + ROUND314_B5_HASH_BITS;
-        let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
-        let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+        let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
 
         b.set_phase("round315_b5_hash_history_forward_block");
-        round218_b5_selector::emit_round218_b5_source_stream_forward_block(
+        phase_b5_state_selector::emit_round218_b5_source_stream_forward_block(
             b,
             &zeta,
             &f,
@@ -2619,12 +2619,12 @@ fn emit_round315_b5_hash_history_full_source_stream_transport_with_coeff_and_fin
 
     finish(b, &zeta, &f, &g, v, r, p);
 
-    for block in (0..round218_b5_program::ROUND218_B5_BLOCKS).rev() {
-        let lo = block * round218_b5_program::ROUND218_B5_BLOCK_BITS;
+    for block in (0..phase_b5_execution::ROUND218_B5_BLOCKS).rev() {
+        let lo = block * phase_b5_execution::ROUND218_B5_BLOCK_BITS;
         let hash_lo = block * ROUND314_B5_HASH_BITS;
         let hash_hi = hash_lo + ROUND314_B5_HASH_BITS;
-        let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
-        let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+        let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
 
         b.set_phase("round315_b5_hash_history_backward_block");
         emit_round315_b5_source_stream_backward_block_from_hash(
@@ -2751,7 +2751,7 @@ pub(super) fn emit_round218_b5_source_live_stream_product_lowerer(
 
     let product = b.alloc_qubits(N);
     b.set_phase("round218_b5_source_live_stream_product_hash_history_scale");
-    for _ in 0..round218_b5_program::ROUND218_B5_STEPS {
+    for _ in 0..phase_b5_execution::ROUND218_B5_STEPS {
         super::mod_double_inplace_fast(b, n, p);
     }
 
@@ -2853,7 +2853,7 @@ pub(super) fn emit_round218_b5_full_source_stream_quotient_lowerer(
     emit_round218_b5_full_source_stream_scaled_inverse(b, h, &scaled_quotient, n, p);
 
     b.set_phase("round218_b5_full_source_stream_quotient_unscale");
-    for _ in 0..round218_b5_program::ROUND218_B5_STEPS {
+    for _ in 0..phase_b5_execution::ROUND218_B5_STEPS {
         super::mod_halve_inplace_fast(b, &scaled_quotient, p);
     }
 
@@ -2877,7 +2877,7 @@ pub(super) fn emit_round218_b5_full_source_stream_product_lowerer(
 
     let product = b.alloc_qubits(N);
     b.set_phase("round218_b5_full_source_stream_product_scale");
-    for _ in 0..round218_b5_program::ROUND218_B5_STEPS {
+    for _ in 0..phase_b5_execution::ROUND218_B5_STEPS {
         super::mod_double_inplace_fast(b, n, p);
     }
 
@@ -2966,12 +2966,12 @@ fn emit_round218_scaled_coeff_b5_block_selected_with_branch_neg(
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "branch word must be a B=5 word"
     );
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "old_g0 word must be a B=5 word"
     );
 
@@ -2995,7 +2995,7 @@ fn emit_round218_scaled_coeff_b5_block_selected_with_branch_neg(
             allow_noncanonical_branch_neg,
         );
     } else {
-        for i in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+        for i in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
             emit_round218_scaled_coeff_step_selected(b, v, r, branch_word[i], old_g0_word[i], p);
         }
     }
@@ -3017,11 +3017,11 @@ fn emit_round218_scaled_coeff_b5_block_selected_lulu_one_div32(
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
 
     b.set_phase("round218_b5_coeff_selected_lulu_l1");
@@ -3104,7 +3104,7 @@ fn emit_round218_scaled_coeff_b5_block_fixed_zeta_lulu_one_div32(
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
 
     b.set_phase("round218_b5_coeff_fixed_zeta_lulu_l1");
@@ -3207,14 +3207,14 @@ fn emit_round218_scaled_coeff_b5_block_selected_lazy_with_branch_neg(
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
 
-    for i in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    for i in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         emit_round218_scaled_coeff_unscaled_step_selected(
             b,
             v,
@@ -3247,14 +3247,14 @@ fn emit_round218_unscaled_coeff_b5_block_selected(
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
 
-    for i in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    for i in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         emit_round218_scaled_coeff_unscaled_step_selected(
             b,
             v,
@@ -3325,13 +3325,13 @@ fn emit_round218_b5_first_quotient_transport_block_from_live_dx(
     );
     assert_eq!(dx.len(), N, "round218 live denominator must be 256 qubits");
 
-    let f_window = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS);
+    let f_window = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS);
     let v = b.alloc_qubits(N);
     let r = b.alloc_qubits(N);
-    let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
-    let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
-    let next_f_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
-    let next_g_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+    let next_f_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+    let next_g_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
 
     b.set_phase("round218_b5_pa_first_block_init");
     for (i, &q) in f_window.iter().enumerate() {
@@ -3344,7 +3344,7 @@ fn emit_round218_b5_first_quotient_transport_block_from_live_dx(
     emit_round218_b5_source_window_transport_block(
         b,
         &f_window,
-        &dx[..round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS],
+        &dx[..phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS],
         &v,
         &r,
         -1,
@@ -3441,7 +3441,7 @@ pub(super) fn emit_round218_scaled_coeff_block_fixed(
     b: &mut B,
     v: &[QubitId],
     r: &[QubitId],
-    row: &round218_b5_program::BlockRow,
+    row: &phase_b5_execution::BlockRow,
     p: U256,
 ) {
     match round218_b5_fixed_block_lowerer() {
@@ -3495,7 +3495,7 @@ pub(super) fn emit_round218_scaled_coeff_block_fixed_exact(
     b: &mut B,
     v: &[QubitId],
     r: &[QubitId],
-    row: &round218_b5_program::BlockRow,
+    row: &phase_b5_execution::BlockRow,
     p: U256,
 ) {
     assert_eq!(
@@ -3506,7 +3506,7 @@ pub(super) fn emit_round218_scaled_coeff_block_fixed_exact(
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         row.matrix.denominator_log2,
-        round218_b5_program::ROUND218_B5_BLOCK_BITS as u8
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8
     );
     assert_eq!(row.matrix.numerator.det(), row.matrix.denominator());
 
@@ -3552,7 +3552,7 @@ pub(super) fn emit_round218_scaled_coeff_block_fixed_one_div32(
     b: &mut B,
     v: &[QubitId],
     r: &[QubitId],
-    row: &round218_b5_program::BlockRow,
+    row: &phase_b5_execution::BlockRow,
     p: U256,
 ) {
     assert_eq!(
@@ -3563,7 +3563,7 @@ pub(super) fn emit_round218_scaled_coeff_block_fixed_one_div32(
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         row.matrix.denominator_log2,
-        round218_b5_program::ROUND218_B5_BLOCK_BITS as u8
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8
     );
     assert_eq!(row.matrix.numerator.det(), row.matrix.denominator());
 
@@ -3574,7 +3574,7 @@ pub(super) fn emit_round218_scaled_coeff_block_fixed_one_div32(
     let (u, w) = round218_b5_small_bezout(c, d);
     assert_eq!(c * u + d * w, 1, "bottom row must be primitive");
     let t = a * u + b_coeff * w;
-    let preconditioner = round218_b5_program::Matrix2 {
+    let preconditioner = phase_b5_execution::Matrix2 {
         a00: c,
         a01: d,
         a10: -w,
@@ -3629,9 +3629,9 @@ impl Round218B5DyadicLiftOp {
     fn apply_to_scaled_matrix(
         self,
         denominator_log2: u8,
-        matrix: round218_b5_program::Matrix2,
-    ) -> Option<(u8, round218_b5_program::Matrix2)> {
-        use round218_b5_program::Matrix2;
+        matrix: phase_b5_execution::Matrix2,
+    ) -> Option<(u8, phase_b5_execution::Matrix2)> {
+        use phase_b5_execution::Matrix2;
         match self {
             Self::AddRToV => Some((
                 denominator_log2,
@@ -3691,7 +3691,7 @@ impl Round218B5DyadicLiftOp {
     }
 }
 
-fn round218_b5_dyadic_lift_matrix_norm(matrix: round218_b5_program::Matrix2) -> i128 {
+fn round218_b5_dyadic_lift_matrix_norm(matrix: phase_b5_execution::Matrix2) -> i128 {
     [matrix.a00, matrix.a01, matrix.a10, matrix.a11]
         .into_iter()
         .map(i128::abs)
@@ -3701,7 +3701,7 @@ fn round218_b5_dyadic_lift_matrix_norm(matrix: round218_b5_program::Matrix2) -> 
 
 fn round218_b5_dyadic_lift_state_key(
     denominator_log2: u8,
-    matrix: round218_b5_program::Matrix2,
+    matrix: phase_b5_execution::Matrix2,
 ) -> (u8, i128, i128, i128, i128) {
     (
         denominator_log2,
@@ -3713,7 +3713,7 @@ fn round218_b5_dyadic_lift_state_key(
 }
 
 fn round218_b5_dyadic_lift_schedule(
-    target: round218_b5_program::Matrix2,
+    target: phase_b5_execution::Matrix2,
     target_denominator_log2: u8,
 ) -> Vec<Round218B5DyadicLiftOp> {
     const MAX_DEPTH: usize = 10;
@@ -3721,12 +3721,12 @@ fn round218_b5_dyadic_lift_schedule(
 
     let mut seen: Vec<(
         u8,
-        round218_b5_program::Matrix2,
+        phase_b5_execution::Matrix2,
         Vec<Round218B5DyadicLiftOp>,
-    )> = vec![(0, round218_b5_program::Matrix2::IDENTITY, Vec::new())];
+    )> = vec![(0, phase_b5_execution::Matrix2::IDENTITY, Vec::new())];
     let mut seen_keys = HashSet::from([round218_b5_dyadic_lift_state_key(
         0,
-        round218_b5_program::Matrix2::IDENTITY,
+        phase_b5_execution::Matrix2::IDENTITY,
     )]);
     let mut frontier = vec![0usize];
 
@@ -3773,7 +3773,7 @@ pub(super) fn emit_round218_scaled_coeff_block_fixed_dyadic_lift(
     b: &mut B,
     v: &[QubitId],
     r: &[QubitId],
-    row: &round218_b5_program::BlockRow,
+    row: &phase_b5_execution::BlockRow,
     p: U256,
 ) {
     assert_eq!(
@@ -3784,7 +3784,7 @@ pub(super) fn emit_round218_scaled_coeff_block_fixed_dyadic_lift(
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         row.matrix.denominator_log2,
-        round218_b5_program::ROUND218_B5_BLOCK_BITS as u8
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8
     );
     assert_eq!(row.matrix.numerator.det(), row.matrix.denominator());
 
@@ -3824,7 +3824,7 @@ pub(super) fn emit_round218_scaled_coeff_block_fixed_stepwise(
     b: &mut B,
     v: &[QubitId],
     r: &[QubitId],
-    row: &round218_b5_program::BlockRow,
+    row: &phase_b5_execution::BlockRow,
     p: U256,
 ) {
     assert_eq!(
@@ -3835,14 +3835,14 @@ pub(super) fn emit_round218_scaled_coeff_block_fixed_stepwise(
     assert_eq!(r.len(), N, "coefficient R must be 256 qubits");
     assert_eq!(
         row.matrix.denominator_log2,
-        round218_b5_program::ROUND218_B5_BLOCK_BITS as u8
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8
     );
     assert_eq!(row.matrix.numerator.det(), row.matrix.denominator());
 
     if row
         .step_kinds
         .iter()
-        .all(|kind| *kind == round218_b5_program::StepKind::NonbranchEven)
+        .all(|kind| *kind == phase_b5_execution::StepKind::NonbranchEven)
     {
         b.set_phase("round218_b5_coeff_fixed_stepwise_even_div32");
         emit_round218_mod_div32_canonical(b, r, p);
@@ -3851,15 +3851,15 @@ pub(super) fn emit_round218_scaled_coeff_block_fixed_stepwise(
 
     for kind in row.step_kinds.iter().copied() {
         match kind {
-            round218_b5_program::StepKind::PositiveOdd => {
+            phase_b5_execution::StepKind::PositiveOdd => {
                 b.set_phase("round218_b5_coeff_fixed_stepwise_positive");
                 emit_round218_scaled_coeff_positive_odd_step_fixed(b, v, r, p);
             }
-            round218_b5_program::StepKind::NonbranchEven => {
+            phase_b5_execution::StepKind::NonbranchEven => {
                 b.set_phase("round218_b5_coeff_fixed_stepwise_even");
                 emit_round218_mod_halve_canonical(b, r, p);
             }
-            round218_b5_program::StepKind::NonbranchOdd => {
+            phase_b5_execution::StepKind::NonbranchOdd => {
                 b.set_phase("round218_b5_coeff_fixed_stepwise_odd");
                 super::mod_add_qq_fast(b, r, v, p);
                 emit_round218_mod_halve_canonical(b, r, p);
@@ -3912,15 +3912,15 @@ fn round218_b5_extended_gcd(a: i128, b: i128) -> (i128, i128, i128) {
 }
 
 fn round218_b5_unimodular_shear_schedule(
-    target: round218_b5_program::Matrix2,
+    target: phase_b5_execution::Matrix2,
 ) -> Vec<Round218B5Shear> {
     const MAX_DEPTH: usize = 7;
     const MAX_ABS_ENTRY: i128 = 64;
     const MAX_SHEAR: i128 = 8;
 
-    let identity = round218_b5_program::Matrix2::IDENTITY;
+    let identity = phase_b5_execution::Matrix2::IDENTITY;
     let mut queue = std::collections::VecDeque::new();
-    let mut seen: Vec<(round218_b5_program::Matrix2, Vec<Round218B5Shear>)> =
+    let mut seen: Vec<(phase_b5_execution::Matrix2, Vec<Round218B5Shear>)> =
         vec![(identity, Vec::new())];
     queue.push_back(identity);
 
@@ -3941,14 +3941,14 @@ fn round218_b5_unimodular_shear_schedule(
             }
             for &target_v in &[true, false] {
                 let op = if target_v {
-                    round218_b5_program::Matrix2 {
+                    phase_b5_execution::Matrix2 {
                         a00: 1,
                         a01: coeff,
                         a10: 0,
                         a11: 1,
                     }
                 } else {
-                    round218_b5_program::Matrix2 {
+                    phase_b5_execution::Matrix2 {
                         a00: 1,
                         a01: 0,
                         a10: coeff,
@@ -4020,11 +4020,11 @@ fn emit_round218_selected_small_signed_multiple_product(
     assert_eq!(src.len(), N);
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
 
     let decoded = emit_round218_compute_selected_coeff_bits(b, branch_word, old_g0_word, coeff);
@@ -4049,7 +4049,7 @@ fn emit_round218_fixed_zeta_small_signed_multiple_product(
     assert_eq!(src.len(), N);
     assert_eq!(
         old_g0_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
 
     let decoded = emit_round218_compute_fixed_zeta_coeff_bits(b, old_g0_word, zeta_start, coeff);
@@ -4319,7 +4319,7 @@ fn round218_b5_fixed_zeta_coeff_anf_masks(
     coeff: Round218B5SelectedCoeff,
     magnitude_bit: Option<usize>,
 ) -> Vec<u8> {
-    let mut truth = [0u8; 1usize << round218_b5_program::ROUND218_B5_BLOCK_BITS];
+    let mut truth = [0u8; 1usize << phase_b5_execution::ROUND218_B5_BLOCK_BITS];
     for (old_g0_word, value) in truth.iter_mut().enumerate() {
         let selected_coeff =
             round218_b5_selected_coeff_for_zeta_old_g0(coeff, zeta_start, old_g0_word as u8);
@@ -4328,7 +4328,7 @@ fn round218_b5_fixed_zeta_coeff_anf_masks(
             Some(bit_idx) => ((selected_coeff.unsigned_abs() >> bit_idx) & 1) as u8,
         };
     }
-    for bit in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    for bit in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         for mask in 0..truth.len() {
             if (mask & (1usize << bit)) != 0 {
                 truth[mask] ^= truth[mask ^ (1usize << bit)];
@@ -4370,8 +4370,8 @@ fn round218_b5_build_valid_domain_anf_masks(
     coeff: Round218B5SelectedCoeff,
     magnitude_bit: Option<usize>,
 ) -> Vec<u16> {
-    const SELECTOR_BITS: usize = 2 * round218_b5_program::ROUND218_B5_BLOCK_BITS;
-    const MAX_DEGREE: u32 = round218_b5_program::ROUND218_B5_BLOCK_BITS as u32;
+    const SELECTOR_BITS: usize = 2 * phase_b5_execution::ROUND218_B5_BLOCK_BITS;
+    const MAX_DEGREE: u32 = phase_b5_execution::ROUND218_B5_BLOCK_BITS as u32;
     let monomials: Vec<u16> = (0u16..(1u16 << SELECTOR_BITS))
         .filter(|mask| mask.count_ones() <= MAX_DEGREE)
         .collect();
@@ -4381,8 +4381,8 @@ fn round218_b5_build_valid_domain_anf_masks(
     let mut rhs = Vec::new();
     for selector in 0u16..(1u16 << SELECTOR_BITS) {
         let branch_word =
-            (selector & ((1u16 << round218_b5_program::ROUND218_B5_BLOCK_BITS) - 1)) as u8;
-        let old_g0_word = (selector >> round218_b5_program::ROUND218_B5_BLOCK_BITS) as u8;
+            (selector & ((1u16 << phase_b5_execution::ROUND218_B5_BLOCK_BITS) - 1)) as u8;
+        let old_g0_word = (selector >> phase_b5_execution::ROUND218_B5_BLOCK_BITS) as u8;
         let Some(selected_coeff) =
             round218_b5_selected_coeff_for_words(coeff, branch_word, old_g0_word)
         else {
@@ -4474,7 +4474,7 @@ fn round218_b5_selected_coeff_for_words(
     let (u, w) = round218_b5_small_bezout(c, d);
     debug_assert_eq!(c * u + d * w, 1);
     let t = numerator.a00 * u + numerator.a01 * w;
-    let preconditioner = round218_b5_program::Matrix2 {
+    let preconditioner = phase_b5_execution::Matrix2 {
         a00: c,
         a01: d,
         a10: -w,
@@ -4501,7 +4501,7 @@ fn round218_b5_selected_coeff_for_zeta_old_g0(
     let (u, w) = round218_b5_small_bezout(c, d);
     debug_assert_eq!(c * u + d * w, 1);
     let t = numerator.a00 * u + numerator.a01 * w;
-    let preconditioner = round218_b5_program::Matrix2 {
+    let preconditioner = phase_b5_execution::Matrix2 {
         a00: c,
         a01: d,
         a10: -w,
@@ -4520,20 +4520,20 @@ fn round218_b5_selected_coeff_for_zeta_old_g0(
 fn round218_b5_numerator_for_zeta_old_g0(
     zeta_start: i128,
     old_g0_word: u8,
-) -> round218_b5_program::Matrix2 {
+) -> phase_b5_execution::Matrix2 {
     let mut zeta = zeta_start;
-    let mut numerator = round218_b5_program::Matrix2::IDENTITY;
-    for idx in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    let mut numerator = phase_b5_execution::Matrix2::IDENTITY;
+    for idx in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         let old_g0 = ((old_g0_word >> idx) & 1) != 0;
         let kind = if zeta < 0 && old_g0 {
             zeta = -zeta - 2;
-            round218_b5_program::StepKind::PositiveOdd
+            phase_b5_execution::StepKind::PositiveOdd
         } else {
             zeta -= 1;
             if old_g0 {
-                round218_b5_program::StepKind::NonbranchOdd
+                phase_b5_execution::StepKind::NonbranchOdd
             } else {
-                round218_b5_program::StepKind::NonbranchEven
+                phase_b5_execution::StepKind::NonbranchEven
             }
         };
         numerator = kind.numerator_matrix().mul(numerator);
@@ -4544,15 +4544,15 @@ fn round218_b5_numerator_for_zeta_old_g0(
 fn round218_b5_valid_selector_numerator(
     branch_word: u8,
     old_g0_word: u8,
-) -> Option<round218_b5_program::Matrix2> {
-    let mut numerator = round218_b5_program::Matrix2::IDENTITY;
-    for idx in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+) -> Option<phase_b5_execution::Matrix2> {
+    let mut numerator = phase_b5_execution::Matrix2::IDENTITY;
+    for idx in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         let branch = (branch_word >> idx) & 1;
         let old_g0 = (old_g0_word >> idx) & 1;
         let kind = match (branch, old_g0) {
-            (0, 0) => round218_b5_program::StepKind::NonbranchEven,
-            (0, 1) => round218_b5_program::StepKind::NonbranchOdd,
-            (1, 1) => round218_b5_program::StepKind::PositiveOdd,
+            (0, 0) => phase_b5_execution::StepKind::NonbranchEven,
+            (0, 1) => phase_b5_execution::StepKind::NonbranchOdd,
+            (1, 1) => phase_b5_execution::StepKind::PositiveOdd,
             (1, 0) => return None,
             _ => unreachable!(),
         };
@@ -4561,7 +4561,7 @@ fn round218_b5_valid_selector_numerator(
     Some(numerator)
 }
 
-fn round218_b5_lulu_shear_coeffs(target: round218_b5_program::Matrix2) -> [i128; 4] {
+fn round218_b5_lulu_shear_coeffs(target: phase_b5_execution::Matrix2) -> [i128; 4] {
     assert_eq!(target.det(), 1, "LULU target must be unimodular");
     let mut best: Option<([i128; 4], (i128, i128, u32, [i128; 4]))> = None;
     for q2 in -32..=32 {
@@ -4781,21 +4781,21 @@ fn emit_round218_mod_div32_canonical(b: &mut B, v: &[QubitId], p: U256) {
         return;
     }
 
-    let t = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
-    for i in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    let t = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+    for i in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         b.cx(v[i], t[i]);
     }
-    b.cx(v[0], t[round218_b5_program::ROUND218_B5_BLOCK_BITS - 1]);
+    b.cx(v[0], t[phase_b5_execution::ROUND218_B5_BLOCK_BITS - 1]);
 
-    let hi = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let hi = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     let mut ext = v.to_vec();
     ext.extend_from_slice(&hi);
-    for shift in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    for shift in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         let bits = shifted_const_bits(p, shift, ext.len());
         emit_round218_cadd_const_bits(b, &ext, &bits, t[shift]);
     }
 
-    for _ in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    for _ in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         for i in 0..ext.len() - 1 {
             b.swap(ext[i], ext[i + 1]);
         }
@@ -4811,11 +4811,11 @@ fn emit_round218_mod_div32_canonical_small_product(b: &mut B, v: &[QubitId], p: 
     assert_eq!(p, SECP256K1_P, "Round218 small div32 is secp256k1-only");
     assert_eq!(v.len(), N, "Round218 small div32 is secp256k1-width only");
 
-    let k = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
-    for i in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    let k = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+    for i in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         b.cx(v[i], k[i]);
     }
-    b.cx(v[0], k[round218_b5_program::ROUND218_B5_BLOCK_BITS - 1]);
+    b.cx(v[0], k[phase_b5_execution::ROUND218_B5_BLOCK_BITS - 1]);
 
     let correction_width = 37usize;
     let d = b.alloc_qubits(correction_width);
@@ -4833,18 +4833,18 @@ fn emit_round218_mod_div32_canonical_small_product(b: &mut B, v: &[QubitId], p: 
     b.free(sub_top_zero);
     b.free_vec(&zero_tail);
 
-    let hi = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let hi = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     let mut shift_ext = v.to_vec();
     shift_ext.extend_from_slice(&hi);
-    for _ in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    for _ in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         for i in 0..shift_ext.len() - 1 {
             b.swap(shift_ext[i], shift_ext[i + 1]);
         }
     }
     b.free_vec(&hi);
 
-    let top = &v[N - round218_b5_program::ROUND218_B5_BLOCK_BITS..N];
-    for i in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    let top = &v[N - phase_b5_execution::ROUND218_B5_BLOCK_BITS..N];
+    for i in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         b.cx(k[i], top[i]);
     }
     let one_bits = [true, false, false, false, false];
@@ -4858,20 +4858,20 @@ fn emit_round218_mod_div32_canonical_small_product(b: &mut B, v: &[QubitId], p: 
 }
 
 fn emit_round218_div32_small_correction_product(b: &mut B, d: &[QubitId], k: &[QubitId]) {
-    assert_eq!(k.len(), round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    assert_eq!(k.len(), phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     assert!(d.len() >= 37);
     let c = U256::from(secp256k1_c_low());
-    for shift in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    for shift in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         let bits = shifted_const_bits(c, shift, d.len());
         emit_round218_cadd_const_bits(b, d, &bits, k[shift]);
     }
 }
 
 fn emit_round218_div32_small_correction_product_inverse(b: &mut B, d: &[QubitId], k: &[QubitId]) {
-    assert_eq!(k.len(), round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    assert_eq!(k.len(), phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     assert!(d.len() >= 37);
     let c = U256::from(secp256k1_c_low());
-    for shift in (0..round218_b5_program::ROUND218_B5_BLOCK_BITS).rev() {
+    for shift in (0..phase_b5_execution::ROUND218_B5_BLOCK_BITS).rev() {
         let bits = shifted_const_bits(c, shift, d.len());
         emit_round218_csub_const_bits(b, d, &bits, k[shift]);
     }
@@ -4888,23 +4888,23 @@ fn emit_round218_div32_uncompute_correction_and_borrow(
     borrow: Option<QubitId>,
 ) {
     assert_eq!(y.len(), N);
-    assert_eq!(t.len(), round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    assert_eq!(t.len(), phase_b5_execution::ROUND218_B5_BLOCK_BITS);
 
-    let q = &y[N - round218_b5_program::ROUND218_B5_BLOCK_BITS..N];
-    let h = b.alloc_qubits(N - round218_b5_program::ROUND218_B5_BLOCK_BITS + 1);
-    let h_scratch = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS - 2);
+    let q = &y[N - phase_b5_execution::ROUND218_B5_BLOCK_BITS..N];
+    let h = b.alloc_qubits(N - phase_b5_execution::ROUND218_B5_BLOCK_BITS + 1);
+    let h_scratch = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS - 2);
     emit_round218_div32_threshold_helper(b, q, &h, &h_scratch);
 
-    let temp = b.alloc_qubits(N - round218_b5_program::ROUND218_B5_BLOCK_BITS + 1);
-    for i in 0..N - round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    let temp = b.alloc_qubits(N - phase_b5_execution::ROUND218_B5_BLOCK_BITS + 1);
+    for i in 0..N - phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         b.cx(y[i], temp[i]);
     }
     super::add_nbit_qq_fast(b, &h, &temp);
     let carry = b.alloc_qubit();
     b.cx(temp[temp.len() - 1], carry);
 
-    let recomputed = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
-    for i in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    let recomputed = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+    for i in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         b.cx(q[i], recomputed[i]);
     }
     let one_bits = [true, false, false, false, false];
@@ -4912,18 +4912,18 @@ fn emit_round218_div32_uncompute_correction_and_borrow(
     if let Some(borrow) = borrow {
         b.cx(carry, borrow);
     }
-    for i in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    for i in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         b.cx(recomputed[i], t[i]);
     }
     emit_round218_csub_const_bits(b, &recomputed, &one_bits, carry);
-    for i in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    for i in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         b.cx(q[i], recomputed[i]);
     }
     b.free_vec(&recomputed);
 
     b.cx(temp[temp.len() - 1], carry);
     super::sub_nbit_qq_fast(b, &h, &temp);
-    for i in 0..N - round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    for i in 0..N - phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         b.cx(y[i], temp[i]);
     }
     b.free_vec(&temp);
@@ -4940,7 +4940,7 @@ fn emit_round218_div32_threshold_helper(
     h: &[QubitId],
     scratch: &[QubitId],
 ) {
-    assert_eq!(q.len(), round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    assert_eq!(q.len(), phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     assert!(h.len() >= 33, "Round218 div32 helper needs 33 output bits");
     assert!(
         scratch.len() >= q.len().saturating_sub(2),
@@ -4958,12 +4958,12 @@ fn emit_round218_div32_threshold_helper(
 fn div32_threshold_helper_anf_masks(output_idx: usize) -> Vec<u8> {
     assert!(output_idx < 33);
     let c = secp256k1_c_low();
-    let mut truth = [0u8; 1usize << round218_b5_program::ROUND218_B5_BLOCK_BITS];
+    let mut truth = [0u8; 1usize << phase_b5_execution::ROUND218_B5_BLOCK_BITS];
     for (q, value) in truth.iter_mut().enumerate() {
-        let h = (((q as u64) + 1) * c) >> round218_b5_program::ROUND218_B5_BLOCK_BITS;
+        let h = (((q as u64) + 1) * c) >> phase_b5_execution::ROUND218_B5_BLOCK_BITS;
         *value = ((h >> output_idx) & 1) as u8;
     }
-    for bit in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+    for bit in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
         for mask in 0..truth.len() {
             if (mask & (1usize << bit)) != 0 {
                 truth[mask] ^= truth[mask ^ (1usize << bit)];
@@ -5216,7 +5216,7 @@ mod tests {
     }
 
     fn div32_mod(mut a: U256, p: U256) -> U256 {
-        for _ in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+        for _ in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
             a = halve_mod(a, p);
         }
         a
@@ -5346,7 +5346,7 @@ mod tests {
     }
 
     fn scaled_coeff_block_fixed_pure_u256(
-        row: &round218_b5_program::BlockRow,
+        row: &phase_b5_execution::BlockRow,
         v: U256,
         r: U256,
         p: U256,
@@ -5370,7 +5370,7 @@ mod tests {
         mut r: U256,
         p: U256,
     ) -> (U256, U256) {
-        for step in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+        for step in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
             if ((branch_word >> step) & 1) != 0 {
                 std::mem::swap(&mut v, &mut r);
             }
@@ -5380,7 +5380,7 @@ mod tests {
     }
 
     fn scaled_coeff_numerator_div32_pure_u256(
-        numerator: round218_b5_program::Matrix2,
+        numerator: phase_b5_execution::Matrix2,
         v: U256,
         r: U256,
         p: U256,
@@ -5391,7 +5391,7 @@ mod tests {
         let mut out_r = U256::ZERO;
         out_r = add_signed_term(out_r, v, numerator.a10, p);
         out_r = add_signed_term(out_r, r, numerator.a11, p);
-        for _ in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+        for _ in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
             out_v = halve_mod(out_v, p);
             out_r = halve_mod(out_r, p);
         }
@@ -5399,7 +5399,7 @@ mod tests {
     }
 
     fn unscaled_coeff_block_fixed_pure_u256(
-        row: &round218_b5_program::BlockRow,
+        row: &phase_b5_execution::BlockRow,
         v: U256,
         r: U256,
         p: U256,
@@ -5422,9 +5422,9 @@ mod tests {
     ) -> (i128, i128, i128, i128, i128, u8, u8) {
         let mut branch_word = 0u8;
         let mut old_g0_word = 0u8;
-        let window_bits = round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS;
+        let window_bits = phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS;
 
-        for step in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+        for step in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
             let width = window_bits - step;
             let modulus = 1i128 << width;
             f = f.rem_euclid(modulus);
@@ -5496,7 +5496,7 @@ mod tests {
         const CLAIMED_PA_TOFFOLI: usize = 2_701_606;
         const CLAIMED_PA_QT: usize = 3_849_788_550;
 
-        let compact = source_live_d1::round218_b5_compact_history_resource_gate();
+        let compact = quantum_d1_data_source::round218_b5_compact_history_resource_gate();
         assert_eq!(
             compact.separator_lower_bound_bits_per_block, 7,
             "B=5 source progress lower bound changed; revisit tagged-L lifetime"
@@ -5601,38 +5601,38 @@ mod tests {
         ]
     }
 
-    fn representative_b5_rows() -> Vec<round218_b5_program::BlockRow> {
+    fn representative_b5_rows() -> Vec<phase_b5_execution::BlockRow> {
         vec![
-            round218_b5_program::block_row(
+            phase_b5_execution::block_row(
                 0,
-                round218_b5_program::BlockSelector {
+                phase_b5_execution::BlockSelector {
                     zeta_start: 8,
                     f_low: 1,
                     g_low: 0,
                     width: 5,
                 },
             ),
-            round218_b5_program::block_row(
+            phase_b5_execution::block_row(
                 0,
-                round218_b5_program::BlockSelector {
+                phase_b5_execution::BlockSelector {
                     zeta_start: 8,
                     f_low: 1,
                     g_low: 1,
                     width: 5,
                 },
             ),
-            round218_b5_program::block_row(
+            phase_b5_execution::block_row(
                 0,
-                round218_b5_program::BlockSelector {
+                phase_b5_execution::BlockSelector {
                     zeta_start: -1,
                     f_low: 31,
                     g_low: 1,
                     width: 5,
                 },
             ),
-            round218_b5_program::block_row(
+            phase_b5_execution::block_row(
                 17,
-                round218_b5_program::BlockSelector {
+                phase_b5_execution::BlockSelector {
                     zeta_start: -5,
                     f_low: 23,
                     g_low: 30,
@@ -5642,20 +5642,20 @@ mod tests {
         ]
     }
 
-    fn dyadic_lift_probe_rows() -> Vec<round218_b5_program::BlockRow> {
+    fn dyadic_lift_probe_rows() -> Vec<phase_b5_execution::BlockRow> {
         let mut rows = representative_b5_rows();
-        rows.push(round218_b5_program::block_row(
+        rows.push(phase_b5_execution::block_row(
             0,
-            round218_b5_program::BlockSelector {
+            phase_b5_execution::BlockSelector {
                 zeta_start: -1,
                 f_low: 1,
                 g_low: 19,
                 width: 5,
             },
         ));
-        rows.push(round218_b5_program::block_row(
+        rows.push(phase_b5_execution::block_row(
             1,
-            round218_b5_program::BlockSelector {
+            phase_b5_execution::BlockSelector {
                 zeta_start: 0,
                 f_low: 1,
                 g_low: 14,
@@ -5674,7 +5674,7 @@ mod tests {
         );
         assert_eq!(
             contract.target_classification,
-            round218_b5_program::ROUND218_B5_CLASSIFICATION
+            phase_b5_execution::ROUND218_B5_CLASSIFICATION
         );
         assert_eq!(contract.target_qubits, 1_562);
         assert_eq!(contract.target_toffoli, 2_203_351);
@@ -6266,7 +6266,7 @@ mod tests {
                 let d = numerator.a11;
                 let (u, w) = round218_b5_small_bezout(c, d);
                 assert_eq!(c * u + d * w, 1);
-                let preconditioner = round218_b5_program::Matrix2 {
+                let preconditioner = phase_b5_execution::Matrix2 {
                     a00: c,
                     a01: d,
                     a10: -w,
@@ -6295,25 +6295,25 @@ mod tests {
                     "t too wide for {branch_word},{old_g0_word}: {t}"
                 );
 
-                let l1 = round218_b5_program::Matrix2 {
+                let l1 = phase_b5_execution::Matrix2 {
                     a00: 1,
                     a01: 0,
                     a10: qs[0],
                     a11: 1,
                 };
-                let u2 = round218_b5_program::Matrix2 {
+                let u2 = phase_b5_execution::Matrix2 {
                     a00: 1,
                     a01: qs[1],
                     a10: 0,
                     a11: 1,
                 };
-                let l3 = round218_b5_program::Matrix2 {
+                let l3 = phase_b5_execution::Matrix2 {
                     a00: 1,
                     a01: 0,
                     a10: qs[2],
                     a11: 1,
                 };
-                let u4 = round218_b5_program::Matrix2 {
+                let u4 = phase_b5_execution::Matrix2 {
                     a00: 1,
                     a01: qs[3],
                     a10: 0,
@@ -6353,7 +6353,7 @@ mod tests {
                             continue;
                         };
                         let selector = branch_word as u16
-                            | ((old_g0_word as u16) << round218_b5_program::ROUND218_B5_BLOCK_BITS);
+                            | ((old_g0_word as u16) << phase_b5_execution::ROUND218_B5_BLOCK_BITS);
                         let got = masks
                             .iter()
                             .fold(0u8, |acc, &mask| acc ^ ((selector & mask == mask) as u8));
@@ -6423,7 +6423,7 @@ mod tests {
         b.declare_qubit_register(&v);
         let r = b.alloc_qubits(N);
         b.declare_qubit_register(&r);
-        let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&old_g0_word);
 
         emit_round218_scaled_coeff_b5_block_fixed_zeta_lulu_one_div32(
@@ -6495,9 +6495,9 @@ mod tests {
         b.declare_qubit_register(&v);
         let r = b.alloc_qubits(N);
         b.declare_qubit_register(&r);
-        let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&branch_word);
-        let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&old_g0_word);
 
         emit_round218_scaled_coeff_b5_block_selected_lulu_one_div32(
@@ -6574,9 +6574,9 @@ mod tests {
         b.declare_qubit_register(&v);
         let r = b.alloc_qubits(N);
         b.declare_qubit_register(&r);
-        let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&branch_word);
-        let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&old_g0_word);
 
         emit_round218_scaled_coeff_b5_block_selected_lazy(
@@ -6652,9 +6652,9 @@ mod tests {
         b.declare_qubit_register(&v);
         let r = b.alloc_qubits(N);
         b.declare_qubit_register(&r);
-        let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&branch_word);
-        let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&old_g0_word);
 
         emit_round218_unscaled_coeff_b5_block_selected(
@@ -6727,17 +6727,17 @@ mod tests {
         let p = SECP256K1_P;
         let zeta_start = -1;
         let mut b = B::new();
-        let f_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let f_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&f_low);
-        let g_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let g_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&g_low);
         let v = b.alloc_qubits(N);
         b.declare_qubit_register(&v);
         let r = b.alloc_qubits(N);
         b.declare_qubit_register(&r);
-        let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&branch_word);
-        let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&old_g0_word);
 
         emit_round218_b5_source_live_transport_block(
@@ -6799,13 +6799,13 @@ mod tests {
             "source-live block left phase garbage"
         );
         for (shot, &(f0, g0, v0, r0)) in cases.iter().enumerate() {
-            let row = round218_b5_program::block_row(
+            let row = phase_b5_execution::block_row(
                 0,
-                round218_b5_program::BlockSelector {
+                phase_b5_execution::BlockSelector {
                     zeta_start,
                     f_low: f0,
                     g_low: g0,
-                    width: round218_b5_program::ROUND218_B5_BLOCK_BITS as u8,
+                    width: phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8,
                 },
             );
             let expect = scaled_coeff_block_fixed_pure_u256(&row, v0, r0, p);
@@ -6848,21 +6848,21 @@ mod tests {
         let p = SECP256K1_P;
         let zeta_start = -1;
         let mut b = B::new();
-        let f_window = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS);
+        let f_window = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS);
         b.declare_qubit_register(&f_window);
-        let g_window = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS);
+        let g_window = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS);
         b.declare_qubit_register(&g_window);
         let v = b.alloc_qubits(N);
         b.declare_qubit_register(&v);
         let r = b.alloc_qubits(N);
         b.declare_qubit_register(&r);
-        let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&branch_word);
-        let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&old_g0_word);
-        let next_f_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let next_f_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&next_f_low);
-        let next_g_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let next_g_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&next_g_low);
 
         emit_round218_b5_source_window_transport_block(
@@ -6927,14 +6927,14 @@ mod tests {
         );
         for (shot, &(f0, g0, v0, r0)) in cases.iter().enumerate() {
             let parsed =
-                round218_b5_selector::round218_b5_low_window_parser_cell(zeta_start, f0, g0);
-            let row = round218_b5_program::block_row(
+                phase_b5_state_selector::round218_b5_low_window_parser_cell(zeta_start, f0, g0);
+            let row = phase_b5_execution::block_row(
                 0,
-                round218_b5_program::BlockSelector {
+                phase_b5_execution::BlockSelector {
                     zeta_start,
                     f_low: (f0 & 31) as u8,
                     g_low: (g0 & 31) as u8,
-                    width: round218_b5_program::ROUND218_B5_BLOCK_BITS as u8,
+                    width: phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8,
                 },
             );
             let expect = scaled_coeff_block_fixed_pure_u256(&row, v0, r0, p);
@@ -6980,27 +6980,27 @@ mod tests {
     #[test]
     fn dynamic_source_window_b5_block_carries_zeta_and_transports_coefficients() {
         let p = SECP256K1_P;
-        let spec = round218_b5_selector::Round218B5DynamicZetaTransducerSpec::new(-2, 2);
+        let spec = phase_b5_state_selector::Round218B5DynamicZetaTransducerSpec::new(-2, 2);
         let mut b = B::new();
         let zeta_start = b.alloc_qubits(spec.start_zeta_bits());
         b.declare_qubit_register(&zeta_start);
-        let f_window = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS);
+        let f_window = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS);
         b.declare_qubit_register(&f_window);
-        let g_window = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS);
+        let g_window = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS);
         b.declare_qubit_register(&g_window);
         let v = b.alloc_qubits(N);
         b.declare_qubit_register(&v);
         let r = b.alloc_qubits(N);
         b.declare_qubit_register(&r);
-        let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&branch_word);
-        let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&old_g0_word);
         let end_zeta = b.alloc_qubits(spec.end_zeta_bits());
         b.declare_qubit_register(&end_zeta);
-        let next_f_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let next_f_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&next_f_low);
-        let next_g_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let next_g_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&next_g_low);
 
         emit_round218_b5_dynamic_source_window_transport_block(
@@ -7078,21 +7078,21 @@ mod tests {
             "dynamic source-window block left phase garbage"
         );
         for (shot, &(zeta0, f0, g0, v0, r0)) in cases.iter().enumerate() {
-            let parsed = round218_b5_program::source_window_block_row(
-                round218_b5_program::SourceWindowSelector {
+            let parsed = phase_b5_execution::source_window_block_row(
+                phase_b5_execution::SourceWindowSelector {
                     zeta_start: zeta0,
                     f_window: f0,
                     g_window: g0,
-                    window_bits: round218_b5_program::ROUND218_B5_SOURCE_WINDOW_BITS as u8,
+                    window_bits: phase_b5_execution::ROUND218_B5_SOURCE_WINDOW_BITS as u8,
                 },
             );
-            let row = round218_b5_program::block_row(
+            let row = phase_b5_execution::block_row(
                 0,
-                round218_b5_program::BlockSelector {
+                phase_b5_execution::BlockSelector {
                     zeta_start: zeta0,
                     f_low: (f0 & 31) as u8,
                     g_low: (g0 & 31) as u8,
-                    width: round218_b5_program::ROUND218_B5_BLOCK_BITS as u8,
+                    width: phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8,
                 },
             );
             let expect = scaled_coeff_block_fixed_pure_u256(&row, v0, r0, p);
@@ -7197,25 +7197,25 @@ mod tests {
         f_window: u16,
         g_window: u16,
     ) -> (i128, u16, u16, u8, u8) {
-        let parsed = round218_b5_selector::round218_b5_low_window_parser_cell(
+        let parsed = phase_b5_state_selector::round218_b5_low_window_parser_cell(
             zeta_start, f_window, g_window,
         );
-        let retained = round218_b5_selector::round218_b5_low_window_parser_retained_word(
+        let retained = phase_b5_state_selector::round218_b5_low_window_parser_retained_word(
             zeta_start, f_window, g_window,
         );
-        let row = round218_b5_program::source_window_block_row(
-            round218_b5_program::SourceWindowSelector {
+        let row = phase_b5_execution::source_window_block_row(
+            phase_b5_execution::SourceWindowSelector {
                 zeta_start,
                 f_window,
                 g_window,
-                window_bits: round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS as u8,
+                window_bits: phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS as u8,
             },
         );
         let mut retained_in_place = 0u16;
-        for step in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+        for step in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
             let retained_bit = u16::from((retained >> step) & 1);
             retained_in_place |=
-                retained_bit << (round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS - 1 - step);
+                retained_bit << (phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS - 1 - step);
         }
         (
             row.end_zeta,
@@ -7229,7 +7229,7 @@ mod tests {
     fn round326_actual_branch_and_post_zeta(zeta_start: i128, old_g0_word: u8) -> (u8, i128) {
         let mut zeta = zeta_start;
         let mut branch_word = 0u8;
-        for step in 0..round218_b5_program::ROUND218_B5_BLOCK_BITS {
+        for step in 0..phase_b5_execution::ROUND218_B5_BLOCK_BITS {
             let old_g0 = ((old_g0_word >> step) & 1) != 0;
             let branch = zeta < 0 && old_g0;
             if branch {
@@ -7276,7 +7276,7 @@ mod tests {
         let mut b = B::new();
         let zeta = b.alloc_qubits(zeta_bits);
         b.declare_qubit_register(&zeta);
-        let old_g0 = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let old_g0 = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&old_g0);
         let l_rank = b.alloc_qubits(4);
         b.declare_qubit_register(&l_rank);
@@ -7350,11 +7350,11 @@ mod tests {
         let mut b = B::new();
         let post_zeta = b.alloc_qubits(zeta_bits);
         b.declare_qubit_register(&post_zeta);
-        let old_g0 = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let old_g0 = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&old_g0);
         let l_rank = b.alloc_qubits(4);
         b.declare_qubit_register(&l_rank);
-        let branch = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let branch = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&branch);
 
         emit_round326_b5_branch_rank_exact_cover_cleaner(
@@ -7444,14 +7444,14 @@ mod tests {
         assert_eq!(regs.len(), 4);
         assert_eq!(
             regs[0].len(),
-            round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS
+            phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS
         );
         assert_eq!(
             regs[1].len(),
-            round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS
+            phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS
         );
-        assert_eq!(regs[2].len(), round218_b5_program::ROUND218_B5_BLOCK_BITS);
-        assert_eq!(regs[3].len(), round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        assert_eq!(regs[2].len(), phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+        assert_eq!(regs[3].len(), phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         assert_eq!(num_qubits, 196);
         assert_eq!(num_bits, 1);
         assert_eq!(toffoli, 133);
@@ -7471,7 +7471,7 @@ mod tests {
                 let (zeta0, f0, g0, _v0, _r0) =
                     deterministic_projective_scalar_case(case_id, SECP256K1_P);
                 let parsed =
-                    round218_b5_selector::round218_b5_low_window_parser_cell(zeta0, f0, g0);
+                    phase_b5_state_selector::round218_b5_low_window_parser_cell(zeta0, f0, g0);
                 sim.set_register(&regs[0], U256::from(f0 as u64), lane);
                 sim.set_register(&regs[1], U256::from(g0 as u64), lane);
                 sim.set_register(&regs[2], U256::from(parsed.branch_word as u64), lane);
@@ -7490,7 +7490,7 @@ mod tests {
                 let (zeta0, f0, g0, _v0, _r0) =
                     deterministic_projective_scalar_case(case_id, SECP256K1_P);
                 let parsed =
-                    round218_b5_selector::round218_b5_low_window_parser_cell(zeta0, f0, g0);
+                    phase_b5_state_selector::round218_b5_low_window_parser_cell(zeta0, f0, g0);
                 assert_eq!(sim.get_register(&regs[0], lane), U256::from(f0 as u64));
                 assert_eq!(sim.get_register(&regs[1], lane), U256::from(g0 as u64));
                 assert_eq!(
@@ -7528,21 +7528,21 @@ mod tests {
         let mut b = B::new();
         let zeta = b.alloc_qubits(zeta_bits);
         b.declare_qubit_register(&zeta);
-        let f_window = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS);
+        let f_window = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS);
         b.declare_qubit_register(&f_window);
-        let g_window = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS);
+        let g_window = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS);
         b.declare_qubit_register(&g_window);
         let v = b.alloc_qubits(N);
         b.declare_qubit_register(&v);
         let r = b.alloc_qubits(N);
         b.declare_qubit_register(&r);
-        let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&branch_word);
-        let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&old_g0_word);
-        let next_f_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let next_f_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&next_f_low);
-        let next_g_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let next_g_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&next_g_low);
 
         emit_round218_b5_twos_zeta_source_window_transport_block(
@@ -7614,21 +7614,21 @@ mod tests {
             "two's-complement source-window block left phase garbage"
         );
         for (shot, &(zeta0, f0, g0, v0, r0)) in cases.iter().enumerate() {
-            let parsed = round218_b5_program::source_window_block_row(
-                round218_b5_program::SourceWindowSelector {
+            let parsed = phase_b5_execution::source_window_block_row(
+                phase_b5_execution::SourceWindowSelector {
                     zeta_start: zeta0,
                     f_window: f0,
                     g_window: g0,
-                    window_bits: round218_b5_program::ROUND218_B5_SOURCE_WINDOW_BITS as u8,
+                    window_bits: phase_b5_execution::ROUND218_B5_SOURCE_WINDOW_BITS as u8,
                 },
             );
-            let row = round218_b5_program::block_row(
+            let row = phase_b5_execution::block_row(
                 0,
-                round218_b5_program::BlockSelector {
+                phase_b5_execution::BlockSelector {
                     zeta_start: zeta0,
                     f_low: (f0 & 31) as u8,
                     g_low: (g0 & 31) as u8,
-                    width: round218_b5_program::ROUND218_B5_BLOCK_BITS as u8,
+                    width: phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8,
                 },
             );
             let expect = scaled_coeff_block_fixed_pure_u256(&row, v0, r0, p);
@@ -7683,9 +7683,9 @@ mod tests {
         let mut b = B::new();
         let zeta = b.alloc_qubits(zeta_bits);
         b.declare_qubit_register(&zeta);
-        let f_window = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS);
+        let f_window = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS);
         b.declare_qubit_register(&f_window);
-        let g_window = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS);
+        let g_window = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS);
         b.declare_qubit_register(&g_window);
         let v = b.alloc_qubits(N);
         b.declare_qubit_register(&v);
@@ -7751,13 +7751,13 @@ mod tests {
             "two's-complement control transport block left phase garbage"
         );
         for (shot, &(zeta0, f0, g0, v0, r0)) in cases.iter().enumerate() {
-            let row = round218_b5_program::block_row(
+            let row = phase_b5_execution::block_row(
                 0,
-                round218_b5_program::BlockSelector {
+                phase_b5_execution::BlockSelector {
                     zeta_start: zeta0,
                     f_low: (f0 & 31) as u8,
                     g_low: (g0 & 31) as u8,
-                    width: round218_b5_program::ROUND218_B5_BLOCK_BITS as u8,
+                    width: phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8,
                 },
             );
             let expect = scaled_coeff_block_fixed_pure_u256(&row, v0, r0, p);
@@ -7797,7 +7797,7 @@ mod tests {
     fn round314_source_live_hash_transport_window_block_exact_9024() {
         let p = SECP256K1_P;
         let zeta_bits = 11usize;
-        let window_bits = round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS;
+        let window_bits = phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS;
         let mut b = B::new();
         let zeta = b.alloc_qubits(zeta_bits);
         b.declare_qubit_register(&zeta);
@@ -7811,7 +7811,7 @@ mod tests {
         b.declare_qubit_register(&r);
         let l_hash = b.alloc_qubits(ROUND314_B5_HASH_BITS);
         b.declare_qubit_register(&l_hash);
-        let next_bits = window_bits - round218_b5_program::ROUND218_B5_BLOCK_BITS;
+        let next_bits = window_bits - phase_b5_execution::ROUND218_B5_BLOCK_BITS;
         let next_f = b.alloc_qubits(next_bits);
         b.declare_qubit_register(&next_f);
         let next_g = b.alloc_qubits(next_bits);
@@ -7860,21 +7860,21 @@ mod tests {
             for lane in 0..active {
                 let case_id = batch_start + lane;
                 let (zeta0, f0, g0, v0, r0) = deterministic_projective_scalar_case(case_id, p);
-                let parsed = round218_b5_program::source_window_block_row(
-                    round218_b5_program::SourceWindowSelector {
+                let parsed = phase_b5_execution::source_window_block_row(
+                    phase_b5_execution::SourceWindowSelector {
                         zeta_start: zeta0,
                         f_window: f0,
                         g_window: g0,
-                        window_bits: round218_b5_program::ROUND218_B5_SOURCE_WINDOW_BITS as u8,
+                        window_bits: phase_b5_execution::ROUND218_B5_SOURCE_WINDOW_BITS as u8,
                     },
                 );
-                let row = round218_b5_program::block_row(
+                let row = phase_b5_execution::block_row(
                     0,
-                    round218_b5_program::BlockSelector {
+                    phase_b5_execution::BlockSelector {
                         zeta_start: zeta0,
                         f_low: (f0 & 31) as u8,
                         g_low: (g0 & 31) as u8,
-                        width: round218_b5_program::ROUND218_B5_BLOCK_BITS as u8,
+                        width: phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8,
                     },
                 );
                 let expect = scaled_coeff_block_fixed_pure_u256(&row, v0, r0, p);
@@ -7942,7 +7942,7 @@ mod tests {
     fn round315_hash_backward_block_restores_source_and_consumes_l_exact_9024() {
         let p = SECP256K1_P;
         let zeta_bits = 11usize;
-        let window_bits = round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS;
+        let window_bits = phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS;
         let mut b = B::new();
         let zeta = b.alloc_qubits(zeta_bits);
         b.declare_qubit_register(&zeta);
@@ -7952,8 +7952,8 @@ mod tests {
         b.declare_qubit_register(&g);
         let l_hash = b.alloc_qubits(ROUND314_B5_HASH_BITS);
         b.declare_qubit_register(&l_hash);
-        let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
-        let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
+        let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
 
         emit_round315_b5_source_stream_backward_block_from_hash(
             &mut b,
@@ -8050,7 +8050,7 @@ mod tests {
     fn source_live_projective_scalar_transport_block_exact_9024() {
         let p = SECP256K1_P;
         let zeta_bits = 11usize;
-        let window_bits = round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS;
+        let window_bits = phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS;
         let mut b = B::new();
         let zeta = b.alloc_qubits(zeta_bits);
         b.declare_qubit_register(&zeta);
@@ -8105,13 +8105,13 @@ mod tests {
             for lane in 0..active {
                 let case_id = batch_start + lane;
                 let (zeta0, f0, g0, v0, r0) = deterministic_projective_scalar_case(case_id, p);
-                let row = round218_b5_program::block_row(
+                let row = phase_b5_execution::block_row(
                     0,
-                    round218_b5_program::BlockSelector {
+                    phase_b5_execution::BlockSelector {
                         zeta_start: zeta0,
                         f_low: (f0 & 31) as u8,
                         g_low: (g0 & 31) as u8,
-                        width: round218_b5_program::ROUND218_B5_BLOCK_BITS as u8,
+                        width: phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8,
                     },
                 );
                 let expect = scaled_coeff_block_fixed_pure_u256(&row, v0, r0, p);
@@ -8164,7 +8164,7 @@ mod tests {
     fn round379_source_live_cheap_lft_frame_block_exact_9024() {
         let p = SECP256K1_P;
         let zeta_bits = 11usize;
-        let window_bits = round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS;
+        let window_bits = phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS;
         let mut b = B::new();
         let zeta = b.alloc_qubits(zeta_bits);
         b.declare_qubit_register(&zeta);
@@ -8219,13 +8219,13 @@ mod tests {
             for lane in 0..active {
                 let case_id = batch_start + lane;
                 let (zeta0, f0, g0, v0, r0) = deterministic_projective_scalar_case(case_id, p);
-                let row = round218_b5_program::block_row(
+                let row = phase_b5_execution::block_row(
                     0,
-                    round218_b5_program::BlockSelector {
+                    phase_b5_execution::BlockSelector {
                         zeta_start: zeta0,
                         f_low: (f0 & 31) as u8,
                         g_low: (g0 & 31) as u8,
-                        width: round218_b5_program::ROUND218_B5_BLOCK_BITS as u8,
+                        width: phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8,
                     },
                 );
                 let expect = cheap_lft_frame_pure_u256(row.branch_word, v0, r0, p);
@@ -8276,7 +8276,7 @@ mod tests {
     fn round381_source_live_branch_only_cheap_lft_frame_block_exact_9024() {
         let p = SECP256K1_P;
         let zeta_bits = 11usize;
-        let window_bits = round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS;
+        let window_bits = phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS;
         let mut b = B::new();
         let zeta = b.alloc_qubits(zeta_bits);
         b.declare_qubit_register(&zeta);
@@ -8331,13 +8331,13 @@ mod tests {
             for lane in 0..active {
                 let case_id = batch_start + lane;
                 let (zeta0, f0, g0, v0, r0) = deterministic_projective_scalar_case(case_id, p);
-                let row = round218_b5_program::block_row(
+                let row = phase_b5_execution::block_row(
                     0,
-                    round218_b5_program::BlockSelector {
+                    phase_b5_execution::BlockSelector {
                         zeta_start: zeta0,
                         f_low: (f0 & 31) as u8,
                         g_low: (g0 & 31) as u8,
-                        width: round218_b5_program::ROUND218_B5_BLOCK_BITS as u8,
+                        width: phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8,
                     },
                 );
                 let expect = cheap_lft_frame_pure_u256(row.branch_word, v0, r0, p);
@@ -8390,7 +8390,7 @@ mod tests {
     fn round383_current_pattern_ranked_cheap_lft_source_block_exact_9024() {
         let p = SECP256K1_P;
         let zeta_bits = 11usize;
-        let window_bits = round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS;
+        let window_bits = phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS;
         let mut b = B::new();
         let zeta = b.alloc_qubits(zeta_bits);
         b.declare_qubit_register(&zeta);
@@ -8404,7 +8404,7 @@ mod tests {
         b.declare_qubit_register(&r);
         let l_rank = b.alloc_qubits(4);
         b.declare_qubit_register(&l_rank);
-        let old_g0_history = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let old_g0_history = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&old_g0_history);
 
         emit_round383_b5_current_pattern_ranked_cheap_lft_source_block(
@@ -8521,7 +8521,7 @@ mod tests {
     #[test]
     fn round384_current_pattern_ranked_source_rollback_block_exact_9024() {
         let zeta_bits = 11usize;
-        let window_bits = round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS;
+        let window_bits = phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS;
         let mut b = B::new();
         let zeta = b.alloc_qubits(zeta_bits);
         b.declare_qubit_register(&zeta);
@@ -8531,7 +8531,7 @@ mod tests {
         b.declare_qubit_register(&g_window);
         let l_rank = b.alloc_qubits(4);
         b.declare_qubit_register(&l_rank);
-        let old_g0_history = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+        let old_g0_history = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
         b.declare_qubit_register(&old_g0_history);
 
         emit_round384_b5_current_pattern_ranked_source_rollback_block(
@@ -8635,7 +8635,7 @@ mod tests {
     fn round385_fused_advance_frame_rollback_block_exact_9024() {
         let p = SECP256K1_P;
         let zeta_bits = 11usize;
-        let window_bits = round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS;
+        let window_bits = phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS;
         let mut b = B::new();
         let zeta = b.alloc_qubits(zeta_bits);
         b.declare_qubit_register(&zeta);

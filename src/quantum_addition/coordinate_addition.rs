@@ -5742,7 +5742,7 @@ mod tests {
         let dirty = b.alloc_qubits(n - 2);
         let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
         let clean3 = b.alloc_qubit();
-        super::super::venting::ciadd_dirty_3clean_qoffset(
+        super::super::quantum_venting_operations::ciadd_dirty_3clean_qoffset(
             &mut b, &target, &dirty, &clean2, clean3, &offset, ctrl,
         );
         let ccx = count_ccx(&b.ops);
@@ -5812,7 +5812,7 @@ mod tests {
         for k in 0..n {
             b.ccx(ctrl, offset[k], mask[k]);
         }
-        super::super::venting::iadd_dirty_2clean_qoffset(
+        super::super::quantum_venting_operations::iadd_dirty_2clean_qoffset(
             &mut b,
             &target,
             &offset[..n - 2],
@@ -5874,7 +5874,7 @@ mod tests {
         for k in 0..256 {
             b.ccx(ctrl, offset[k], mask[k]);
         }
-        super::super::venting::iadd_dirty_2clean_qoffset(
+        super::super::quantum_venting_operations::iadd_dirty_2clean_qoffset(
             &mut b,
             &target,
             &offset[..254],
@@ -5930,7 +5930,7 @@ mod tests {
         let dirty = b.alloc_qubits(n - 2);
         let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
         let mask = b.alloc_qubit();
-        super::super::venting::ciadd_dirty_3clean_qoffset_stream_mask(
+        super::super::quantum_venting_operations::ciadd_dirty_3clean_qoffset_stream_mask(
             &mut b, &target, &dirty, &clean2, mask, &offset, ctrl,
         );
         let num_qubits = b.next_qubit as usize;
@@ -5983,7 +5983,7 @@ mod tests {
         let dirty = b.alloc_qubits(254);
         let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
         let mask = b.alloc_qubit();
-        super::super::venting::ciadd_dirty_3clean_qoffset_stream_mask(
+        super::super::quantum_venting_operations::ciadd_dirty_3clean_qoffset_stream_mask(
             &mut b, &target, &dirty, &clean2, mask, &offset, ctrl,
         );
         let ccx = count_ccx(&b.ops);
@@ -6079,7 +6079,7 @@ mod tests {
         let clean8 = [b8.alloc_qubit(), b8.alloc_qubit()];
         let stream8 = b8.alloc_qubit();
         let prefix8 = b8.alloc_qubits(3);
-        super::super::venting::ciadd_dirty_3clean_qoffset_partial_mask(
+        super::super::quantum_venting_operations::ciadd_dirty_3clean_qoffset_partial_mask(
             &mut b8, &target8, &dirty8, &clean8, stream8, &prefix8, &offset8, ctrl8,
         );
         let num_qubits = b8.next_qubit as usize;
@@ -6141,7 +6141,7 @@ mod tests {
             let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
             let stream = b.alloc_qubit();
             let prefix = b.alloc_qubits(prefix_len);
-            super::super::venting::ciadd_dirty_3clean_qoffset_partial_mask(
+            super::super::quantum_venting_operations::ciadd_dirty_3clean_qoffset_partial_mask(
                 &mut b, &target, &dirty, &clean2, stream, &prefix, &offset, ctrl,
             );
             costs.push((prefix_len, count_ccx(&b.ops), b.peak_qubits as usize));
@@ -6219,7 +6219,7 @@ mod tests {
                 let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
                 let stream = b.alloc_qubit();
                 let prefix = b.alloc_qubits(prefix_len);
-                super::super::venting::ciadd_dirty_3clean_qoffset_partial_mask(
+                super::super::quantum_venting_operations::ciadd_dirty_3clean_qoffset_partial_mask(
                     &mut b, &target, &dirty, &clean2, stream, &prefix, &offset, ctrl,
                 );
                 let num_qubits = b.next_qubit as usize;
@@ -6303,7 +6303,7 @@ mod tests {
             let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
             let stream = b.alloc_qubit();
             let prefix = b.alloc_qubits(prefix_len);
-            super::super::venting::ciadd_dirty_3clean_qoffset_partial_mask(
+            super::super::quantum_venting_operations::ciadd_dirty_3clean_qoffset_partial_mask(
                 &mut b, &target, &dirty, &clean2, stream, &prefix, &offset, ctrl,
             );
             let cost = count_ccx(&b.ops);
@@ -6886,7 +6886,7 @@ mod tests {
         let dirty = b.alloc_qubits(254);
         let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
         let clean3 = b.alloc_qubit();
-        super::super::venting::ciadd_dirty_3clean_qoffset(
+        super::super::quantum_venting_operations::ciadd_dirty_3clean_qoffset(
             &mut b, &target, &dirty, &clean2, clean3, &offset, ctrl,
         );
         let ccx = count_ccx(&b.ops);
@@ -6924,7 +6924,7 @@ mod tests {
         let offset = b.alloc_qubits(256);
         let dirty = b.alloc_qubits(254);
         let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
-        super::super::venting::iadd_dirty_2clean_qoffset(
+        super::super::quantum_venting_operations::iadd_dirty_2clean_qoffset(
             &mut b, &target, &dirty, &clean2, &offset, false,
         );
         let ccx = count_ccx(&b.ops);

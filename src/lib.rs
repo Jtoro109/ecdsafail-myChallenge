@@ -14,7 +14,7 @@
 
 #[allow(dead_code)]
 pub mod circuit;
-pub mod ec_add;
+pub mod quantum_addition;
 #[allow(dead_code)]
 pub mod sim;
 #[allow(dead_code)]

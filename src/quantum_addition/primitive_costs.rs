@@ -277,9 +277,9 @@ fn cmod_addsub_qq_fused_negated_add_for_cost(
     for i in 0..n {
         b.ccx(ctrl, a[i], f[i]);
     }
-    super::by_cmod_neg_inplace_fast(b, &f, subtract, p);
+    super::coordinate_addition_cmod_neg_inplace_fast(b, &f, subtract, p);
     super::mod_add_qq_fast(b, acc, &f, p);
-    super::by_cmod_neg_inplace_fast(b, &f, subtract, p);
+    super::coordinate_addition_cmod_neg_inplace_fast(b, &f, subtract, p);
     for i in 0..n {
         let m = b.alloc_bit();
         b.hmr(f[i], m);
@@ -809,7 +809,7 @@ fn round700_selected_dyadic_primitive_costs_n256() {
     let a = b.alloc_qubits(N);
     let ctrl = b.alloc_qubit();
     let start = b.ops.len();
-    super::by_cmod_add_qq_exact_for_bench(&mut b, &acc, &a, ctrl, p);
+    super::coordinate_addition_cmod_add_qq_exact_for_bench(&mut b, &acc, &a, ctrl, p);
     let cmod_add_exact = count_ccx(&b.ops[start..]);
 
     let mut b = B::new();
@@ -817,7 +817,7 @@ fn round700_selected_dyadic_primitive_costs_n256() {
     let a = b.alloc_qubits(N);
     let ctrl = b.alloc_qubit();
     let start = b.ops.len();
-    super::by_cmod_sub_qq_exact_for_bench(&mut b, &acc, &a, ctrl, p);
+    super::coordinate_addition_cmod_sub_qq_exact_for_bench(&mut b, &acc, &a, ctrl, p);
     let cmod_sub_exact = count_ccx(&b.ops[start..]);
 
     let mut b = B::new();

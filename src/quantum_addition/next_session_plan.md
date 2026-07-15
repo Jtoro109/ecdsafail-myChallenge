@@ -8,7 +8,7 @@
 ## Debugging progress
 
 ### Venting adder infrastructure (DONE)
-9 tested primitives in `src/ec_add/venting.rs`:
+9 tested primitives in `src/quantum_addition/venting.rs`:
 - Classical-offset: carry-xor, 2-clean vented add, HRS linear-clean,
   dirty-2-clean, controlled add/sub variants (ciadd, cisub).
 - Quantum-offset: 2-clean vented qadd, dirty-2-clean qadd, qsub.
@@ -72,8 +72,8 @@ Full rewrite using location-controlled arithmetic. Reaches ~1300 qubits
 but at 100-500M Toffoli. Multi-session effort.
 
 ## Files to read next session
-- `src/ec_add/venting.rs` — the 9 primitives
-- `src/ec_add/session_summary.md` — state summary
+- `src/quantum_addition/venting.rs` — the 9 primitives
+- `src/quantum_addition/session_summary.md` — state summary
 - `/tmp/gidney_venting/code/src/constadd/` — Python reference for
   venting adder
 - `/tmp/zenodo_ecc/extracted/` — Google's ZKP harness (matches ours)

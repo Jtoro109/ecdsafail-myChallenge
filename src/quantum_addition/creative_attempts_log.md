@@ -89,7 +89,7 @@ peak reduction.
 **Blocker**: Our test harness checks `get_register == expected mod p`.
 Coset-form registers hold `jN + x`, which matches mod p but exceeds
 n bits. Either need to change harness (out of scope per user constraint
-"Only edit files under src/ec_add/") or use c_pad=0 and accept
+"Only edit files under src/quantum_addition/") or use c_pad=0 and accept
 rare errors (fails our 100% correctness gate).
 
 ## Attempt 8: Montgomery-form for scaling factor reuse

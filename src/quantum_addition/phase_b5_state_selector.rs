@@ -6,7 +6,7 @@
 //!
 //! over the odd-`f_low` half-delta domain.  The emitted circuit is an XOR
 //! network of positive-control monomials synthesized from the exact B=5
-//! `round218_b5_program::block_row` table.  Because the network only toggles
+//! `phase_b5_execution::block_row` table.  Because the network only toggles
 //! output qubits as functions of the unchanged low-state inputs, the matching
 //! uncompute is the same gate sequence applied a second time.
 //!
@@ -22,9 +22,9 @@ use alloy_primitives::U256;
 
 use crate::circuit::{BitId, Op, QubitId};
 
-use super::{round218_b5_program, B};
+use super::{phase_b5_execution, B};
 
-pub const ROUND218_B5_LOW_STATE_BITS: usize = round218_b5_program::ROUND218_B5_BLOCK_BITS;
+pub const ROUND218_B5_LOW_STATE_BITS: usize = phase_b5_execution::ROUND218_B5_BLOCK_BITS;
 pub const ROUND218_B5_LOW_WINDOW_BITS: usize = 2 * ROUND218_B5_LOW_STATE_BITS;
 pub const ROUND218_B5_SELECTOR_INPUT_BITS: usize = 2 * ROUND218_B5_LOW_STATE_BITS;
 pub const ROUND218_B5_SELECTOR_OUTPUT_BITS: usize = 2 * ROUND218_B5_LOW_STATE_BITS;
@@ -575,9 +575,9 @@ pub fn round218_b5_dynamic_zeta_end_range(zeta_min: i128, zeta_max: i128) -> (i1
     for zeta_start in zeta_min..=zeta_max {
         for f_low in (1u8..(1u8 << ROUND218_B5_LOW_STATE_BITS)).step_by(2) {
             for g_low in 0u8..(1u8 << ROUND218_B5_LOW_STATE_BITS) {
-                let row = round218_b5_program::block_row(
+                let row = phase_b5_execution::block_row(
                     0,
-                    round218_b5_program::BlockSelector {
+                    phase_b5_execution::BlockSelector {
                         zeta_start,
                         f_low,
                         g_low,
@@ -1373,7 +1373,7 @@ pub(super) fn emit_round218_b5_source_stream_forward_block(
 ) {
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
     assert_eq!(old_g0_word.len(), branch_word.len());
     assert_eq!(f.len(), g.len());
@@ -1404,7 +1404,7 @@ pub(super) fn emit_round218_b5_source_stream_forward_block_from_bits(
 ) {
     assert_eq!(
         branch_bits.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
     assert_eq!(old_g0_bits.len(), branch_bits.len());
     assert_eq!(f.len(), g.len());
@@ -1442,7 +1442,7 @@ pub(super) fn emit_round218_b5_source_stream_forward_block_from_controls(
 ) {
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
     assert_eq!(old_g0_word.len(), branch_word.len());
     assert_eq!(f.len(), g.len());
@@ -1470,7 +1470,7 @@ pub(super) fn emit_round218_b5_source_stream_backward_block(
 ) {
     assert_eq!(
         branch_word.len(),
-        round218_b5_program::ROUND218_B5_BLOCK_BITS
+        phase_b5_execution::ROUND218_B5_BLOCK_BITS
     );
     assert_eq!(old_g0_word.len(), branch_word.len());
     assert_eq!(f.len(), g.len());
@@ -1760,9 +1760,9 @@ fn dynamic_zeta_transducer_output_anf_masks(
             continue;
         }
         let g_low = ((low_state >> ROUND218_B5_LOW_STATE_BITS) & low_mask) as u8;
-        let row = round218_b5_program::block_row(
+        let row = phase_b5_execution::block_row(
             0,
-            round218_b5_program::BlockSelector {
+            phase_b5_execution::BlockSelector {
                 zeta_start,
                 f_low,
                 g_low,
@@ -1777,7 +1777,7 @@ fn dynamic_zeta_transducer_output_anf_masks(
 
 fn dynamic_zeta_transducer_output_bit(
     spec: Round218B5DynamicZetaTransducerSpec,
-    row: &round218_b5_program::BlockRow,
+    row: &phase_b5_execution::BlockRow,
     output_idx: usize,
 ) -> u8 {
     if output_idx < ROUND218_B5_LOW_STATE_BITS {
@@ -1802,9 +1802,9 @@ fn selector_output_anf_masks(zeta_start: i128, output_idx: usize) -> Vec<u16> {
         }
         let g_low = ((input >> ROUND218_B5_LOW_STATE_BITS)
             & ((1usize << ROUND218_B5_LOW_STATE_BITS) - 1)) as u8;
-        let row = round218_b5_program::block_row(
+        let row = phase_b5_execution::block_row(
             0,
-            round218_b5_program::BlockSelector {
+            phase_b5_execution::BlockSelector {
                 zeta_start,
                 f_low,
                 g_low,
@@ -2172,8 +2172,8 @@ mod tests {
     ) -> (i128, u16, u16, u8, u8) {
         let parsed = round218_b5_low_window_parser_cell(zeta_start, f_window, g_window);
         let retained = round218_b5_low_window_parser_retained_word(zeta_start, f_window, g_window);
-        let row = round218_b5_program::source_window_block_row(
-            round218_b5_program::SourceWindowSelector {
+        let row = phase_b5_execution::source_window_block_row(
+            phase_b5_execution::SourceWindowSelector {
                 zeta_start,
                 f_window,
                 g_window,
@@ -2205,10 +2205,10 @@ mod tests {
         }
     }
 
-    fn expected_row(zeta_start: i128, f_low: u8, g_low: u8) -> round218_b5_program::BlockRow {
-        round218_b5_program::block_row(
+    fn expected_row(zeta_start: i128, f_low: u8, g_low: u8) -> phase_b5_execution::BlockRow {
+        phase_b5_execution::block_row(
             0,
-            round218_b5_program::BlockSelector {
+            phase_b5_execution::BlockSelector {
                 zeta_start,
                 f_low,
                 g_low,

@@ -1,11 +1,11 @@
 # Coset/padded prototype checkpoint (April 25)
 
 This file records the first concrete reversible prototype of the "coset"
-idea inside `src/ec_add/`.
+idea inside `src/quantum_addition/`.
 
 ## What was implemented
 
-`src/ec_add/coset_proto.rs` adds an **exact Bennett-clean padded-add
+`src/quantum_addition/coset_proto.rs` adds an **exact Bennett-clean padded-add
 prototype** for secp256k1:
 
 - accumulate repeated additions in an `(n + c_pad)`-bit non-modular workspace,

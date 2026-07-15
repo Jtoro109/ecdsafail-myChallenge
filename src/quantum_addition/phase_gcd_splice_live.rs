@@ -7,7 +7,7 @@
 //! complete point-addition candidate: the tail and prefix state are not erased
 //! back to the four Google ABI registers.
 
-use super::{halfgcd_coeff_decoder, load_const, B, N, SECP256K1_P};
+use super::{gcd_coefficient_decoder, load_const, B, N, SECP256K1_P};
 use crate::circuit::{Op, OperationType, QubitId};
 use alloy_primitives::{U256, U512};
 use std::collections::BTreeSet;
@@ -98,9 +98,9 @@ pub(super) fn round158_live_prefix_pa_route_blocker_message(
     let semantic_rejection =
         profile_rejection_for_live_divisor(p, divisor, N, 128, &semantic_profile);
     let first_step_regular_decoder_t =
-        halfgcd_coeff_decoder::halfgcd_coeff_decoder_formula(N, required_first_q_bits).toffoli_ops;
+        gcd_coefficient_decoder::halfgcd_coeff_decoder_formula(N, required_first_q_bits).toffoli_ops;
     let (first_step_overflow_decoder_q, first_step_overflow_decoder_t) =
-        halfgcd_coeff_decoder::halfgcd_coeff_decoder_overflow_aware_peak_toffoli(
+        gcd_coefficient_decoder::halfgcd_coeff_decoder_overflow_aware_peak_toffoli(
             N,
             required_first_q_bits,
         );
@@ -538,9 +538,9 @@ fn emit_round158_numeric_endpoint_step_with_decoder(
     assert!(q.len() <= coeff_b.len());
 
     if overflow_aware {
-        halfgcd_coeff_decoder::emit_halfgcd_coeff_quotient_decoder_overflow_aware(b, u, v, q);
+        gcd_coefficient_decoder::emit_halfgcd_coeff_quotient_decoder_overflow_aware(b, u, v, q);
     } else {
-        halfgcd_coeff_decoder::emit_halfgcd_coeff_quotient_decoder(b, u, v, q);
+        gcd_coefficient_decoder::emit_halfgcd_coeff_quotient_decoder(b, u, v, q);
     }
     emit_sub_q_times_twos_complement(b, q, coeff_d, coeff_b);
     swap_regs(b, u, v);
@@ -639,14 +639,14 @@ pub(super) fn emit_round197_numeric_endpoint_step_clean_q_from_coeff_with_decode
 
     let decoder_start = b.ops.len();
     if overflow_aware {
-        halfgcd_coeff_decoder::emit_halfgcd_coeff_quotient_decoder_overflow_aware(
+        gcd_coefficient_decoder::emit_halfgcd_coeff_quotient_decoder_overflow_aware(
             b,
             &numerator,
             &denominator,
             &q_calc,
         );
     } else {
-        halfgcd_coeff_decoder::emit_halfgcd_coeff_quotient_decoder(
+        gcd_coefficient_decoder::emit_halfgcd_coeff_quotient_decoder(
             b,
             &numerator,
             &denominator,
@@ -745,7 +745,7 @@ pub(super) fn emit_round199_semantic_full_gcd_prefix_sequence(
             _ => "round199_semantic_full_gcd_prefix_step_ge4",
         });
         let q = &q_tail[q_offset..q_offset + step.q_bits];
-        halfgcd_coeff_decoder::emit_halfgcd_coeff_quotient_decoder(b, u, v, q);
+        gcd_coefficient_decoder::emit_halfgcd_coeff_quotient_decoder(b, u, v, q);
         emit_sub_q_times_twos_complement(b, q, coeff_d, coeff_b);
         swap_regs(b, u, v);
         swap_regs(b, coeff_b, coeff_d);
@@ -808,7 +808,7 @@ fn emit_round158_live_prefix_splice(
             _ => "round158_prefix_step_ge4",
         });
         let q = &q_tail[q_offset..q_offset + step.q_bits];
-        halfgcd_coeff_decoder::emit_halfgcd_coeff_quotient_decoder(b, &u, &v, q);
+        gcd_coefficient_decoder::emit_halfgcd_coeff_quotient_decoder(b, &u, &v, q);
         emit_sub_q_times_twos_complement(b, q, &coeff_d, &coeff_b);
         swap_regs(b, &u, &v);
         swap_regs(b, &coeff_b, &coeff_d);

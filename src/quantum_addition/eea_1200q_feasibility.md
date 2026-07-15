@@ -628,7 +628,7 @@ Question: can Eea fit in 1200q?
 **Keep Eea.** Target the combination:
 
 1. **First milestone**: port HRSL Fig 6b swap-based Eea iteration as a
-   new module `src/ec_add/hrsl_eea.rs`. Classical test at n=64 that
+   new module `src/quantum_addition/hrsl_eea.rs`. Classical test at n=64 that
    `direction_bit_recovered = direction_bit_original` for 1000 random inputs.
    **Acceptance criterion**: if this fails, Eea at 1200q is impossible
    without Kim unconditional (+28% Toffoli).

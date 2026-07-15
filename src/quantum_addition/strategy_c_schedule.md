@@ -2,7 +2,7 @@
 
 ## Discipline
 No speculation. Every register allocation + free is accounted for. Every
-claim is checked against `src/ec_add/single_inv_numeric.rs::replay_strategy_c`
+claim is checked against `src/quantum_addition/single_inv_numeric.rs::replay_strategy_c`
 and against actual qubit tallies from `mod.rs` primitives. If a claim
 fails the arithmetic, the row is marked **BLOCKED** — no hand-waving.
 

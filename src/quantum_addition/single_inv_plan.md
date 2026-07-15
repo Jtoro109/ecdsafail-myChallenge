@@ -268,7 +268,7 @@ cost depends on how cleanly `w = dx·(Rx - Qx)` factors.
 | B2       | 200/200 | 200/200 | lam_copy = -λ leaked | alive with caveat  |
 | C        | 200/200 | 200/200 | **NONE**             | **alive**          |
 
-Replay code lives in `src/ec_add/single_inv_numeric.rs`. Run with
+Replay code lives in `src/quantum_addition/single_inv_numeric.rs`. Run with
 `cargo test --release -p quantum_ecc -- single_inv_numeric --nocapture`.
 
 ## 9. Honest op-count estimate for Strategy C at n=256

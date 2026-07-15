@@ -66,40 +66,40 @@ use crate::circuit::{analyze_ops, BitId, Op, OperationType, QubitId, QubitOrBit,
 use crate::sim::Simulator;
 use crate::weierstrass_elliptic_curve::WeierstrassEllipticCurve;
 
-pub mod by;
+pub mod coordinate_addition;
 #[cfg(test)]
 pub mod coset_proto;
-pub mod fermat_inv;
-pub mod halfgcd_coeff_decoder;
-pub mod halfgcd_live_pa;
-pub mod eea_classical_replay;
-pub mod eea_equiv;
-pub mod eea_jump;
+pub mod modular_inverse_fermat;
+pub mod gcd_coefficient_decoder;
+pub mod gcd_live_addition;
+pub mod gcd_classical_emulator;
+pub mod gcd_equivalence_check;
+pub mod gcd_jump_state;
 #[cfg(test)]
-pub mod eea_linear_transform;
+pub mod gcd_linear_transform;
 #[cfg(test)]
 pub mod kim_inv_circuit;
 #[cfg(test)]
 pub mod kim_proto;
 #[cfg(test)]
 pub mod luo_proto;
-pub mod microbench;
+pub mod performance_microbenchmarks;
 #[cfg(test)]
 pub mod primitive_costs;
 pub mod round125_jsf;
-pub mod round158_halfgcd_splice_live;
-pub mod round185_halfgcd_fixed_depth64_pa;
-pub mod round218_b5_program;
-pub mod round218_b5_selector;
-pub mod round218_b5_transport;
+pub mod phase_gcd_splice_live;
+pub mod phase_gcd_fixed_depth;
+pub mod phase_b5_execution;
+pub mod phase_b5_state_selector;
+pub mod phase_b5_qubit_transport;
 #[cfg(test)]
 pub mod scratch600_frontier;
 #[cfg(test)]
 pub mod single_inv_numeric;
-pub mod source_live_d1;
+pub mod quantum_d1_data_source;
 pub mod test_timeout;
-pub mod unconditional_kal;
-pub mod venting;
+pub mod unconditional_gcd_step;
+pub mod quantum_venting_operations;
 
 const D1_PHASE_CORRECTED_ARITH_CORE_ENV: &str = "D1_PHASE_CORRECTED_ARITH_CORE";
 
@@ -1384,7 +1384,7 @@ fn mod_sub_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
         // Use venting cisub with a_ext as dirty qubits.
         let c_low = c.as_limbs()[0];
         let q_clean2: [QubitId; 2] = [b.alloc_qubit(), b.alloc_qubit()];
-        venting::cisub_dirty_2clean_classical(
+        quantum_venting_operations::cisub_dirty_2clean_classical(
             b,
             &acc_ext[..n],
             &a_ext[..n - 2],
@@ -2035,6 +2035,203 @@ fn mod_double_inplace(b: &mut B, v: &[QubitId], p: U256) {
 }
 
 /// Fast `v := 2*v mod p` using measurement-based RippleAdder.
+fn highest_set_bit(c: U256) -> usize {
+    let mut hi = 0usize;
+    for i in 0..256 {
+        if bit(c, i) {
+            hi = i;
+        }
+    }
+    hi
+}
+
+fn double_carry_trunc_window() -> Option<usize> {
+    std::env::var("KAL_DOUBLE_CARRY_TRUNC_W")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&w| w > 0)
+}
+
+/// Carry/borrow-tail truncation window for the pseudomersenne overflow/underflow
+/// FOLD adders (the controlled `acc[..LSBS] += c` / `-= c` correction after a
+/// raw 256-bit add/sub in the materialized-special apply path). Default OFF.
+/// Same idea as `double_carry_trunc_window`: the secp256k1 constant
+/// c = 2^32+977 is 7-bit-sparse, so the fold's carry ripple can stop a small
+/// window above bit 32. Forward (cadd) and inverse (csub) read the same window,
+/// so the reverse apply exactly inverts the forward when no truncation triggers
+/// (the regime selected by the co-tuned reroll).
+fn fold_carry_trunc_window() -> Option<usize> {
+    std::env::var("KAL_FOLD_CARRY_TRUNC_W")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&w| w > 0)
+}
+
+/// Carry-tail-truncated controlled add of a sparse classical constant.
+///
+/// Identical arithmetic to [`cadd_nbit_const_direct_fast`] except the forward
+/// carry ripple (and the matching measurement-uncompute) is stopped `window`
+/// bits above the constant's highest set bit `hi`. Carries `> hi + window`
+/// are assumed 0; the corresponding high sum bits keep their input value.
+/// This is exact unless a carry generated at/below `hi` propagates through an
+/// unbroken run of `window + 1` ones in `acc` above `hi` — probability
+/// ~2^-(window+1) per call for random `acc`. The carries `[0 ..= last]` follow
+/// the exact same recurrence and post-sum identity as the full adder, so they
+/// are returned cleanly to 0 (no phase / ancilla garbage); only the high sum
+/// value is approximate.
+fn cadd_nbit_const_direct_trunc_fast(
+    b: &mut B,
+    acc: &[QubitId],
+    c: U256,
+    ctrl: QubitId,
+    window: usize,
+) {
+    let n = acc.len();
+    if n == 0 {
+        return;
+    }
+    if n == 1 {
+        if bit(c, 0) {
+            b.cx(ctrl, acc[0]);
+        }
+        return;
+    }
+
+    let hi = highest_set_bit(c);
+    let last = core::cmp::min(n - 2, hi.saturating_add(window));
+    let carries = b.alloc_qubits(last + 1);
+
+    // Forward carry sweep, truncated at `last`. carry_{i+1} = maj(acc_i, k_i, carry_i).
+    for i in 0..=last {
+        let target = carries[i];
+        let carry_in = if i == 0 { None } else { Some(carries[i - 1]) };
+        if bit(c, i) {
+            if let Some(ci) = carry_in {
+                b.ccx(acc[i], ci, target);
+                b.ccx(ctrl, acc[i], target);
+                b.ccx(ctrl, ci, target);
+            } else {
+                b.ccx(acc[i], ctrl, target);
+            }
+        } else if let Some(ci) = carry_in {
+            b.ccx(acc[i], ci, target);
+        }
+    }
+
+    // Sum bits: acc_i ^= k_i ^ carry_{i-1}; carries above `last` are 0.
+    for i in 0..n {
+        if bit(c, i) {
+            b.cx(ctrl, acc[i]);
+        }
+        if i > 0 && i - 1 <= last {
+            b.cx(carries[i - 1], acc[i]);
+        }
+    }
+
+    // Measurement-uncompute carries in reverse (same identity as the full adder).
+    for i in (0..=last).rev() {
+        let m = b.alloc_bit();
+        b.hmr(carries[i], m);
+        let carry_in = if i == 0 { None } else { Some(carries[i - 1]) };
+        if bit(c, i) {
+            b.x(acc[i]);
+            if let Some(ci) = carry_in {
+                b.cz_if(acc[i], ctrl, m);
+                b.cz_if(acc[i], ci, m);
+                b.x(acc[i]);
+                b.cz_if(ctrl, ci, m);
+            } else {
+                b.cz_if(acc[i], ctrl, m);
+                b.x(acc[i]);
+            }
+        } else if let Some(ci) = carry_in {
+            b.x(acc[i]);
+            b.cz_if(acc[i], ci, m);
+            b.x(acc[i]);
+        }
+    }
+
+    b.free_vec(&carries);
+}
+
+/// Carry-tail-truncated controlled subtract of a sparse classical constant.
+/// Borrow analogue of [`cadd_nbit_const_direct_trunc_fast`]; the inverse used
+/// by the apply-phase modular halve so that halve exactly inverts double when
+/// neither truncation triggers (the regime selected by the co-tuned reroll).
+fn csub_nbit_const_direct_trunc_fast(
+    b: &mut B,
+    acc: &[QubitId],
+    c: U256,
+    ctrl: QubitId,
+    window: usize,
+) {
+    let n = acc.len();
+    if n == 0 {
+        return;
+    }
+    if n == 1 {
+        if bit(c, 0) {
+            b.cx(ctrl, acc[0]);
+        }
+        return;
+    }
+
+    let hi = highest_set_bit(c);
+    let last = core::cmp::min(n - 2, hi.saturating_add(window));
+    let borrows = b.alloc_qubits(last + 1);
+
+    // Forward borrow sweep, truncated at `last`.
+    for i in 0..=last {
+        let target = borrows[i];
+        let borrow_in = if i == 0 { None } else { Some(borrows[i - 1]) };
+        if bit(c, i) {
+            b.x(acc[i]);
+            if let Some(bi) = borrow_in {
+                b.ccx(acc[i], bi, target);
+                b.ccx(ctrl, acc[i], target);
+                b.ccx(ctrl, bi, target);
+            } else {
+                b.ccx(acc[i], ctrl, target);
+            }
+            b.x(acc[i]);
+        } else if let Some(bi) = borrow_in {
+            b.x(acc[i]);
+            b.ccx(acc[i], bi, target);
+            b.x(acc[i]);
+        }
+    }
+
+    // Difference bits: acc_i ^= k_i ^ borrow_{i-1}; borrows above `last` are 0.
+    for i in 0..n {
+        if bit(c, i) {
+            b.cx(ctrl, acc[i]);
+        }
+        if i > 0 && i - 1 <= last {
+            b.cx(borrows[i - 1], acc[i]);
+        }
+    }
+
+    // Measurement-uncompute borrows in reverse (same identity as the full sub).
+    for i in (0..=last).rev() {
+        let m = b.alloc_bit();
+        b.hmr(borrows[i], m);
+        let borrow_in = if i == 0 { None } else { Some(borrows[i - 1]) };
+        if bit(c, i) {
+            if let Some(bi) = borrow_in {
+                b.cz_if(acc[i], ctrl, m);
+                b.cz_if(acc[i], bi, m);
+                b.cz_if(ctrl, bi, m);
+            } else {
+                b.cz_if(acc[i], ctrl, m);
+            }
+        } else if let Some(bi) = borrow_in {
+            b.cz_if(acc[i], bi, m);
+        }
+    }
+
+    b.free_vec(&borrows);
+}
+
 fn mod_double_inplace_fast(b: &mut B, v: &[QubitId], p: U256) {
     mod_double_inplace_fast_with_dirty(b, v, p, None)
 }
@@ -2058,10 +2255,13 @@ fn mod_double_inplace_fast_with_dirty(
     let c = U256::MAX.wrapping_sub(p).wrapping_add(U256::from(1));
     let use_venting = std::env::var("KAL_VENT_DOUBLE").ok().as_deref() == Some("1")
         && dirty_src.map_or(false, |d| d.len() >= n - 2);
-    if use_venting {
+    if let Some(w) = double_carry_trunc_window() {
+        // Carry-tail-truncated sparse-constant add (default OFF).
+        cadd_nbit_const_direct_trunc_fast(b, v, c, ovf, w);
+    } else if use_venting {
         let dirty = dirty_src.unwrap();
         let q_clean2: [QubitId; 2] = [b.alloc_qubit(), b.alloc_qubit()];
-        venting::ciadd_dirty_2clean_classical(
+        quantum_venting_operations::ciadd_dirty_2clean_classical(
             b,
             v,
             &dirty[..n - 2],
@@ -2389,9 +2589,9 @@ fn spill_qoffset_addsub_lowq(
                 offset.push(if i < spill.len() { spill[i] } else { zero });
             }
             if is_sub {
-                venting::isub_dirty_2clean_qoffset(b, target, dirty, &clean, &offset);
+                quantum_venting_operations::isub_dirty_2clean_qoffset(b, target, dirty, &clean, &offset);
             } else {
-                venting::iadd_dirty_2clean_qoffset(b, target, dirty, &clean, &offset, false);
+                quantum_venting_operations::iadd_dirty_2clean_qoffset(b, target, dirty, &clean, &offset, false);
             }
             b.free(clean[1]);
             b.free(clean[0]);
@@ -2613,7 +2813,11 @@ fn mod_halve_inplace_fast_with_dirty(
     // If caller provided enough dirty qubits AND c fits in u64 (it does
     // for secp256k1: c = 2^32 + 977), use the venting variant.
     let use_venting = kal_vent_halve_enabled() && dirty_src.map_or(false, |d| d.len() >= n - 2);
-    if use_venting {
+    if let Some(w) = double_carry_trunc_window() {
+        // Carry-tail-truncated sparse-constant sub (inverse of the truncated
+        // double; default OFF; same window so double/halve stay exact inverses).
+        csub_nbit_const_direct_trunc_fast(b, v, c, ovf, w);
+    } else if use_venting {
         // c as u64 (it fits: c = 0x1000003D1).
         // For n=256, we still need to pass the full 256-bit constant via u64.
         // Since c only has 33 bits, u64 is fine.
@@ -2625,7 +2829,7 @@ fn mod_halve_inplace_fast_with_dirty(
         let dirty_slice = &dirty[..n - 2];
         // We need 2 clean ancilla. Alloc them fresh.
         let q_clean2: [QubitId; 2] = [b.alloc_qubit(), b.alloc_qubit()];
-        venting::cisub_dirty_2clean_classical(b, v, dirty_slice, &q_clean2, c_low, ovf);
+        quantum_venting_operations::cisub_dirty_2clean_classical(b, v, dirty_slice, &q_clean2, c_low, ovf);
         b.free(q_clean2[0]);
         b.free(q_clean2[1]);
         let _ = c_u64; // unused, c_low is the right value
@@ -2711,6 +2915,59 @@ fn cmp_lt_into_fast(b: &mut B, u: &[QubitId], v: &[QubitId], flag: QubitId) {
     b.free(c_in);
 }
 
+fn ccx_cmp_lt_into_fast(b: &mut B, u: &[QubitId], v: &[QubitId], ctrl: QubitId, target: QubitId) {
+    if kal_vent_modadd_enabled() {
+        let flag = b.alloc_qubit();
+        cmp_lt_into(b, u, v, flag);
+        b.ccx(ctrl, flag, target);
+        cmp_lt_into(b, u, v, flag);
+        b.free(flag);
+        return;
+    }
+
+    let n = u.len();
+    assert_eq!(n, v.len());
+    let c_in = b.alloc_qubit();
+    let carries = b.alloc_qubits(n);
+    for i in 0..n {
+        b.x(u[i]);
+    }
+
+    b.cx(u[0], v[0]);
+    b.cx(u[0], c_in);
+    b.ccx(c_in, v[0], carries[0]);
+    b.cx(carries[0], u[0]);
+    for i in 1..n {
+        b.cx(u[i], v[i]);
+        b.cx(u[i], u[i - 1]);
+        b.ccx(u[i - 1], v[i], carries[i]);
+        b.cx(carries[i], u[i]);
+    }
+
+    b.ccx(ctrl, u[n - 1], target);
+
+    for i in (1..n).rev() {
+        b.cx(carries[i], u[i]);
+        let m = b.alloc_bit();
+        b.hmr(carries[i], m);
+        b.cz_if(u[i - 1], v[i], m);
+        b.cx(u[i], u[i - 1]);
+        b.cx(u[i], v[i]);
+    }
+    b.cx(carries[0], u[0]);
+    let m0 = b.alloc_bit();
+    b.hmr(carries[0], m0);
+    b.cz_if(c_in, v[0], m0);
+    b.cx(u[0], c_in);
+    b.cx(u[0], v[0]);
+
+    for i in 0..n {
+        b.x(u[i]);
+    }
+    b.free_vec(&carries);
+    b.free(c_in);
+}
+
 /// Like `mod_add_qq` but uses `cmp_lt_into_fast` for the flag uncompute.
 /// NOT safe inside emit_inverse blocks.
 fn mod_add_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
@@ -2732,7 +2989,7 @@ fn mod_add_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
         // its value is preserved through the venting sub-protocol).
         let c_low = c.as_limbs()[0];
         let q_clean2: [QubitId; 2] = [b.alloc_qubit(), b.alloc_qubit()];
-        venting::iadd_dirty_2clean_classical(
+        quantum_venting_operations::iadd_dirty_2clean_classical(
             b,
             &acc_ext,
             &a_ext[..n1 - 2],
@@ -2758,7 +3015,7 @@ fn mod_add_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
         let c_low = c.as_limbs()[0];
         let n1 = acc_ext.len();
         let q_clean2: [QubitId; 2] = [b.alloc_qubit(), b.alloc_qubit()];
-        venting::cisub_dirty_2clean_classical(
+        quantum_venting_operations::cisub_dirty_2clean_classical(
             b,
             &acc_ext,
             &a_ext[..n1 - 2],
@@ -2819,7 +3076,7 @@ fn mod_add_qq_fast_from_zero(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256)
         let n1 = acc_ext.len();
         let c_low = c.as_limbs()[0];
         let q_clean2: [QubitId; 2] = [b.alloc_qubit(), b.alloc_qubit()];
-        venting::iadd_dirty_2clean_classical(
+        quantum_venting_operations::iadd_dirty_2clean_classical(
             b,
             &acc_ext,
             &a_ext[..n1 - 2],
@@ -2842,7 +3099,7 @@ fn mod_add_qq_fast_from_zero(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256)
         let c_low = c.as_limbs()[0];
         let n1 = acc_ext.len();
         let q_clean2: [QubitId; 2] = [b.alloc_qubit(), b.alloc_qubit()];
-        venting::cisub_dirty_2clean_classical(
+        quantum_venting_operations::cisub_dirty_2clean_classical(
             b,
             &acc_ext,
             &a_ext[..n1 - 2],
@@ -5274,10 +5531,10 @@ fn square_tx_and_combined_ty_l2minus3qx(
     mod_sub_qb(b, &breg, ox, p);
 
     b.set_phase("affine_combined_y_mul");
-    if env_flag_enabled("EC_ADD_AFFINE_COMBINED_Y_KARATSUBA_LOWQ", false) {
+    if env_flag_enabled("QUANTUM_ADDITION_AFFINE_COMBINED_Y_KARATSUBA_LOWQ", false) {
         mod_mul_add_into_acc_karatsuba_lowq(b, ty, lam, &breg, p);
     } else {
-        mod_mul_add_into_acc_selected(b, ty, lam, &breg, p, "EC_ADD_AFFINE_COMBINED_Y_MUL");
+        mod_mul_add_into_acc_selected(b, ty, lam, &breg, p, "QUANTUM_ADDITION_AFFINE_COMBINED_Y_MUL");
     }
 
     b.set_phase("affine_combined_breg_unred");
@@ -5346,6 +5603,208 @@ fn squaring_sub_from_acc_schoolbook(b: &mut B, acc: &[QubitId], x: &[QubitId], p
     schoolbook_square_symmetric_inverse(b, x, &tmp_ext);
 
     b.free_vec(&tmp_ext);
+}
+
+/// Squaring-aware 1-level Karatsuba variant of [`squaring_sub_from_acc_schoolbook`].
+///
+/// Computes `acc -= x^2 mod p` (FastModulo-reduced) via a 1-level Karatsuba
+/// SQUARE. Split `x = hi‖lo` (`h = n/2` bits each) and form the three
+/// SYMMETRIC sub-squares
+///   z0 = lo^2,  z2 = hi^2,  z1 = (lo+hi)^2,
+/// then combine `z1 -= z0 + z2` (= 2·lo·hi) and add the middle term:
+///   x^2 = z0 + (z1 - z0 - z2)·2^h + z2·2^{2h}.
+/// Each sub-square is the existing symmetric square (`schoolbook_square_symmetric`,
+/// cross-products counted once via Gidney-uncomputed AND lanes), so the dominant
+/// cross-product AND budget drops ~25 % vs the symmetric 256-bit schoolbook
+/// square: 3·(n/2)(n/2-1)/2 cross ANDs instead of n(n-1)/2. Using a plain
+/// Karatsuba MUL with x=y would re-introduce the cross terms and be strictly
+/// worse — the symmetry of the SQUARE is what buys the win.
+///
+/// Peak control: the (lo+hi)^2 square is emitted FIRST, before the 2n-bit
+/// `tmp_ext` result register is allocated, and its `x_sum` operand is freed
+/// before `tmp_ext` is taken — so the z1 step (z1_reg + x_sum + row) and the
+/// z0/z2 step (tmp_ext + z1_reg + row) never coexist. The combine carries use
+/// the non-fast (ancilla-free) RippleAdder, and the FastModulo lanes default to the
+/// low-peak set (non-fast add/sub, direct-const double/halve, lowq shift) so the
+/// extra z1_reg register (2(h+1) q) is absorbed without pushing the affine
+/// square phase over the global GCD-body peak binder (~1567 < 1698).
+fn squaring_sub_from_acc_karatsuba(b: &mut B, acc: &[QubitId], x: &[QubitId], p: U256) {
+    let n = acc.len();
+    debug_assert_eq!(n, 256);
+    debug_assert_eq!(x.len(), n);
+    let h = n / 2;
+    let x_lo: Vec<QubitId> = x[0..h].to_vec();
+    let x_hi: Vec<QubitId> = x[h..n].to_vec();
+
+    // z1_reg holds z1 = (lo+hi)^2, width 2*(h+1).
+    let z1_reg = b.alloc_qubits(2 * (h + 1));
+
+    // ── Forward z1 = (lo+hi)^2 FIRST (tmp_ext not yet allocated → low peak). ──
+    {
+        let x_sum = b.alloc_qubits(h + 1);
+        karatsuba_half_sum_compute(b, &x_lo, &x_hi, &x_sum);
+        schoolbook_square_symmetric(b, &x_sum, &z1_reg);
+        karatsuba_half_sum_uncompute(b, &x_lo, &x_hi, &x_sum);
+        b.free_vec(&x_sum);
+    }
+
+    // 2n-bit result accumulator for x^2 (allocated after the z1 square so its
+    // 2n qubits never coexist with the z1 operand/row registers).
+    let tmp_ext = b.alloc_qubits(2 * n);
+
+    // z0 = lo^2 → tmp_ext[0..2h], z2 = hi^2 → tmp_ext[2h..4h].
+    {
+        let slice: Vec<QubitId> = tmp_ext[0..2 * h].to_vec();
+        schoolbook_square_symmetric(b, &x_lo, &slice);
+    }
+    {
+        let slice: Vec<QubitId> = tmp_ext[2 * h..4 * h].to_vec();
+        schoolbook_square_symmetric(b, &x_hi, &slice);
+    }
+
+    // Combine: z1 -= z0; z1 -= z2; mid (tmp_ext[h..4h]) += z1. Non-fast RippleAdder
+    // (no carry ancilla) keeps the peak flat while tmp_ext + z1_reg are live.
+    {
+        let pad = b.alloc_qubits(2);
+        let mut z0_ext: Vec<QubitId> = tmp_ext[0..2 * h].to_vec();
+        z0_ext.extend_from_slice(&pad);
+        sub_nbit_qq(b, &z0_ext, &z1_reg);
+        b.free_vec(&pad);
+    }
+    {
+        let pad = b.alloc_qubits(2);
+        let mut z2_ext: Vec<QubitId> = tmp_ext[2 * h..4 * h].to_vec();
+        z2_ext.extend_from_slice(&pad);
+        sub_nbit_qq(b, &z2_ext, &z1_reg);
+        b.free_vec(&pad);
+    }
+    {
+        let pad = b.alloc_qubits(3 * h - 2 * (h + 1));
+        let mut z1_ext: Vec<QubitId> = z1_reg.to_vec();
+        z1_ext.extend_from_slice(&pad);
+        let acc_slice: Vec<QubitId> = tmp_ext[h..4 * h].to_vec();
+        add_nbit_qq(b, &z1_ext, &acc_slice);
+        b.free_vec(&pad);
+    }
+
+    // ── FastModulo reduction: acc -= (lo + hi·c) mod p. ──
+    // z1_reg (2(h+1) q) is still live through this whole block, so the lanes
+    // that allocate a full-width carry ancilla (fast RippleAdder add/sub, fast
+    // shift) bind the affine-square phase peak. Each lane defaults to its
+    // low-peak (ancilla-free) variant so the phase peak stays below the global
+    // GCD-body binder; per-lane env knobs select the higher-peak fast variants
+    // for measurement (each computes the SAME value on `acc`, so any mix is
+    // value-correct):
+    //   KARA_SOL_MOD_FAST=1   → fast mod add/sub          (else non-fast)
+    //   KARA_SOL_DBL_FAST=1   → fast in-place double/halve (else direct-const)
+    //   KARA_SOL_SHIFT_FAST=1 → fast shift-by-22          (else lowq shift)
+    let mod_fast = std::env::var("KARA_SOL_MOD_FAST").ok().as_deref() == Some("1");
+    let dbl_fast = std::env::var("KARA_SOL_DBL_FAST").ok().as_deref() == Some("1");
+    let shift_fast = std::env::var("KARA_SOL_SHIFT_FAST").ok().as_deref() == Some("1");
+    let lo: Vec<QubitId> = tmp_ext[0..n].to_vec();
+    let hi: Vec<QubitId> = tmp_ext[n..2 * n].to_vec();
+    let mod_sub = |b: &mut B, acc: &[QubitId], a: &[QubitId]| {
+        if mod_fast {
+            mod_sub_qq_fast(b, acc, a, p);
+        } else {
+            mod_sub_qq(b, acc, a, p);
+        }
+    };
+    let mod_add = |b: &mut B, acc: &[QubitId], a: &[QubitId]| {
+        if mod_fast {
+            mod_add_qq_fast(b, acc, a, p);
+        } else {
+            mod_add_qq(b, acc, a, p);
+        }
+    };
+    let mod_dbl = |b: &mut B, v: &[QubitId]| {
+        if dbl_fast {
+            mod_double_inplace_fast(b, v, p);
+        } else {
+            mod_double_inplace_direct_const_fast(b, v, p);
+        }
+    };
+    let mod_hlv = |b: &mut B, v: &[QubitId]| {
+        if dbl_fast {
+            mod_halve_inplace_fast(b, v, p);
+        } else {
+            mod_halve_inplace_direct_const_fast(b, v, p);
+        }
+    };
+    mod_sub(b, acc, &lo);
+    mod_sub(b, acc, &hi);
+    for _ in 0..4 {
+        mod_dbl(b, &hi);
+    }
+    mod_sub(b, acc, &hi);
+    for _ in 0..2 {
+        mod_dbl(b, &hi);
+    }
+    mod_add(b, acc, &hi); // sign flipped
+    for _ in 0..4 {
+        mod_dbl(b, &hi);
+    }
+    mod_sub(b, acc, &hi);
+    let (spill, flag_inv, ovf) = if shift_fast {
+        mod_shift_left_by_k(b, &hi, p, 22)
+    } else {
+        mod_shift_left_by_k_lowq(b, &hi, p, 22)
+    };
+    mod_sub_qq(b, acc, &hi, p);
+    if shift_fast {
+        mod_shift_right_by_k(b, &hi, p, 22, spill, flag_inv, ovf);
+    } else {
+        mod_shift_right_by_k_lowq(b, &hi, p, 22, spill, flag_inv, ovf);
+    }
+    for _ in 0..10 {
+        mod_hlv(b, &hi);
+    }
+
+    // ── Inverse combine: mid -= z1; z1 += z2; z1 += z0. ──
+    {
+        let pad = b.alloc_qubits(3 * h - 2 * (h + 1));
+        let mut z1_ext: Vec<QubitId> = z1_reg.to_vec();
+        z1_ext.extend_from_slice(&pad);
+        let acc_slice: Vec<QubitId> = tmp_ext[h..4 * h].to_vec();
+        sub_nbit_qq(b, &z1_ext, &acc_slice);
+        b.free_vec(&pad);
+    }
+    {
+        let pad = b.alloc_qubits(2);
+        let mut z2_ext: Vec<QubitId> = tmp_ext[2 * h..4 * h].to_vec();
+        z2_ext.extend_from_slice(&pad);
+        add_nbit_qq(b, &z2_ext, &z1_reg);
+        b.free_vec(&pad);
+    }
+    {
+        let pad = b.alloc_qubits(2);
+        let mut z0_ext: Vec<QubitId> = tmp_ext[0..2 * h].to_vec();
+        z0_ext.extend_from_slice(&pad);
+        add_nbit_qq(b, &z0_ext, &z1_reg);
+        b.free_vec(&pad);
+    }
+
+    // Uncompute z2, z0 (reverse of forward compute order), then free tmp_ext.
+    {
+        let slice: Vec<QubitId> = tmp_ext[2 * h..4 * h].to_vec();
+        schoolbook_square_symmetric_inverse(b, &x_hi, &slice);
+    }
+    {
+        let slice: Vec<QubitId> = tmp_ext[0..2 * h].to_vec();
+        schoolbook_square_symmetric_inverse(b, &x_lo, &slice);
+    }
+    b.free_vec(&tmp_ext);
+
+    // Uncompute z1 last (mirrors the forward z1-first ordering, tmp_ext freed).
+    {
+        let x_sum = b.alloc_qubits(h + 1);
+        karatsuba_half_sum_compute(b, &x_lo, &x_hi, &x_sum);
+        schoolbook_square_symmetric_inverse(b, &x_sum, &z1_reg);
+        karatsuba_half_sum_uncompute(b, &x_lo, &x_hi, &x_sum);
+        b.free_vec(&x_sum);
+    }
+
+    b.free_vec(&z1_reg);
 }
 
 fn squaring_sub_from_acc_schoolbook_lowq_shift22(
@@ -9062,7 +9521,7 @@ fn round648_emit_packed_shift_double_frontier_dirty(
     let fast_modulo_c = U256::MAX
         .wrapping_sub(SECP256K1_P)
         .wrapping_add(U256::from(1u64));
-    venting::ciadd_dirty_2clean_classical(
+    quantum_venting_operations::ciadd_dirty_2clean_classical(
         b,
         &high,
         &dirty[..N - 2],
@@ -16538,7 +16997,7 @@ fn source_live_product_hmr_direct_forward_clean_enabled() -> bool {
         == Some("1")
 }
 
-fn build_standard_ec_add(
+fn build_standard_quantum_addition(
     b: &mut B,
     tx: &[QubitId],
     ty: &[QubitId],
@@ -16546,12 +17005,12 @@ fn build_standard_ec_add(
     oy: &[BitId],
     p: U256,
 ) {
-    if halfgcd_live_pa::round162_halfgcd_live_pa_enabled() {
-        halfgcd_live_pa::emit_round162_halfgcd_live_pa_or_fail(b, tx, ty, ox, oy, p);
+    if gcd_live_addition::round162_halfgcd_live_pa_enabled() {
+        gcd_live_addition::emit_round162_halfgcd_live_pa_or_fail(b, tx, ty, ox, oy, p);
     }
 
-    if round158_halfgcd_splice_live::round158_live_prefix_pa_route_enabled() {
-        round158_halfgcd_splice_live::abort_round158_live_prefix_pa_route(tx, ty, ox, oy, p);
+    if phase_gcd_splice_live::round158_live_prefix_pa_route_enabled() {
+        phase_gcd_splice_live::abort_round158_live_prefix_pa_route(tx, ty, ox, oy, p);
     }
 
     let pair2_branch_inv = std::env::var("KAL_PAIR2_BRANCH_INV_ROLL").ok().as_deref() == Some("1");
@@ -16725,7 +17184,7 @@ fn build_standard_ec_add(
         && !prescale_pair2_folded
         && !prescale_pair2_folded_chunked
         && !by_pair2_scaled_product;
-    let affine_combined_y = env_flag_enabled("EC_ADD_AFFINE_COMBINED_Y", true)
+    let affine_combined_y = env_flag_enabled("QUANTUM_ADDITION_AFFINE_COMBINED_Y", true)
         && !round200_full_gcd_pair1
         && !source_live_tail
         && !source_live_cubic_borrow_pair1
@@ -17753,7 +18212,11 @@ fn round84_emit_fused_square_xtail(
     p: U256,
 ) {
     b.set_phase("round84_fused_square_xtail_dx_sub_lam_square_lowq");
-    if std::env::var("ROUND84_XTAIL_WALK_SQUARE").ok().as_deref() == Some("1") {
+    if std::env::var("ROUND84_XTAIL_KARATSUBA").ok().as_deref() == Some("1") {
+        // Squaring-aware 1-level Karatsuba square (default OFF). Overrides the
+        // ROUND84_XTAIL_SCHOOLBOOK default set in configure_elliptic_submission_route.
+        squaring_sub_from_acc_karatsuba(b, tx, lam, p);
+    } else if std::env::var("ROUND84_XTAIL_WALK_SQUARE").ok().as_deref() == Some("1") {
         squaring_sub_from_acc_walk_controls_lowq(b, tx, lam, p);
     } else if std::env::var("ROUND84_XTAIL_SCHOOLBOOK").ok().as_deref() == Some("1") {
         squaring_sub_from_acc_schoolbook(b, tx, lam, p);
@@ -19778,7 +20241,7 @@ mod d1_inplace_lowerer_tests {
 
     #[test]
     fn round8_qtail_round217_product_reuse_hook_fails_closed_before_body() {
-        let plan = round218_b5_transport::round218_b5_source_live_product_lowerer_body_plan();
+        let plan = phase_b5_qubit_transport::round218_b5_source_live_product_lowerer_body_plan();
         assert!(!plan.body_emits_gates);
         assert!(!plan.codegen_allowed_now);
         assert_eq!(
@@ -19793,7 +20256,7 @@ mod d1_inplace_lowerer_tests {
 
     #[test]
     fn round218_source_live_product_lowerer_plan_rejects_full_source_alias() {
-        let plan = round218_b5_transport::round218_b5_source_live_product_lowerer_body_plan();
+        let plan = phase_b5_qubit_transport::round218_b5_source_live_product_lowerer_body_plan();
         assert!(!plan.body_emits_gates);
         assert!(!plan.codegen_allowed_now);
         assert!(plan
@@ -20044,7 +20507,7 @@ fn round8_emit_qtail_round217_product_reuse_or_fail(
     assert_eq!(p, SECP256K1_P, "Round217 qtail reuse is secp256k1-only");
     if round8_qtail_round217_product_reuse_forbidden_full_source_enabled() {
         b.set_phase("round8_qtail_round217_forbidden_full_source_product_probe");
-        round218_b5_transport::emit_round218_b5_full_source_stream_product_lowerer(b, tx, ty, p);
+        phase_b5_qubit_transport::emit_round218_b5_full_source_stream_product_lowerer(b, tx, ty, p);
         return;
     }
     b.set_phase("round8_qtail_round217_source_live_product_splice_enter");
@@ -20053,7 +20516,7 @@ fn round8_emit_qtail_round217_product_reuse_or_fail(
     // clean source controls without materialized full-source history, endpoint
     // replay, product tape, nonzero phase, or hidden scratch, then pass
     // same-artifact stats and 9024 Google exact PA fuzz.
-    round218_b5_transport::emit_round218_b5_source_live_stream_product_lowerer(b, tx, ty, p);
+    phase_b5_qubit_transport::emit_round218_b5_source_live_stream_product_lowerer(b, tx, ty, p);
 }
 
 fn round8_pair1_checkpoint_qtail_second_inverse_fallback(
@@ -20194,7 +20657,7 @@ fn emit_round218_b5_history_stream_pa(
     p: U256,
 ) {
     b.set_phase("round218_b5_history_stream_pair1_quotient");
-    round218_b5_transport::emit_round218_b5_full_source_stream_quotient_lowerer(b, tx, ty, p);
+    phase_b5_qubit_transport::emit_round218_b5_full_source_stream_quotient_lowerer(b, tx, ty, p);
 
     b.set_phase("round8_fallback_xtail_square");
     mod_mul_sub_qq(b, tx, ty, ty, p);
@@ -20208,7 +20671,7 @@ fn emit_round218_b5_history_stream_pa(
     mod_neg_inplace_fast(b, tx, p);
 
     b.set_phase("round218_b5_history_stream_pair2_product");
-    round218_b5_transport::emit_round218_b5_full_source_stream_product_lowerer(b, tx, ty, p);
+    phase_b5_qubit_transport::emit_round218_b5_full_source_stream_product_lowerer(b, tx, ty, p);
 
     b.set_phase("round8_fallback_y_output");
     mod_sub_qb(b, ty, oy, p);
@@ -20227,7 +20690,7 @@ fn build_round218_b5_transport_coeff_step_component_builder() -> B {
     b.declare_qubit_register(&controls);
 
     b.set_phase("round218_b5_transport_coeff_step_component");
-    round218_b5_transport::emit_round218_scaled_coeff_step_selected(
+    phase_b5_qubit_transport::emit_round218_scaled_coeff_step_selected(
         &mut b,
         &v,
         &r,
@@ -20248,13 +20711,13 @@ fn build_round218_b5_transport_coeff_block_component_builder() -> B {
     b.declare_qubit_register(&v);
     let r = b.alloc_qubits(N);
     b.declare_qubit_register(&r);
-    let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&branch_word);
-    let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&old_g0_word);
 
     b.set_phase("round218_b5_transport_coeff_b5_block_component");
-    round218_b5_transport::emit_round218_scaled_coeff_b5_block_selected(
+    phase_b5_qubit_transport::emit_round218_scaled_coeff_b5_block_selected(
         &mut b,
         &v,
         &r,
@@ -20280,18 +20743,18 @@ fn build_round218_b5_transport_coeff_fixed_block_component_builder(
     b.declare_qubit_register(&v);
     let r = b.alloc_qubits(N);
     b.declare_qubit_register(&r);
-    let row = round218_b5_program::block_row(
+    let row = phase_b5_execution::block_row(
         block_index,
-        round218_b5_program::BlockSelector {
+        phase_b5_execution::BlockSelector {
             zeta_start,
             f_low,
             g_low,
-            width: round218_b5_program::ROUND218_B5_BLOCK_BITS as u8,
+            width: phase_b5_execution::ROUND218_B5_BLOCK_BITS as u8,
         },
     );
 
     b.set_phase("round218_b5_transport_coeff_fixed_block_component");
-    round218_b5_transport::emit_round218_scaled_coeff_block_fixed(
+    phase_b5_qubit_transport::emit_round218_scaled_coeff_block_fixed(
         &mut b,
         &v,
         &r,
@@ -20318,20 +20781,20 @@ pub fn build_round218_b5_transport_coeff_fixed_block_component(
 
 fn build_round218_b5_source_live_transport_block_component_builder(zeta_start: i128) -> B {
     let mut b = B::new();
-    let f_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let f_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&f_low);
-    let g_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let g_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&g_low);
     let v = b.alloc_qubits(N);
     b.declare_qubit_register(&v);
     let r = b.alloc_qubits(N);
     b.declare_qubit_register(&r);
-    let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&branch_word);
-    let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&old_g0_word);
 
-    round218_b5_transport::emit_round218_b5_source_live_transport_block(
+    phase_b5_qubit_transport::emit_round218_b5_source_live_transport_block(
         &mut b,
         &f_low,
         &g_low,
@@ -20351,24 +20814,24 @@ pub fn build_round218_b5_source_live_transport_block_component(zeta_start: i128)
 
 fn build_round218_b5_source_window_transport_block_component_builder(zeta_start: i128) -> B {
     let mut b = B::new();
-    let f_window = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS);
+    let f_window = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS);
     b.declare_qubit_register(&f_window);
-    let g_window = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_WINDOW_BITS);
+    let g_window = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_WINDOW_BITS);
     b.declare_qubit_register(&g_window);
     let v = b.alloc_qubits(N);
     b.declare_qubit_register(&v);
     let r = b.alloc_qubits(N);
     b.declare_qubit_register(&r);
-    let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&branch_word);
-    let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&old_g0_word);
-    let next_f_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let next_f_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&next_f_low);
-    let next_g_low = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let next_g_low = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&next_g_low);
 
-    round218_b5_transport::emit_round218_b5_source_window_transport_block(
+    phase_b5_qubit_transport::emit_round218_b5_source_window_transport_block(
         &mut b,
         &f_window,
         &g_window,
@@ -20394,10 +20857,10 @@ fn build_round218_b5_dynamic_source_window_transport_block_component_builder(
     window_bits: usize,
 ) -> B {
     assert!(
-        window_bits >= round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        window_bits >= phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "dynamic source-window component needs at least B=5 source bits"
     );
-    let spec = round218_b5_selector::Round218B5DynamicZetaTransducerSpec::new(zeta_min, zeta_max);
+    let spec = phase_b5_state_selector::Round218B5DynamicZetaTransducerSpec::new(zeta_min, zeta_max);
     let mut b = B::new();
     let zeta_start = b.alloc_qubits(spec.start_zeta_bits());
     if !zeta_start.is_empty() {
@@ -20411,15 +20874,15 @@ fn build_round218_b5_dynamic_source_window_transport_block_component_builder(
     b.declare_qubit_register(&v);
     let r = b.alloc_qubits(N);
     b.declare_qubit_register(&r);
-    let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&branch_word);
-    let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&old_g0_word);
     let end_zeta = b.alloc_qubits(spec.end_zeta_bits());
     if !end_zeta.is_empty() {
         b.declare_qubit_register(&end_zeta);
     }
-    let next_bits = window_bits - round218_b5_program::ROUND218_B5_BLOCK_BITS;
+    let next_bits = window_bits - phase_b5_execution::ROUND218_B5_BLOCK_BITS;
     let next_f = b.alloc_qubits(next_bits);
     if !next_f.is_empty() {
         b.declare_qubit_register(&next_f);
@@ -20429,7 +20892,7 @@ fn build_round218_b5_dynamic_source_window_transport_block_component_builder(
         b.declare_qubit_register(&next_g);
     }
 
-    round218_b5_transport::emit_round218_b5_dynamic_source_window_transport_block(
+    phase_b5_qubit_transport::emit_round218_b5_dynamic_source_window_transport_block(
         &mut b,
         spec,
         &zeta_start,
@@ -20469,7 +20932,7 @@ fn build_round218_b5_twos_zeta_source_window_transport_block_component_builder(
         "two's-complement zeta component needs at least 3 signed bits"
     );
     assert!(
-        window_bits >= round218_b5_program::ROUND218_B5_BLOCK_BITS,
+        window_bits >= phase_b5_execution::ROUND218_B5_BLOCK_BITS,
         "two's-complement source-window component needs at least B=5 source bits"
     );
     let mut b = B::new();
@@ -20483,11 +20946,11 @@ fn build_round218_b5_twos_zeta_source_window_transport_block_component_builder(
     b.declare_qubit_register(&v);
     let r = b.alloc_qubits(N);
     b.declare_qubit_register(&r);
-    let branch_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&branch_word);
-    let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&old_g0_word);
-    let next_bits = window_bits - round218_b5_program::ROUND218_B5_BLOCK_BITS;
+    let next_bits = window_bits - phase_b5_execution::ROUND218_B5_BLOCK_BITS;
     let next_f = b.alloc_qubits(next_bits);
     if !next_f.is_empty() {
         b.declare_qubit_register(&next_f);
@@ -20497,7 +20960,7 @@ fn build_round218_b5_twos_zeta_source_window_transport_block_component_builder(
         b.declare_qubit_register(&next_g);
     }
 
-    round218_b5_transport::emit_round218_b5_twos_zeta_source_window_transport_block(
+    phase_b5_qubit_transport::emit_round218_b5_twos_zeta_source_window_transport_block(
         &mut b,
         &zeta,
         &f_window,
@@ -20541,7 +21004,7 @@ fn build_round314_b5_source_live_hash_transport_window_block_component_builder(
     b.declare_qubit_register(&r);
     let l_hash = b.alloc_qubits(8);
     b.declare_qubit_register(&l_hash);
-    let next_bits = window_bits - round218_b5_program::ROUND218_B5_BLOCK_BITS;
+    let next_bits = window_bits - phase_b5_execution::ROUND218_B5_BLOCK_BITS;
     let next_f = b.alloc_qubits(next_bits);
     if !next_f.is_empty() {
         b.declare_qubit_register(&next_f);
@@ -20551,7 +21014,7 @@ fn build_round314_b5_source_live_hash_transport_window_block_component_builder(
         b.declare_qubit_register(&next_g);
     }
 
-    round218_b5_transport::emit_round314_b5_source_live_hash_transport_window_block(
+    phase_b5_qubit_transport::emit_round314_b5_source_live_hash_transport_window_block(
         &mut b,
         &zeta,
         &f_window,
@@ -20593,7 +21056,7 @@ fn build_round218_b5_source_live_projective_scalar_transport_block_component_bui
     let r = b.alloc_qubits(N);
     b.declare_qubit_register(&r);
 
-    round218_b5_transport::emit_round218_b5_source_live_projective_scalar_transport_block(
+    phase_b5_qubit_transport::emit_round218_b5_source_live_projective_scalar_transport_block(
         &mut b,
         &zeta,
         &f_window,
@@ -20644,7 +21107,7 @@ fn build_round379_b5_source_live_cheap_lft_frame_block_component_builder(
     let r = b.alloc_qubits(N);
     b.declare_qubit_register(&r);
 
-    round218_b5_transport::emit_round379_b5_source_live_cheap_lft_frame_block(
+    phase_b5_qubit_transport::emit_round379_b5_source_live_cheap_lft_frame_block(
         &mut b,
         &zeta,
         &f_window,
@@ -20692,7 +21155,7 @@ fn build_round381_b5_source_live_branch_only_cheap_lft_frame_block_component_bui
     let r = b.alloc_qubits(N);
     b.declare_qubit_register(&r);
 
-    round218_b5_transport::emit_round381_b5_source_live_branch_only_cheap_lft_frame_block(
+    phase_b5_qubit_transport::emit_round381_b5_source_live_branch_only_cheap_lft_frame_block(
         &mut b,
         &zeta,
         &f_window,
@@ -20744,10 +21207,10 @@ fn build_round383_b5_current_pattern_ranked_cheap_lft_source_block_component_bui
     b.declare_qubit_register(&r);
     let l_rank = b.alloc_qubits(4);
     b.declare_qubit_register(&l_rank);
-    let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&old_g0_word);
 
-    round218_b5_transport::emit_round383_b5_current_pattern_ranked_cheap_lft_source_block(
+    phase_b5_qubit_transport::emit_round383_b5_current_pattern_ranked_cheap_lft_source_block(
         &mut b,
         &zeta,
         &f_window,
@@ -20797,10 +21260,10 @@ fn build_round384_b5_current_pattern_ranked_source_rollback_block_component_buil
     b.declare_qubit_register(&g_window);
     let l_rank = b.alloc_qubits(4);
     b.declare_qubit_register(&l_rank);
-    let old_g0_word = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&old_g0_word);
 
-    round218_b5_transport::emit_round384_b5_current_pattern_ranked_source_rollback_block(
+    phase_b5_qubit_transport::emit_round384_b5_current_pattern_ranked_source_rollback_block(
         &mut b,
         &zeta,
         &f_window,
@@ -20850,7 +21313,7 @@ fn build_round385_b5_fused_advance_frame_rollback_block_component_builder(
     let r = b.alloc_qubits(N);
     b.declare_qubit_register(&r);
 
-    round218_b5_transport::emit_round385_b5_fused_advance_frame_rollback_block(
+    phase_b5_qubit_transport::emit_round385_b5_fused_advance_frame_rollback_block(
         &mut b,
         &zeta,
         &f_window,
@@ -20886,12 +21349,12 @@ fn build_round326_b5_live_l_rank_exact_cover_component_builder(zeta_bits: usize)
     let mut b = B::new();
     let zeta = b.alloc_qubits(zeta_bits);
     b.declare_qubit_register(&zeta);
-    let old_g0 = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let old_g0 = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&old_g0);
     let l_rank = b.alloc_qubits(4);
     b.declare_qubit_register(&l_rank);
 
-    round218_b5_transport::emit_round326_b5_live_l_rank_exact_cover(
+    phase_b5_qubit_transport::emit_round326_b5_live_l_rank_exact_cover(
         &mut b, &zeta, &old_g0, &l_rank,
     );
     b
@@ -20905,14 +21368,14 @@ fn build_round326_b5_branch_rank_exact_cover_cleaner_component_builder(zeta_bits
     let mut b = B::new();
     let zeta = b.alloc_qubits(zeta_bits);
     b.declare_qubit_register(&zeta);
-    let old_g0 = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let old_g0 = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&old_g0);
     let l_rank = b.alloc_qubits(4);
     b.declare_qubit_register(&l_rank);
-    let branch = b.alloc_qubits(round218_b5_program::ROUND218_B5_BLOCK_BITS);
+    let branch = b.alloc_qubits(phase_b5_execution::ROUND218_B5_BLOCK_BITS);
     b.declare_qubit_register(&branch);
 
-    round218_b5_transport::emit_round326_b5_branch_rank_exact_cover_cleaner(
+    phase_b5_qubit_transport::emit_round326_b5_branch_rank_exact_cover_cleaner(
         &mut b, &zeta, &old_g0, &l_rank, &branch,
     );
     b
@@ -20949,7 +21412,7 @@ fn build_round218_b5_full_source_stream_transport_component_builder() -> B {
     let r = b.alloc_qubits(N);
     b.declare_qubit_register(&r);
 
-    round218_b5_transport::emit_round218_b5_full_source_stream_transport(
+    phase_b5_qubit_transport::emit_round218_b5_full_source_stream_transport(
         &mut b,
         &dx,
         &v,
@@ -20972,7 +21435,7 @@ fn build_round380_b5_full_source_stream_cheap_lft_frame_transport_component_buil
     let r = b.alloc_qubits(N);
     b.declare_qubit_register(&r);
 
-    round218_b5_transport::emit_round380_b5_full_source_stream_cheap_lft_frame_transport(
+    phase_b5_qubit_transport::emit_round380_b5_full_source_stream_cheap_lft_frame_transport(
         &mut b,
         &dx,
         &v,
@@ -20995,7 +21458,7 @@ fn build_round315_b5_hash_history_full_source_stream_transport_component_builder
     let r = b.alloc_qubits(N);
     b.declare_qubit_register(&r);
 
-    round218_b5_transport::emit_round315_b5_hash_history_full_source_stream_transport(
+    phase_b5_qubit_transport::emit_round315_b5_hash_history_full_source_stream_transport(
         &mut b,
         &dx,
         &v,
@@ -21016,7 +21479,7 @@ fn build_round218_b5_full_source_stream_scaled_inverse_component_builder() -> B 
     let v = b.alloc_qubits(N);
     b.declare_qubit_register(&v);
 
-    round218_b5_transport::emit_round218_b5_full_source_stream_scaled_inverse_from_zero(
+    phase_b5_qubit_transport::emit_round218_b5_full_source_stream_scaled_inverse_from_zero(
         &mut b,
         &dx,
         &v,
@@ -21038,7 +21501,7 @@ fn build_round315_b5_hash_history_full_source_stream_scaled_inverse_component_bu
     let r = b.alloc_qubits(N);
 
     b.x(r[0]);
-    round218_b5_transport::emit_round315_b5_hash_history_full_source_stream_scaled_inverse(
+    phase_b5_qubit_transport::emit_round315_b5_hash_history_full_source_stream_scaled_inverse(
         &mut b,
         &dx,
         &v,
@@ -21055,20 +21518,20 @@ pub fn build_round315_b5_hash_history_full_source_stream_scaled_inverse_componen
 
 fn build_round218_b5_selector_component_builder(zeta_start: i128) -> B {
     let mut b = B::new();
-    let f_low = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_STATE_BITS);
+    let f_low = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_STATE_BITS);
     b.declare_qubit_register(&f_low);
-    let g_low = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_STATE_BITS);
+    let g_low = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_STATE_BITS);
     b.declare_qubit_register(&g_low);
-    let branch_word = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_STATE_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_STATE_BITS);
     b.declare_qubit_register(&branch_word);
-    let old_g0_word = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_STATE_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_STATE_BITS);
     b.declare_qubit_register(&old_g0_word);
     let scratch = b.alloc_qubits(
-        round218_b5_selector::round218_b5_low_state_selector_scratch_qubits(zeta_start),
+        phase_b5_state_selector::round218_b5_low_state_selector_scratch_qubits(zeta_start),
     );
 
     b.set_phase("round218_b5_selector_component");
-    round218_b5_selector::emit_round218_b5_low_state_selector_with_scratch(
+    phase_b5_state_selector::emit_round218_b5_low_state_selector_with_scratch(
         &mut b,
         &f_low,
         &g_low,
@@ -21086,30 +21549,30 @@ pub fn build_round218_b5_selector_component(zeta_start: i128) -> Vec<Op> {
 }
 
 fn build_round218_b5_dynamic_zeta_selector_component_builder(zeta_min: i128, zeta_max: i128) -> B {
-    let spec = round218_b5_selector::Round218B5DynamicZetaTransducerSpec::new(zeta_min, zeta_max);
+    let spec = phase_b5_state_selector::Round218B5DynamicZetaTransducerSpec::new(zeta_min, zeta_max);
     let mut b = B::new();
     let zeta_start = b.alloc_qubits(spec.start_zeta_bits());
     if !zeta_start.is_empty() {
         b.declare_qubit_register(&zeta_start);
     }
-    let f_low = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_STATE_BITS);
+    let f_low = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_STATE_BITS);
     b.declare_qubit_register(&f_low);
-    let g_low = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_STATE_BITS);
+    let g_low = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_STATE_BITS);
     b.declare_qubit_register(&g_low);
-    let branch_word = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_STATE_BITS);
+    let branch_word = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_STATE_BITS);
     b.declare_qubit_register(&branch_word);
-    let old_g0_word = b.alloc_qubits(round218_b5_selector::ROUND218_B5_LOW_STATE_BITS);
+    let old_g0_word = b.alloc_qubits(phase_b5_state_selector::ROUND218_B5_LOW_STATE_BITS);
     b.declare_qubit_register(&old_g0_word);
     let end_zeta = b.alloc_qubits(spec.end_zeta_bits());
     if !end_zeta.is_empty() {
         b.declare_qubit_register(&end_zeta);
     }
     let scratch = b.alloc_qubits(
-        round218_b5_selector::round218_b5_dynamic_zeta_transducer_scratch_qubits(spec),
+        phase_b5_state_selector::round218_b5_dynamic_zeta_transducer_scratch_qubits(spec),
     );
 
     b.set_phase("round218_b5_dynamic_zeta_selector_component");
-    round218_b5_selector::emit_round218_b5_dynamic_zeta_transducer_with_scratch(
+    phase_b5_state_selector::emit_round218_b5_dynamic_zeta_transducer_with_scratch(
         &mut b,
         spec,
         &zeta_start,
@@ -21328,7 +21791,7 @@ fn build_round8_fused_source_live_qtail_child_builder() -> B {
         b.declare_bit_register(&oy);
 
         b.set_phase("round8_by_naf_freepos_scaffold_entry");
-        by::emit_round8_qtail_by_naf_freepos_scaffold(b);
+        coordinate_addition::emit_round8_qtail_by_naf_freepos_scaffold(b);
         return std::mem::replace(b, B::new());
     }
 
@@ -21353,7 +21816,7 @@ fn build_round8_fused_source_live_qtail_child_builder() -> B {
         b.set_phase("round8_fallback_google_abi_dy");
         mod_sub_qb(b, &ty, &oy, p);
         if round218_b5_source_live_transport_pa_enabled() {
-            round218_b5_transport::emit_round218_b5_source_live_transport_pa_or_fail(
+            phase_b5_qubit_transport::emit_round218_b5_source_live_transport_pa_or_fail(
                 b, &tx, &ty, &ox, &oy, p,
             );
         } else if round218_b5_history_stream_pa_enabled() {
@@ -21397,7 +21860,7 @@ pub fn build_round8_fused_source_live_qtail_child_phase_resources(
 }
 
 pub fn build_round185_halfgcd_fixed_depth64_google_abi_pa() -> Vec<Op> {
-    round185_halfgcd_fixed_depth64_pa::build_round185_halfgcd_fixed_depth64_google_abi_pa()
+    phase_gcd_fixed_depth::build_round185_halfgcd_fixed_depth64_google_abi_pa()
 }
 
 pub const ROUND190_SELECTOR_FUSED_SOURCE_LIVE_RESIDUAL_WIDTH_ENV: &str =
@@ -22455,18 +22918,33 @@ fn dialog_gcd_pa9024_compare_schedule_floor() -> usize {
         .max(1)
 }
 
+fn dialog_gcd_pa9024_compare_schedule_margin() -> usize {
+    std::env::var("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0)
+}
+
 fn dialog_gcd_compare_bits_for_step(step: usize, active_width: usize) -> usize {
     let global = dialog_gcd_compare_bits().min(active_width);
     if dialog_gcd_pa9024_compare_schedule_enabled() {
-        let scheduled = DIALOG_GCD_PA9024_COMPARE_SCHEDULE
+        let scheduled = (DIALOG_GCD_PA9024_COMPARE_SCHEDULE
             .get(step)
             .copied()
             .unwrap_or(global)
-            .max(dialog_gcd_pa9024_compare_schedule_floor())
-            .min(active_width);
+            + dialog_gcd_pa9024_compare_schedule_margin())
+        .max(dialog_gcd_pa9024_compare_schedule_floor())
+        .min(active_width);
         return scheduled.min(global).max(1);
     }
     global.max(1)
+}
+
+fn dialog_gcd_fused_branch_bits_enabled() -> bool {
+    std::env::var("DIALOG_GCD_FUSED_BRANCH_BITS")
+        .ok()
+        .as_deref()
+        == Some("1")
 }
 
 fn dialog_gcd_cmp_gt_truncated_into_width(
@@ -22481,6 +22959,21 @@ fn dialog_gcd_cmp_gt_truncated_into_width(
     let compare_bits = compare_bits.min(u.len()).max(1);
     let start = u.len() - compare_bits;
     cmp_lt_into_fast(b, &v[start..], &u[start..], flag);
+}
+
+fn dialog_gcd_ccx_cmp_gt_truncated_into_width(
+    b: &mut B,
+    u: &[QubitId],
+    v: &[QubitId],
+    ctrl: QubitId,
+    target: QubitId,
+    compare_bits: usize,
+) {
+    assert_eq!(u.len(), v.len());
+    assert!(!u.is_empty());
+    let compare_bits = compare_bits.min(u.len()).max(1);
+    let start = u.len() - compare_bits;
+    ccx_cmp_lt_into_fast(b, &v[start..], &u[start..], ctrl, target);
 }
 
 fn dialog_gcd_cmp_gt_truncated_into(b: &mut B, u: &[QubitId], v: &[QubitId], flag: QubitId) {
@@ -22537,6 +23030,27 @@ fn dialog_gcd_round762_active_width(step: usize) -> usize {
     let ideal = N as f64 - (step as f64) * 0.5 * 1.415 + 37.0;
     let rounded = ((ideal.max(1.0) / 2.0).ceil() as usize) * 2;
     rounded.clamp(1, N)
+}
+
+/// Carry-tail truncation window for the materialized controlled sub/add BODY
+/// (and its gated LOAD). Default 0 (OFF). When `w > 0`, the controlled
+/// `acc -= ctrl·subtrahend` / `acc += ctrl·addend` only loads + ripples the
+/// low `active_width - w` bits. The GCD work registers u/v are bounded by the
+/// realizable bitlen, which sits `WIDTH_MARGIN` (=28) bits below `active_width`,
+/// so the top `w <= margin` bits of both operands are 0 in the no-truncation
+/// regime: the gated LOAD there is `ctrl & 0 = 0` and the body's top carries
+/// are 0, so neither the load nor the carry ripple above `active_width - w`
+/// affects the result. Failure mode (a step whose realizable bitlen actually
+/// reaches into the truncated window) is selected away by the co-tuned reroll,
+/// exactly like the global WIDTH_MARGIN — but applied to the sub/add ONLY,
+/// leaving the cswap and comparator at full active_width. Returns the truncated
+/// body width, clamped to >= 2.
+fn dialog_gcd_body_carry_trunc_width(active_width: usize) -> usize {
+    let w = std::env::var("DIALOG_GCD_BODY_CARRY_TRUNC_W")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+    active_width.saturating_sub(w).max(2)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -22760,20 +23274,26 @@ fn dialog_gcd_controlled_sub_selected(
                 gated_owned.as_slice()
             }
         };
+        let body_w = dialog_gcd_body_carry_trunc_width(n);
         b.set_phase("dialog_gcd_raw_tobitvector_materialized_sub_load");
-        for i in 0..n {
+        for i in 0..body_w {
             b.ccx(ctrl, subtrahend[i], gated[i]);
         }
         b.set_phase("dialog_gcd_raw_tobitvector_materialized_sub_body");
         if let Some(carries) =
-            borrowed_carries.filter(|carries| carries.len() >= n.saturating_sub(1))
+            borrowed_carries.filter(|carries| carries.len() >= body_w.saturating_sub(1))
         {
-            sub_nbit_qq_fast_borrowed_carries(b, gated, acc, &carries[..n.saturating_sub(1)]);
+            sub_nbit_qq_fast_borrowed_carries(
+                b,
+                &gated[..body_w],
+                &acc[..body_w],
+                &carries[..body_w.saturating_sub(1)],
+            );
         } else {
-            sub_nbit_qq_fast(b, gated, acc);
+            sub_nbit_qq_fast(b, &gated[..body_w], &acc[..body_w]);
         }
         b.set_phase("dialog_gcd_raw_tobitvector_materialized_sub_clear");
-        for i in 0..n {
+        for i in 0..body_w {
             let m = b.alloc_bit();
             b.hmr(gated[i], m);
             b.cz_if(ctrl, subtrahend[i], m);
@@ -22816,20 +23336,26 @@ fn dialog_gcd_controlled_add_selected(
                 gated_owned.as_slice()
             }
         };
+        let body_w = dialog_gcd_body_carry_trunc_width(n);
         b.set_phase("dialog_gcd_raw_tobitvector_materialized_add_load");
-        for i in 0..n {
+        for i in 0..body_w {
             b.ccx(ctrl, addend[i], gated[i]);
         }
         b.set_phase("dialog_gcd_raw_tobitvector_materialized_add_body");
         if let Some(carries) =
-            borrowed_carries.filter(|carries| carries.len() >= n.saturating_sub(1))
+            borrowed_carries.filter(|carries| carries.len() >= body_w.saturating_sub(1))
         {
-            add_nbit_qq_fast_borrowed_carries(b, gated, acc, &carries[..n.saturating_sub(1)]);
+            add_nbit_qq_fast_borrowed_carries(
+                b,
+                &gated[..body_w],
+                &acc[..body_w],
+                &carries[..body_w.saturating_sub(1)],
+            );
         } else {
-            add_nbit_qq_fast(b, gated, acc);
+            add_nbit_qq_fast(b, &gated[..body_w], &acc[..body_w]);
         }
         b.set_phase("dialog_gcd_raw_tobitvector_materialized_add_clear");
-        for i in 0..n {
+        for i in 0..body_w {
             let m = b.alloc_bit();
             b.hmr(gated[i], m);
             b.cz_if(ctrl, addend[i], m);
@@ -22884,9 +23410,20 @@ fn emit_dialog_gcd_raw_tobitvector_steps(
 
         b.set_phase("dialog_gcd_raw_tobitvector_branch_bits");
         b.cx(v[0], b0);
-        dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
-        b.ccx(b0, cmp, b0_and_b1);
-        dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+        if dialog_gcd_fused_branch_bits_enabled() {
+            dialog_gcd_ccx_cmp_gt_truncated_into_width(
+                b,
+                u_active,
+                v_active,
+                b0,
+                b0_and_b1,
+                compare_bits,
+            );
+        } else {
+            dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+            b.ccx(b0, cmp, b0_and_b1);
+            dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+        }
         b.free(cmp);
 
         b.set_phase("dialog_gcd_raw_tobitvector_cswap");
@@ -22935,9 +23472,20 @@ fn emit_dialog_gcd_raw_tobitvector_steps_reverse(
         }
 
         b.set_phase("dialog_gcd_raw_tobitvector_reverse_branch_bits");
-        dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
-        b.ccx(b0, cmp, b0_and_b1);
-        dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+        if dialog_gcd_fused_branch_bits_enabled() {
+            dialog_gcd_ccx_cmp_gt_truncated_into_width(
+                b,
+                u_active,
+                v_active,
+                b0,
+                b0_and_b1,
+                compare_bits,
+            );
+        } else {
+            dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+            b.ccx(b0, cmp, b0_and_b1);
+            dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+        }
         b.free(cmp);
         b.cx(v[0], b0);
     }
@@ -23061,13 +23609,16 @@ fn dialog_gcd_cmod_add_materialized_pseudomersenne(
     b.free(f_ovf);
 
     b.set_phase("dialog_gcd_materialized_special_overflow_fold");
-    cadd_nbit_const_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf);
+    if let Some(w) = fold_carry_trunc_window() {
+        cadd_nbit_const_direct_trunc_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf, w);
+    } else {
+        cadd_nbit_const_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf);
+    }
 
     b.set_phase("dialog_gcd_materialized_special_overflow_clean");
     if dialog_gcd_raw_apply_truncated_clean_enabled() {
         let compare_start = N - dialog_gcd_apply_clean_compare_bits();
-        // Measured comparator (peak-safe: add carries already freed).
-        cmp_lt_into_fast(b, &acc[compare_start..], &f[compare_start..], acc_ovf);
+        cmp_lt_into(b, &acc[compare_start..], &f[compare_start..], acc_ovf);
     } else {
         cmp_lt_into(b, acc, &f, acc_ovf);
     }
@@ -23122,7 +23673,11 @@ fn dialog_gcd_cmod_sub_materialized_pseudomersenne(
     b.free(f_ovf);
 
     b.set_phase("dialog_gcd_materialized_special_underflow_fold");
-    csub_nbit_const_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf);
+    if let Some(w) = fold_carry_trunc_window() {
+        csub_nbit_const_direct_trunc_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf, w);
+    } else {
+        csub_nbit_const_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf);
+    }
 
     b.set_phase("dialog_gcd_materialized_special_underflow_clean");
     if dialog_gcd_raw_apply_truncated_clean_enabled() {
@@ -23132,14 +23687,20 @@ fn dialog_gcd_cmod_sub_materialized_pseudomersenne(
         for &q in &a[compare_start..] {
             b.x(q);
         }
-        cmp_lt_into_fast(
+        cmp_lt_into(
             b,
             &acc[compare_start..],
             &a[compare_start..],
             underflow_pred,
         );
-        b.ccx(ctrl, underflow_pred, acc_ovf);
-        cmp_lt_into_fast(
+        if dialog_gcd_measured_underflow_gate_enabled() {
+            let m = b.alloc_bit();
+            b.hmr(acc_ovf, m);
+            b.cz_if(ctrl, underflow_pred, m);
+        } else {
+            b.ccx(ctrl, underflow_pred, acc_ovf);
+        }
+        cmp_lt_into(
             b,
             &acc[compare_start..],
             &a[compare_start..],
@@ -23284,7 +23845,11 @@ fn dialog_gcd_cmod_sub_materialized_pseudomersenne_borrowed_subtrahend(
     b.free(f_ovf);
 
     b.set_phase("dialog_gcd_materialized_special_borrowed_underflow_fold");
-    csub_nbit_const_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf);
+    if let Some(w) = fold_carry_trunc_window() {
+        csub_nbit_const_direct_trunc_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf, w);
+    } else {
+        csub_nbit_const_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf);
+    }
 
     b.set_phase("dialog_gcd_materialized_special_borrowed_underflow_clean");
     if dialog_gcd_raw_apply_truncated_clean_enabled() {
@@ -23294,14 +23859,20 @@ fn dialog_gcd_cmod_sub_materialized_pseudomersenne_borrowed_subtrahend(
         for &q in &a[compare_start..] {
             b.x(q);
         }
-        cmp_lt_into_fast(
+        cmp_lt_into(
             b,
             &acc[compare_start..],
             &a[compare_start..],
             underflow_pred,
         );
-        b.ccx(ctrl, underflow_pred, acc_ovf);
-        cmp_lt_into_fast(
+        if dialog_gcd_measured_underflow_gate_enabled() {
+            let m = b.alloc_bit();
+            b.hmr(acc_ovf, m);
+            b.cz_if(ctrl, underflow_pred, m);
+        } else {
+            b.ccx(ctrl, underflow_pred, acc_ovf);
+        }
+        cmp_lt_into(
             b,
             &acc[compare_start..],
             &a[compare_start..],
@@ -23504,14 +24075,32 @@ pub fn build_dialog_gcd_raw_ipmul_fit_bench() -> Vec<Op> {
     build_dialog_gcd_raw_ipmul_fit_bench_builder().ops
 }
 
+fn dialog_gcd_measured_underflow_gate_enabled() -> bool {
+    // Measured (Gidney) uncompute of acc_ovf = ctrl & underflow_pred in the
+    // materialized_special underflow_clean (HMR + cz_if = 0 Toffoli vs 1 CCX/iter).
+    // Exact on the validated reroll island. Default OFF.
+    std::env::var("DIALOG_GCD_MEASURED_UNDERFLOW_GATE").ok().as_deref() == Some("1")
+}
+
+fn round763_dedup_enabled() -> bool {
+    // EXACT rewrite: the pair ccx(1,3->4) ... ccx(1,3->4) bracketing cx(1->0)
+    // cancels (nothing between them touches 1/3/4), so it reduces to bare cx(1->0).
+    // 2 CCX -> 0 per direction x ~1064 sites. Default OFF (op-stream reseed).
+    std::env::var("DIALOG_GCD_ROUND763_DEDUP").ok().as_deref() == Some("1")
+}
+
 fn emit_dialog_gcd_round763_compressor(b: &mut B, block: &[QubitId]) {
     assert_eq!(block.len(), 6);
     b.ccx(block[4], block[5], block[3]);
     b.ccx(block[3], block[4], block[5]);
     b.ccx(block[1], block[2], block[4]);
-    b.ccx(block[1], block[3], block[4]);
-    b.cx(block[1], block[0]);
-    b.ccx(block[1], block[3], block[4]);
+    if round763_dedup_enabled() {
+        b.cx(block[1], block[0]);
+    } else {
+        b.ccx(block[1], block[3], block[4]);
+        b.cx(block[1], block[0]);
+        b.ccx(block[1], block[3], block[4]);
+    }
     b.ccx(block[4], block[5], block[1]);
     b.ccx(block[0], block[5], block[2]);
     b.ccx(block[2], block[5], block[0]);
@@ -23524,9 +24113,13 @@ fn emit_dialog_gcd_round763_compressor_inverse(b: &mut B, block: &[QubitId]) {
     b.ccx(block[2], block[5], block[0]);
     b.ccx(block[0], block[5], block[2]);
     b.ccx(block[4], block[5], block[1]);
-    b.ccx(block[1], block[3], block[4]);
-    b.cx(block[1], block[0]);
-    b.ccx(block[1], block[3], block[4]);
+    if round763_dedup_enabled() {
+        b.cx(block[1], block[0]);
+    } else {
+        b.ccx(block[1], block[3], block[4]);
+        b.cx(block[1], block[0]);
+        b.ccx(block[1], block[3], block[4]);
+    }
     b.ccx(block[1], block[2], block[4]);
     b.ccx(block[3], block[4], block[5]);
     b.ccx(block[4], block[5], block[3]);
@@ -23651,9 +24244,20 @@ fn emit_dialog_gcd_compressed_sidecar_tobitvector_steps_block_lifecycle(
 
             b.set_phase("dialog_gcd_compressed_block_tobitvector_branch_bits");
             b.cx(v[0], b0);
-            dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
-            b.ccx(b0, cmp, b0_and_b1);
-            dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+            if dialog_gcd_fused_branch_bits_enabled() {
+                dialog_gcd_ccx_cmp_gt_truncated_into_width(
+                    b,
+                    u_active,
+                    v_active,
+                    b0,
+                    b0_and_b1,
+                    compare_bits,
+                );
+            } else {
+                dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+                b.ccx(b0, cmp, b0_and_b1);
+                dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+            }
             b.free(cmp);
 
             b.set_phase("dialog_gcd_compressed_block_tobitvector_cswap");
@@ -23731,9 +24335,20 @@ fn emit_dialog_gcd_compressed_sidecar_tobitvector_steps_reverse_block_lifecycle(
             }
 
             b.set_phase("dialog_gcd_compressed_block_tobitvector_reverse_branch_bits");
-            dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
-            b.ccx(b0, cmp, b0_and_b1);
-            dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+            if dialog_gcd_fused_branch_bits_enabled() {
+                dialog_gcd_ccx_cmp_gt_truncated_into_width(
+                    b,
+                    u_active,
+                    v_active,
+                    b0,
+                    b0_and_b1,
+                    compare_bits,
+                );
+            } else {
+                dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+                b.ccx(b0, cmp, b0_and_b1);
+                dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+            }
             b.free(cmp);
             b.cx(v[0], b0);
         }
@@ -23858,9 +24473,20 @@ fn emit_dialog_gcd_compressed_sidecar_tobitvector_steps(
 
         b.set_phase("dialog_gcd_compressed_sidecar_tobitvector_branch_bits");
         b.cx(v[0], b0);
-        dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
-        b.ccx(b0, cmp, b0_and_b1);
-        dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+        if dialog_gcd_fused_branch_bits_enabled() {
+            dialog_gcd_ccx_cmp_gt_truncated_into_width(
+                b,
+                u_active,
+                v_active,
+                b0,
+                b0_and_b1,
+                compare_bits,
+            );
+        } else {
+            dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+            b.ccx(b0, cmp, b0_and_b1);
+            dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+        }
         b.free(cmp);
 
         b.set_phase("dialog_gcd_compressed_sidecar_tobitvector_cswap");
@@ -23934,9 +24560,20 @@ fn emit_dialog_gcd_compressed_sidecar_tobitvector_steps_reverse(
         }
 
         b.set_phase("dialog_gcd_compressed_sidecar_tobitvector_reverse_branch_bits");
-        dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
-        b.ccx(b0, cmp, b0_and_b1);
-        dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+        if dialog_gcd_fused_branch_bits_enabled() {
+            dialog_gcd_ccx_cmp_gt_truncated_into_width(
+                b,
+                u_active,
+                v_active,
+                b0,
+                b0_and_b1,
+                compare_bits,
+            );
+        } else {
+            dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+            b.ccx(b0, cmp, b0_and_b1);
+            dialog_gcd_cmp_gt_truncated_into_width(b, u_active, v_active, cmp, compare_bits);
+        }
         b.free(cmp);
         b.cx(v[0], b0);
     }
@@ -24614,7 +25251,7 @@ fn dialog_gcd_high_tail_block_qubits(
 
 fn build_dialog_gcd_high_tail_alias_fit_bench_builder() -> B {
     let layout = dialog_gcd_high_tail_alias_layout();
-    let mut b = if std::env::var("EC_ADD_COUNT_ONLY").ok().as_deref() == Some("1") {
+    let mut b = if std::env::var("QUANTUM_ADDITION_COUNT_ONLY").ok().as_deref() == Some("1") {
         B::new_count_only()
     } else {
         B::new()
@@ -24720,7 +25357,7 @@ fn emit_dialog_gcd_high_tail_transcript_overhead(
 
 fn build_dialog_gcd_high_tail_transcript_overhead_bench_builder() -> B {
     let layout = dialog_gcd_high_tail_alias_layout();
-    let mut b = if std::env::var("EC_ADD_COUNT_ONLY").ok().as_deref() == Some("1") {
+    let mut b = if std::env::var("QUANTUM_ADDITION_COUNT_ONLY").ok().as_deref() == Some("1") {
         B::new_count_only()
     } else {
         B::new()
@@ -25923,7 +26560,7 @@ fn emit_direct_centered_qlow_lowpath_branch_row_step(
     assert_eq!(shifted_low_path.len(), N + 1);
 
     b.set_phase("direct_centered_qlow_lowpath_row_decode_q_low");
-    halfgcd_coeff_decoder::emit_halfgcd_coeff_quotient_decoder_with_scratch(
+    gcd_coefficient_decoder::emit_halfgcd_coeff_quotient_decoder_with_scratch(
         b,
         numerator_low_path,
         divisor,
@@ -27127,7 +27764,7 @@ fn build_round158_numeric_endpoint_step_bench_builder() -> B {
     b.declare_qubit_register(&q);
 
     b.set_phase("round158_numeric_endpoint_step");
-    round158_halfgcd_splice_live::emit_round158_numeric_endpoint_step(
+    phase_gcd_splice_live::emit_round158_numeric_endpoint_step(
         &mut b, &u, &v, &coeff_b, &coeff_d, &q,
     );
 
@@ -27167,7 +27804,7 @@ fn build_round197_numeric_endpoint_step_copy_clean_bench_builder() -> B {
     b.declare_qubit_register(&coeff_d_out);
 
     b.set_phase("round197_numeric_endpoint_step_copy_clean");
-    round158_halfgcd_splice_live::emit_round197_numeric_endpoint_step_copy_clean(
+    phase_gcd_splice_live::emit_round197_numeric_endpoint_step_copy_clean(
         &mut b,
         &u,
         &v,
@@ -27216,7 +27853,7 @@ fn build_round197_numeric_endpoint_step_clean_q_from_coeff_bench_builder(
     } else {
         "round197_numeric_endpoint_step_clean_q_from_coeff_body"
     });
-    round158_halfgcd_splice_live::emit_round197_numeric_endpoint_step_clean_q_from_coeff(
+    phase_gcd_splice_live::emit_round197_numeric_endpoint_step_clean_q_from_coeff(
         &mut b,
         &u,
         &v,
@@ -27254,13 +27891,13 @@ pub fn build_round197_numeric_endpoint_step_clean_q_from_coeff_bench(
 
 pub fn round198_semantic_coeff_clean_sequence_register_widths() -> [usize; 5] {
     let (lane_width, coeff_width, q_bits) =
-        round158_halfgcd_splice_live::round198_semantic_coeff_clean_sequence_widths();
+        phase_gcd_splice_live::round198_semantic_coeff_clean_sequence_widths();
     [lane_width, lane_width, coeff_width, coeff_width, q_bits]
 }
 
 fn build_round198_semantic_coeff_clean_sequence_builder(overflow_aware: bool) -> B {
     let (lane_width, coeff_width, q_bits) =
-        round158_halfgcd_splice_live::round198_semantic_coeff_clean_sequence_widths();
+        phase_gcd_splice_live::round198_semantic_coeff_clean_sequence_widths();
     let mut b = B::new();
     let u = b.alloc_qubits(lane_width);
     b.declare_qubit_register(&u);
@@ -27274,7 +27911,7 @@ fn build_round198_semantic_coeff_clean_sequence_builder(overflow_aware: bool) ->
     b.declare_qubit_register(&q);
     b.x(coeff_d[0]);
 
-    round158_halfgcd_splice_live::emit_round198_semantic_coeff_clean_prefix_sequence(
+    phase_gcd_splice_live::emit_round198_semantic_coeff_clean_prefix_sequence(
         &mut b,
         &u,
         &v,
@@ -27301,7 +27938,7 @@ pub fn build_round198_semantic_coeff_clean_sequence(overflow_aware: bool) -> Vec
 
 pub fn round199_semantic_full_gcd_prefix_register_widths() -> [usize; 5] {
     let (lane_width, coeff_width, total_q_bits, _max_q_bits, _steps) =
-        round158_halfgcd_splice_live::round199_semantic_full_gcd_prefix_widths();
+        phase_gcd_splice_live::round199_semantic_full_gcd_prefix_widths();
     [
         lane_width,
         lane_width,
@@ -27313,7 +27950,7 @@ pub fn round199_semantic_full_gcd_prefix_register_widths() -> [usize; 5] {
 
 fn build_round199_semantic_full_gcd_prefix_builder(roundtrip: bool) -> B {
     let (lane_width, coeff_width, total_q_bits, _max_q_bits, _steps) =
-        round158_halfgcd_splice_live::round199_semantic_full_gcd_prefix_widths();
+        phase_gcd_splice_live::round199_semantic_full_gcd_prefix_widths();
     let mut b = B::new();
     let u = b.alloc_qubits(lane_width);
     b.declare_qubit_register(&u);
@@ -27333,11 +27970,11 @@ fn build_round199_semantic_full_gcd_prefix_builder(roundtrip: bool) -> B {
     b.x(coeff_d[0]);
 
     if roundtrip {
-        round158_halfgcd_splice_live::emit_round199_semantic_full_gcd_prefix_roundtrip(
+        phase_gcd_splice_live::emit_round199_semantic_full_gcd_prefix_roundtrip(
             &mut b, &u, &v, &coeff_b, &coeff_d, &q_tail,
         );
     } else {
-        round158_halfgcd_splice_live::emit_round199_semantic_full_gcd_prefix_sequence(
+        phase_gcd_splice_live::emit_round199_semantic_full_gcd_prefix_sequence(
             &mut b, &u, &v, &coeff_b, &coeff_d, &q_tail,
         );
     }
@@ -27459,7 +28096,7 @@ fn emit_round200_semantic_full_gcd_pair1_checkpoint_in_place_with_options(
 ) -> Vec<QubitId> {
     assert_eq!(p, SECP256K1_P);
     let (lane_width, coeff_width, total_q_bits, _max_q_bits, _steps) =
-        round158_halfgcd_splice_live::round199_semantic_full_gcd_prefix_widths();
+        phase_gcd_splice_live::round199_semantic_full_gcd_prefix_widths();
     assert_eq!(lane_width, N);
 
     let u = b.alloc_qubits(lane_width);
@@ -27474,7 +28111,7 @@ fn emit_round200_semantic_full_gcd_pair1_checkpoint_in_place_with_options(
     b.x(coeff_d[0]);
 
     let prefix_start = b.ops.len();
-    round158_halfgcd_splice_live::emit_round199_semantic_full_gcd_prefix_sequence(
+    phase_gcd_splice_live::emit_round199_semantic_full_gcd_prefix_sequence(
         b, &u, &v, &coeff_b, &coeff_d, &q_tail,
     );
     let prefix_ops = b.ops[prefix_start..].to_vec();
@@ -27482,7 +28119,7 @@ fn emit_round200_semantic_full_gcd_pair1_checkpoint_in_place_with_options(
     let lam = b.alloc_qubits(N);
     emit_round200_signed_coeff_lambda_horner(b, &lam, ty, &coeff_b, p);
 
-    round158_halfgcd_splice_live::replay_round199_semantic_full_gcd_prefix_inverse_from_ops(
+    phase_gcd_splice_live::replay_round199_semantic_full_gcd_prefix_inverse_from_ops(
         b,
         &prefix_ops,
     );
@@ -27534,9 +28171,9 @@ fn emit_round146_decoder_roundtrip(
     denominator: &[QubitId],
     quotient: &[QubitId],
 ) {
-    halfgcd_coeff_decoder::emit_halfgcd_coeff_quotient_decoder(b, numerator, denominator, quotient);
+    gcd_coefficient_decoder::emit_halfgcd_coeff_quotient_decoder(b, numerator, denominator, quotient);
     emit_inverse(b, |b| {
-        halfgcd_coeff_decoder::emit_halfgcd_coeff_quotient_decoder(
+        gcd_coefficient_decoder::emit_halfgcd_coeff_quotient_decoder(
             b,
             numerator,
             denominator,
@@ -27609,7 +28246,7 @@ fn build_round146_halfgcd_decoder_sequence_bench_builder() -> B {
     let oy = b.alloc_bits(N);
     b.declare_bit_register(&oy);
 
-    let profile = halfgcd_coeff_decoder::halfgcd_coeff_decoder_prefix_profile_round145(
+    let profile = gcd_coefficient_decoder::halfgcd_coeff_decoder_prefix_profile_round145(
         round146_semantic_max_divisor(),
     );
     let quotient = b.alloc_qubits(profile.max_q_bits);
@@ -27645,7 +28282,7 @@ pub fn build_round146_halfgcd_decoder_sequence_bench() -> Vec<Op> {
     build_round146_halfgcd_decoder_sequence_bench_builder().ops
 }
 
-fn build_compact_ec_add(
+fn build_compact_quantum_addition(
     b: &mut B,
     tx: &[QubitId],
     ty: &[QubitId],
@@ -27653,12 +28290,12 @@ fn build_compact_ec_add(
     oy: &[BitId],
     p: U256,
 ) {
-    if std::env::var("COMPACT_EC_ADD_CLEAN_EARLY_INV")
+    if std::env::var("COMPACT_QUANTUM_ADDITION_CLEAN_EARLY_INV")
         .ok()
         .as_deref()
         == Some("1")
     {
-        build_compact_ec_add_clean_early_inv(b, tx, ty, ox, oy, p);
+        build_compact_quantum_addition_clean_early_inv(b, tx, ty, ox, oy, p);
         return;
     }
 
@@ -27677,20 +28314,20 @@ fn build_compact_ec_add(
     // inv_dx = dx^{-1} mod p (Fermat)
     let inv_dx = b.alloc_qubits(n);
     b.set_phase("fermat_inv_dx");
-    fermat_inv::fermat_inv(b, tx, &inv_dx, p);
+    modular_inverse_fermat::fermat_inv(b, tx, &inv_dx, p);
 
     // lam = dy * inv_dx = λ (Horner write-into-zero)
     let lam = b.alloc_qubits(n);
     b.set_phase("compact_lam_mul");
-    fermat_inv::horner_mul_add(b, &lam, ty, &inv_dx, p);
+    modular_inverse_fermat::horner_mul_add(b, &lam, ty, &inv_dx, p);
 
     // ty -= lam * tx → ty = dy - λ*dx = 0
     b.set_phase("compact_ty_zero");
-    fermat_inv::horner_mul_sub(b, ty, &lam, tx, p);
+    modular_inverse_fermat::horner_mul_sub(b, ty, &lam, tx, p);
 
     // tx = dx - λ²
     b.set_phase("compact_lam_sq");
-    fermat_inv::mod_mul_sub_inplace(b, tx, &lam, &lam, p);
+    modular_inverse_fermat::mod_mul_sub_inplace(b, tx, &lam, &lam, p);
 
     // Affine corrections: tx = -(tx + 3*Qx) = Rx - Qx
     mod_add_qb(b, tx, ox, p); // tx = dx - λ² + Qx
@@ -27699,7 +28336,7 @@ fn build_compact_ec_add(
 
     // ty = lam * tx = λ(Qx - Rx) = Ry + Qy
     b.set_phase("compact_ty_mul");
-    fermat_inv::horner_mul_add(b, ty, &lam, tx, p);
+    modular_inverse_fermat::horner_mul_add(b, ty, &lam, tx, p);
     // ty -= Qy → ty = Ry
     mod_sub_qb(b, ty, oy, p);
 
@@ -27729,11 +28366,11 @@ fn build_compact_ec_add(
     // inv_rxqx = (Rx-Qx)^{-1} = tx^{-1}
     let inv_rxqx = b.alloc_qubits(n);
     b.set_phase("fermat_inv_rxqx");
-    fermat_inv::fermat_inv(b, tx, &inv_rxqx, p);
+    modular_inverse_fermat::fermat_inv(b, tx, &inv_rxqx, p);
 
     // lam += (Ry + Qy) * (Rx-Qx)^{-1} → lam = 0
     b.set_phase("compact_lam_cleanup");
-    fermat_inv::horner_mul_add(b, &lam, ty, &inv_rxqx, p);
+    modular_inverse_fermat::horner_mul_add(b, &lam, ty, &inv_rxqx, p);
 
     // ty = Ry + Qy. Subtract Qy to get Ry.
     mod_sub_qb(b, ty, oy, p); // ty = Ry
@@ -27750,14 +28387,14 @@ fn build_compact_ec_add(
     // This is the same in-place cleanup obstruction as the dx^3 one-inversion
     // path: after overwriting tx/ty, recovering dx or Rx-Qx for inverse cleanup
     // requires the inverse affine add denominator, i.e. a second inversion.
-    if std::env::var("COMPACT_EC_ADD_ALLOW_DIRTY_RESET")
+    if std::env::var("COMPACT_QUANTUM_ADDITION_ALLOW_DIRTY_RESET")
         .ok()
         .as_deref()
         != Some("1")
     {
         panic!(
-            "COMPACT_EC_ADD_BLOCKED: inv_dx and inv_rxqx are nonzero here; \
-             set COMPACT_EC_ADD_ALLOW_DIRTY_RESET=1 only for explicitly \
+            "COMPACT_QUANTUM_ADDITION_BLOCKED: inv_dx and inv_rxqx are nonzero here; \
+             set COMPACT_QUANTUM_ADDITION_ALLOW_DIRTY_RESET=1 only for explicitly \
              dirty resource probes. {ONE_INV_DX3_AFFINE_PA_BLOCKER}"
         );
     }
@@ -27765,7 +28402,7 @@ fn build_compact_ec_add(
     b.free_vec(&inv_rxqx);
 }
 
-fn build_compact_ec_add_clean_early_inv(
+fn build_compact_quantum_addition_clean_early_inv(
     b: &mut B,
     tx: &[QubitId],
     ty: &[QubitId],
@@ -27787,41 +28424,41 @@ fn build_compact_ec_add_clean_early_inv(
     // Entry: tx=dx=P.x-Q.x, ty=dy=P.y-Q.y.
     let inv_dx = b.alloc_qubits(n);
     b.set_phase("compact_clean_fermat_inv_dx");
-    fermat_inv::fermat_inv_clean_lowq(b, tx, &inv_dx, p);
+    modular_inverse_fermat::fermat_inv_clean_lowq(b, tx, &inv_dx, p);
 
     let lam = b.alloc_qubits(n);
     b.set_phase("compact_clean_lam_mul");
-    fermat_inv::horner_mul_add_clean_lowq(b, &lam, ty, &inv_dx, p);
+    modular_inverse_fermat::horner_mul_add_clean_lowq(b, &lam, ty, &inv_dx, p);
 
     b.set_phase("compact_clean_dy_zero");
-    fermat_inv::horner_mul_sub_clean_lowq(b, ty, &lam, tx, p);
+    modular_inverse_fermat::horner_mul_sub_clean_lowq(b, ty, &lam, tx, p);
 
     b.set_phase("compact_clean_fermat_inv_dx_uncompute");
     emit_inverse(b, |b| {
-        fermat_inv::fermat_inv_clean_lowq_with_tmp(b, tx, &inv_dx, ty, p)
+        modular_inverse_fermat::fermat_inv_clean_lowq_with_tmp(b, tx, &inv_dx, ty, p)
     });
     b.free_vec(&inv_dx);
 
     b.set_phase("compact_clean_rx_minus_qx");
-    fermat_inv::mod_mul_sub_inplace_clean_lowq(b, tx, &lam, &lam, p);
+    modular_inverse_fermat::mod_mul_sub_inplace_clean_lowq(b, tx, &lam, &lam, p);
     mod_add_qb_phase_clean(b, tx, ox, p);
     mod_add_double_qb_phase_clean(b, tx, ox, p);
     mod_neg_inplace(b, tx, p);
 
     let inv_rxqx = b.alloc_qubits(n);
     b.set_phase("compact_clean_fermat_inv_rxqx");
-    fermat_inv::fermat_inv_clean_lowq_with_tmp(b, tx, &inv_rxqx, ty, p);
+    modular_inverse_fermat::fermat_inv_clean_lowq_with_tmp(b, tx, &inv_rxqx, ty, p);
 
     // tx=Rx-Qx. Since Ry+Qy = -lambda*(Rx-Qx), subtract the product.
     b.set_phase("compact_clean_ry_plus_qy");
-    fermat_inv::horner_mul_sub_clean_lowq(b, ty, &lam, tx, p);
+    modular_inverse_fermat::horner_mul_sub_clean_lowq(b, ty, &lam, tx, p);
 
     b.set_phase("compact_clean_lam_cleanup");
-    fermat_inv::horner_mul_add_clean_lowq(b, &lam, ty, &inv_rxqx, p);
+    modular_inverse_fermat::horner_mul_add_clean_lowq(b, &lam, ty, &inv_rxqx, p);
 
     b.set_phase("compact_clean_fermat_inv_rxqx_uncompute");
     emit_inverse(b, |b| {
-        fermat_inv::fermat_inv_clean_lowq_with_tmp(b, tx, &inv_rxqx, &lam, p)
+        modular_inverse_fermat::fermat_inv_clean_lowq_with_tmp(b, tx, &inv_rxqx, &lam, p)
     });
     b.free_vec(&inv_rxqx);
 
@@ -27859,8 +28496,13 @@ fn configure_elliptic_submission_route() {
     set_default_env("SKIP_ALT_SEED_CHECKS", "1");
     set_default_env("DIALOG_GCD_COMPRESSED_SIDECAR_LOG", "1");
     set_default_env("DIALOG_GCD_COMPRESSED_BLOCK_LIFECYCLE", "1");
-    set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE", "0");
-    set_default_env("DIALOG_GCD_COMPARE_BITS", "58");
+    set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE", "1");
+    set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "8");
+    set_default_env("KAL_DOUBLE_CARRY_TRUNC_W", "20");
+    set_default_env("KAL_FOLD_CARRY_TRUNC_W", "18");
+    set_default_env("DIALOG_GCD_ROUND763_DEDUP", "1");
+    set_default_env("DIALOG_GCD_MEASURED_UNDERFLOW_GATE", "1");
+    set_default_env("DIALOG_GCD_COMPARE_BITS", "63");
     set_default_env("DIALOG_GCD_APPLY_CLEAN_COMPARE_BITS", "20");
     set_default_env("DIALOG_GCD_RAW_PA", "1");
     set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "399");
@@ -27887,18 +28529,21 @@ fn configure_elliptic_submission_route() {
     // co-tune the Fiat-Shamir reroll (1 -> 5) to land a clean 9024-shot island.
     // Pure Toffoli reduction (1981734 -> 1952382), peak-neutral at 1698.
     // (Validated 0/0/0 over 9024 via eval_circuit.)
-    // Apply-phase clean compares also use the measured comparator
-    // (cmp_lt_into_fast); op stream changes, reroll=2 lands a clean island.
-    // Swept to find optimal island at COMPARE_BITS=58 and REROLL=0.
-    set_default_env("DIALOG_REROLL", "0");
+    set_default_env("DIALOG_REROLL", "11");
+    // Fuse the branch-bit comparator with the b0-controlled log update: derive
+    // b0_and_b1 from the in-flight comparator carry instead of materializing a
+    // separate cmp qubit and recomputing the comparator for uncompute. Pure
+    // Toffoli reduction (1952382 -> 1861990), peak-neutral at 1698.
+    // (Validated 0/0/0 over 9024 via eval_circuit.)
+    set_default_env("DIALOG_GCD_FUSED_BRANCH_BITS", "1");
 }
 
 fn build_builder() -> B {
     configure_elliptic_submission_route();
 
-    if round185_halfgcd_fixed_depth64_pa::round185_fixed_depth64_halfgcd_pa_enabled() {
+    if phase_gcd_fixed_depth::round185_fixed_depth64_halfgcd_pa_enabled() {
         return builder_from_ops(
-            round185_halfgcd_fixed_depth64_pa::build_round185_halfgcd_fixed_depth64_google_abi_pa(),
+            phase_gcd_fixed_depth::build_round185_halfgcd_fixed_depth64_google_abi_pa(),
         );
     }
 
@@ -28029,7 +28674,7 @@ fn build_builder() -> B {
         return builder_from_ops(build_round125_jsf_operator_bench());
     }
 
-    let mut builder = if std::env::var("EC_ADD_COUNT_ONLY").ok().as_deref() == Some("1") {
+    let mut builder = if std::env::var("QUANTUM_ADDITION_COUNT_ONLY").ok().as_deref() == Some("1") {
         B::new_count_only()
     } else {
         B::new()
@@ -28080,7 +28725,7 @@ fn build_builder() -> B {
     let route_round495_cubic = round495_d1_source_live_cubic_tail_pa_enabled();
     let route_round691_polarized_generic = round691_polarized_generic_scale_p_pa_enabled();
     if route_transport {
-        round218_b5_transport::emit_round218_b5_source_live_transport_pa_or_fail(
+        phase_b5_qubit_transport::emit_round218_b5_source_live_transport_pa_or_fail(
             b, &tx, &ty, &ox, &oy, p,
         );
     } else if round218_b5_history_stream_pa_enabled() {
@@ -28101,10 +28746,10 @@ fn build_builder() -> B {
         emit_round691_polarized_generic_scale_p_pa(b, &tx, &ty, &ox, &oy, p);
     } else if dialog_gcd_raw_pa_enabled() {
         emit_dialog_gcd_raw_pa(b, &tx, &ty, &ox, &oy, p);
-    } else if std::env::var("COMPACT_EC_ADD").ok().as_deref() == Some("1") {
-        build_compact_ec_add(b, &tx, &ty, &ox, &oy, p);
+    } else if std::env::var("COMPACT_QUANTUM_ADDITION").ok().as_deref() == Some("1") {
+        build_compact_quantum_addition(b, &tx, &ty, &ox, &oy, p);
     } else {
-        build_standard_ec_add(b, &tx, &ty, &ox, &oy, p);
+        build_standard_quantum_addition(b, &tx, &ty, &ox, &oy, p);
     }
 
     if std::env::var("BY_REPLAY_BENCH_SCAFFOLD").ok().as_deref() == Some("1") {
@@ -28153,7 +28798,7 @@ fn build_builder() -> B {
     }
 
     if std::env::var("BY_TEST").is_ok() {
-        by::run_classical_test();
+        coordinate_addition::run_classical_test();
     }
 
     if !b.count_only && std::env::var("SKIP_ALT_SEED_CHECKS").ok().as_deref() != Some("1") {
@@ -28303,14 +28948,14 @@ pub struct CountedBuildStats {
 }
 
 pub fn build_counted_stats() -> CountedBuildStats {
-    let prior = std::env::var_os("EC_ADD_COUNT_ONLY");
-    std::env::set_var("EC_ADD_COUNT_ONLY", "1");
+    let prior = std::env::var_os("QUANTUM_ADDITION_COUNT_ONLY");
+    std::env::set_var("QUANTUM_ADDITION_COUNT_ONLY", "1");
     let mut b = build_builder();
     b.close_counted_phase();
     if let Some(value) = prior {
-        std::env::set_var("EC_ADD_COUNT_ONLY", value);
+        std::env::set_var("QUANTUM_ADDITION_COUNT_ONLY", value);
     } else {
-        std::env::remove_var("EC_ADD_COUNT_ONLY");
+        std::env::remove_var("QUANTUM_ADDITION_COUNT_ONLY");
     }
     let toffoli_ops = b.counted_kind_ops[OperationType::CCX as usize]
         + b.counted_kind_ops[OperationType::CCZ as usize];
@@ -30673,7 +31318,7 @@ mod direct_const_tests {
             .iter()
             .filter(|op| matches!(op.kind, OperationType::CCX | OperationType::CCZ))
             .count();
-        let decoder_t = halfgcd_coeff_decoder::halfgcd_coeff_decoder_formula(N, Q_BITS).toffoli_ops;
+        let decoder_t = gcd_coefficient_decoder::halfgcd_coeff_decoder_formula(N, Q_BITS).toffoli_ops;
         let branch_predicate_t = 2 * (N + 1);
 
         assert_eq!(regs.len(), 4);
@@ -30713,7 +31358,7 @@ mod direct_const_tests {
             .iter()
             .filter(|op| matches!(op.kind, OperationType::Hmr))
             .count();
-        let decoder_t = halfgcd_coeff_decoder::halfgcd_coeff_decoder_formula(N, Q_BITS).toffoli_ops;
+        let decoder_t = gcd_coefficient_decoder::halfgcd_coeff_decoder_formula(N, Q_BITS).toffoli_ops;
         let branch_predicate_t = 2 * (N + 1);
         let branch_digit_t = 3 * N - 2;
 
