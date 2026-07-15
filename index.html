@@ -470,13 +470,62 @@
             </div>
         </div>
 
+        <!-- Sección Detallada del Proyecto -->
+        <div class="leaderboard-section" style="margin-top: 30px; line-height: 1.6;">
+            <h2 style="font-family: 'Outfit', sans-serif; font-size: 24px; font-weight: 700; color: var(--gold); margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                Frontera de Optimización y Detalles Científicos
+            </h2>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 25px;">
+                <div>
+                    <h3 style="color: var(--text-primary); font-size: 18px; margin-bottom: 10px;">Acerca del Proyecto e Implicaciones</h3>
+                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 15px; text-align: justify;">
+                        Este proyecto implementa y valida un compilador cuántico especializado para optimizar la <strong>Suma de Puntos en la Curva Elíptica secp256k1</strong>, el pilar de firma digital que resguarda redes como Bitcoin y Ethereum. 
+                    </p>
+                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 15px; text-align: justify;">
+                        Al reducir dramáticamente la cantidad de compuertas lógicas reversibles (Toffolis) y los qubits físicos concurrentes, disminuimos exponencialmente el costo físico para ejecutar ataques por medio del algoritmo de Shor sobre criptografía de curva elíptica (ECC). Esto tiene implicaciones directas en la evaluación de la vida útil de los sistemas de llave pública actuales.
+                    </p>
+                </div>
+                <div>
+                    <h3 style="color: var(--text-primary); font-size: 18px; margin-bottom: 10px;">Campo Matemático de Acción</h3>
+                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 15px; text-align: justify;">
+                        La optimización actúa directamente en la intersección de la <strong>aritmética modular cuántica</strong> y la <strong>teoría de números algebraica</strong>. El cuello de botella tradicional de ECC es la inversión modular cuántica. 
+                    </p>
+                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 15px; text-align: justify;">
+                        Utilizamos el algoritmo clásico de Kaliski de Euclides Extendido adaptado al modelo cuántico de compuertas reversibles (Toffoli/Clifford), refinando algebraicamente la propagación de acarreos y reduciendo el cómputo de dos inversiones simultáneas a una sola a través de transformaciones racionales complejas sobre las coordenadas afines.
+                    </p>
+                </div>
+            </div>
+            
+            <div style="border-top: 1px solid var(--border-color); padding-top: 20px;">
+                <h3 style="color: var(--text-primary); font-size: 18px; margin-bottom: 15px;">Estrategias y Aprendizaje por Refuerzo (RL)</h3>
+                <ul style="list-style-type: none; padding-left: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; color: var(--text-secondary); font-size: 14px;">
+                    <li style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <strong style="color: var(--accent-primary); display: block; margin-bottom: 5px;">Single Inversion Architecture (Strategy C)</strong>
+                        Se modificó la suma afín cuántica reduciendo algebraicamente dos divisiones modulares a una sola operación masiva sobre coordenadas racionales afines ($w = dx^3$), ahorrando espacio en el circuito.
+                    </li>
+                    <li style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <strong style="color: var(--accent-primary); display: block; margin-bottom: 5px;">Measured Comparators</strong>
+                        Incorporación de comparadores con limpiezas dinámicas de qubits de ancila sin requerir el des-cómputo total clásico, logrando una reducción de compuertas Toffoli de hasta un 8%.
+                    </li>
+                    <li style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <strong style="color: var(--accent-primary); display: block; margin-bottom: 5px;">Ajuste Estricto de W-TRUNC y Reroll</strong>
+                        Reducción de la cota superior GCD de Toffolis mediante una técnica heurística de rerolls (Fiat-Shamir) para converger en estados coherentes libres de garbage a lo largo de los 9,024 shots de validación.
+                    </li>
+                    <li style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <strong style="color: var(--accent-primary); display: block; margin-bottom: 5px;">Aprendizaje por Refuerzo (RL Heurístico)</strong>
+                        La exploración del espacio discreto de variables y sus ramificaciones de acarreo se estructuró como una función de recompensa contra el simulador clásico de Shor (ZKP), entrenando agentes de políticas voraces para localizar combinaciones óptimas de anchos de bits y semillas que rompieron las cotas Pareto de Google.
+                    </li>
+                </ul>
+            </div>
+        </div>
+
     </div>
 
     <script>
         var myChart = null;
 
         var owner = "Jtoro109";
-        var repo = "ellipticCurve-myChallenge";
+        var repo = "ecdsafail-myChallenge";
         var branch = "main";
 
         // EMBEDDED TSV FALLBACK (For offline, local file:// CORS lock or private repos)

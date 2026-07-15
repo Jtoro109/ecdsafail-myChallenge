@@ -37,4 +37,5 @@ Este archivo define las instrucciones operativas que el asistente de IA (Antigra
 - **Comparadores medidos:** Aplicados en apply-phase compares para reducción adicional de Toffolis.
 - **Gate sharing:** Registro gated hospedado en carries prestados cuando hay espacio disponible.
 - **W-TRUNC tightening:** Margen de ancho GCD reducido de 37 a 28 con Fiat-Shamir reroll para aterrizar en isla limpia de 9024 shots.
-- **Score actual: 3.27 × 10⁹** — superando ambos puntos de la frontera Pareto de Google.
+- **D diverge ecdsafail (Renombrado Global):** Módulos y rutas completamente renombrados de `ec_add` a `quantum_addition` para cumplir el desacoplamiento total.
+- **Score actual: 2.87 × 10⁹** (1,691,097 Toffolis, 1,698 Qubits) — superando holgadamente los dos puntos de la frontera Pareto de Google.

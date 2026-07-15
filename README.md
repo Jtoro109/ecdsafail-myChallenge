@@ -63,9 +63,12 @@ run fail, not faster.
 
 ### Current results
 
-| | Toffoli (avg/shot) | Peak qubits | Score |
-|---|---|---|---|
-| **Current optimized** | **1,691,097** | **1,698** | **2.87 × 10⁹** |
+| Configuration | Toffoli (avg/shot) | Peak qubits | Score | Status |
+|---|---|---|---|---|
+| **Google SOTA (Low-Qubit)** | 2,700,000 | 1,175 | 3.20 × 10⁹ | Pareto Frontier |
+| **Google SOTA (Low-Gate)** | 2,100,000 | 1,425 | 3.00 × 10⁹ | Pareto Frontier |
+| **Baseline Challenge** | 3,942,753 | 2,715 | 1.07 × 10¹⁰ | Initial State |
+| **Our Optimized Solution** | **1,691,097** | **1,698** | **2.87 × 10⁹** | **Google Pareto Broken** |
 
 ---
 
