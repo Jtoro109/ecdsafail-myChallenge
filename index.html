@@ -631,6 +631,41 @@
                 <p style="color: var(--text-secondary); font-size: 15px;">Análisis de la reducción de Toffolis para la suma de puntos en secp256k1 en el contexto del Algoritmo de Shor</p>
             </div>
 
+            <!-- Fila 0: Conceptos Fundamentales - Qubits y Toffoli -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 25px;">
+                <div class="info-card">
+                    <h3>🔵 ¿Qué es un Qubit?</h3>
+                    <p style="margin-bottom: 10px;">
+                        Un <strong style="color: var(--text-primary);">qubit</strong> (quantum bit) es la unidad fundamental de información en computación cuántica, análogo al bit clásico. Mientras un bit clásico solo puede ser 0 o 1, un qubit puede existir en una <strong style="color: var(--text-primary);">superposición</strong> de ambos estados simultáneamente.
+                    </p>
+                    <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; text-align: center; font-family: monospace; font-size: 14px; color: var(--gold); margin-bottom: 12px; border: 1px solid var(--border-color);">
+                        |ψ⟩ = α|0⟩ + β|1⟩
+                    </div>
+                    <p style="font-size: 13px;">
+                        Los coeficientes α y β son números complejos cuyas magnitudes al cuadrado representan las probabilidades de medir 0 o 1. Cuando múltiples qubits se <strong style="color: var(--text-primary);">entrelazan</strong>, el espacio de estados crece exponencialmente: n qubits representan 2<sup>n</sup> estados simultáneamente. Esto permite evaluar funciones matemáticas sobre una cantidad astronómica de entradas en paralelo, la base del poder del cómputo cuántico.
+                    </p>
+                    <p style="font-size: 13px; margin-top: 10px;">
+                        En nuestro circuito, cada qubit físico ocupa espacio real en el procesador cuántico y su coherencia es limitada en el tiempo. <strong style="color: var(--accent-primary);">Reducir el número de qubits concurrentes</strong> (de 2,715 a 1,698 en nuestro caso) es crucial porque determina directamente el tamaño mínimo del procesador cuántico necesario para ejecutar el ataque.
+                    </p>
+                </div>
+
+                <div class="info-card">
+                    <h3>⚙️ ¿Qué es una Compuerta Toffoli?</h3>
+                    <p style="margin-bottom: 10px;">
+                        La <strong style="color: var(--text-primary);">compuerta Toffoli</strong> (también llamada CCNOT) es una compuerta lógica cuántica universal de 3 qubits. Tiene dos qubits de <em>control</em> y uno de <em>objetivo</em>: invierte el qubit objetivo si y solo si ambos controles están en |1⟩.
+                    </p>
+                    <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; text-align: center; font-family: monospace; font-size: 14px; color: var(--accent-primary); margin-bottom: 12px; border: 1px solid var(--border-color);">
+                        |a, b, c⟩ → |a, b, c ⊕ (a · b)⟩
+                    </div>
+                    <p style="font-size: 13px;">
+                        La compuerta Toffoli es <strong style="color: var(--text-primary);">reversible</strong>: aplicarla dos veces devuelve el estado original. Esta propiedad es esencial en computación cuántica, donde toda operación debe ser reversible para preservar la coherencia del sistema. Cada Toffoli puede implementar la operación AND clásica de forma reversible.
+                    </p>
+                    <p style="font-size: 13px; margin-top: 10px;">
+                        En la práctica, la Toffoli es la compuerta más cara de implementar en hardware cuántico real, requiriendo entre 6 y 15 compuertas físicas por cada Toffoli lógica. Por eso, <strong style="color: var(--accent-primary);">minimizar el conteo de Toffolis</strong> (de 3.94M a 1.69M en nuestro caso) es el objetivo principal de optimización: menos Toffolis significa menos tiempo de coherencia requerido y un ataque más viable.
+                    </p>
+                </div>
+            </div>
+
             <!-- Fila 1: Algoritmo de Shor e Importancia -->
             <div class="leaderboard-section" style="margin-bottom: 25px; line-height: 1.7;">
                 <h2 style="font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 700; color: var(--gold); margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
@@ -721,7 +756,43 @@
                 </p>
             </div>
 
-            <!-- Fila 4: Aprendizaje por Refuerzo Heurístico -->
+            <!-- Fila 4: Arquitectura Detallada de Estrategias y Heurísticas -->
+            <div class="leaderboard-section" style="line-height: 1.7; margin-bottom: 25px;">
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 700; color: var(--gold); margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+                    🛠️ Portafolio de Estrategias y Arquitectura Cuántica
+                </h2>
+                <p style="color: var(--text-secondary); font-size: 14px; text-align: justify; margin-bottom: 20px;">
+                    Navegar la frontera de optimización requiere una suite coordinada de optimizaciones a nivel de compuerta lógica y a nivel de arquitectura algebraica. A continuación se desglosan las principales estrategias cuánticas aplicadas sobre el compilador:
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 13px; color: var(--text-secondary);">
+                    <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
+                        <strong style="color: var(--gold); font-size: 15px; display: block; margin-bottom: 8px;">1. Eliminación de m_hist</strong>
+                        <p style="text-align: justify;">
+                            El diseño original requería un registro de memoria histórico de aproximadamente 400 qubits para almacenar cada decisión de división por 2 y resta condicional del GCD. Logramos eliminar este vector de almacenamiento masivo reemplazándolo con una estrategia de cálculo on-the-fly utilizando una única ancila local que se limpia y recicla inmediatamente después de cada iteración, previniendo la acumulación de qubits lógicos concurrentes.
+                        </p>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
+                        <strong style="color: var(--gold); font-size: 15px; display: block; margin-bottom: 8px;">2. Reutilización de Registros (Gouzien Trick)</strong>
+                        <p style="text-align: justify;">
+                            En lugar de asignar registros independientes para cada fase intermedia del cálculo del Euclides Extendido, implementamos la técnica de plegamiento de registros (Register Folds). Los registros de datos afines <code>tx</code> y <code>ty</code> de la curva se reutilizan de manera intercalada para albergar los coeficientes <code>u</code> y <code>v</code> del GCD durante la fase de ejecución, logrando un ahorro masivo en el piso mínimo de qubits lógicos.
+                        </p>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
+                        <strong style="color: var(--gold); font-size: 15px; display: block; margin-bottom: 8px;">3. Limpieza de Comparadores (Measured Comparators)</strong>
+                        <p style="text-align: justify;">
+                            El uncompute (des-cómputo) clásico de un comparador cuántico requiere duplicar el número de compuertas Toffoli. Al implementar comparadores medidos (<code>cmp_lt_into_fast</code>), medimos el bit del resultado de comparación final y utilizamos compuertas de corrección clásicas controladas (compuertas CNOT de costo Toffoli cero) para limpiar las líneas ancilas, reduciendo el costo de Toffolis en aproximadamente un 8% por comparación.
+                        </p>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
+                        <strong style="color: var(--gold); font-size: 15px; display: block; margin-bottom: 8px;">4. Gate Sharing con Acarreos Prestados</strong>
+                        <p style="text-align: justify;">
+                            Cuando el circuito requiere flags de control condicionales (por ejemplo, para multiplicaciones o sumas controladas por bits específicos del GCD), multiplexamos las líneas de control hospedándolas temporalmente en los qubits libres de la cola de acarreo (Carry Qubits) de sumadores activos. Esto evita la necesidad de asignar ancilas dedicadas para las compuertas Toffoli múltiples.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fila 5: Aprendizaje por Refuerzo Heurístico -->
             <div class="leaderboard-section" style="line-height: 1.7;">
                 <h2 style="font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 700; color: var(--gold); margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
                     🤖 Optimización Mediante Aprendizaje por Refuerzo (RL) Heurístico
