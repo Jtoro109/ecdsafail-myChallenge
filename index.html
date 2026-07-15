@@ -639,19 +639,19 @@
                 <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 30px;">
                     <div>
                         <p style="color: var(--text-secondary); font-size: 14px; text-align: justify; margin-bottom: 12px;">
-                            Propuesto por Peter Shor en 1994, el <strong>Algoritmo de Shor</strong> es un algoritmo cuántico capaz de resolver los problemas de factorización de enteros y de <strong>logaritmo discreto</strong> en tiempo polinómico $O((\log N)^3)$. En contraste, los mejores algoritmos clásicos conocidos toman tiempo subexponencial.
+                            Propuesto por Peter Shor en 1994, el <strong>Algoritmo de Shor</strong> es un algoritmo cuántico capaz de resolver los problemas de factorización de enteros y de <strong>logaritmo discreto</strong> en tiempo polinómico O(log³ N). En contraste, los mejores algoritmos clásicos conocidos toman tiempo subexponencial.
                         </p>
                         <p style="color: var(--text-secondary); font-size: 14px; text-align: justify; margin-bottom: 12px;">
                             La importancia fundamental del algoritmo de Shor radica en que invalida la base matemática de casi toda la infraestructura criptográfica de clave pública moderna, incluyendo RSA, Diffie-Hellman y la <strong>Criptografía de Curvas Elípticas (ECC)</strong>.
                         </p>
                         <p style="color: var(--text-secondary); font-size: 14px; text-align: justify;">
-                            En curvas elípticas, la clave pública es un punto $Q = d \cdot P$, donde $d$ es la clave privada. Encontrar $d$ a partir de $Q$ y $P$ (el problema del logaritmo discreto en curvas elípticas, o ECDLP) requiere trillones de años clásicamente, pero Shor lo resuelve calculando la función de período cuántico, logrando hallar $d$ de manera casi instantánea una vez que se posee un computador cuántico con suficientes qubits físicos estables.
+                            En curvas elípticas, la clave pública es un punto Q = d · P, donde d es la clave privada. Encontrar d a partir de Q y P (el problema del logaritmo discreto en curvas elípticas, o ECDLP) requiere trillones de años clásicamente, pero Shor lo resuelve calculando la función de período cuántico, logrando hallar d de manera casi instantánea una vez que se posee un computador cuántico con suficientes qubits físicos estables.
                         </p>
                     </div>
                     <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px; display: flex; flex-direction: column; justify-content: center;">
                         <h4 style="color: var(--accent-primary); font-size: 14px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Costo Cuántico del Ataque</h4>
                         <ul style="color: var(--text-secondary); font-size: 13px; padding-left: 15px; margin: 0;">
-                            <li style="margin-bottom: 6px;"><strong>RSA-2048:</strong> Requiere aproximadamente 4,096 qubits lógicos y $2 \times 10^{10}$ compuertas Toffoli.</li>
+                            <li style="margin-bottom: 6px;"><strong>RSA-2048:</strong> Requiere aproximadamente 4,096 qubits lógicos y 2 × 10¹⁰ compuertas Toffoli.</li>
                             <li style="margin-bottom: 6px;"><strong>ECDSA-256:</strong> Aunque tiene llaves más pequeñas, requiere unos 2,300 qubits lógicos debido a la densidad de la aritmética de curvas elípticas.</li>
                             <li><strong>Nuestro Foco:</strong> Reducir el volumen de Toffolis necesarias para la suma de puntos acorta el tiempo de coherencia cuántico requerido para romper ECC.</li>
                         </ul>
@@ -664,14 +664,14 @@
                 <div class="info-card">
                     <h3>📈 La Curva Koblitz secp256k1</h3>
                     <p style="margin-bottom: 10px;">
-                        La curva elíptica <strong>secp256k1</strong> está definida sobre el cuerpo finito $\mathbb{F}_p$ mediante la ecuación de Weierstrass corta:
+                        La curva elíptica <strong>secp256k1</strong> está definida sobre el cuerpo finito 𝔽<sub>p</sub> mediante la ecuación de Weierstrass corta:
                     </p>
                     <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; text-align: center; font-family: monospace; font-size: 15px; color: var(--gold); margin-bottom: 12px; border: 1px solid var(--border-color);">
                         y² = x³ + 7  (mod p)
                     </div>
                     <p style="font-size: 13px; color: var(--text-secondary);">
-                        Donde el módulo primo $p$ es una constante de 256 bits:<br>
-                        $p = 2^{256} - 2^{32} - 977$<br>
+                        Donde el módulo primo p es una constante de 256 bits:<br>
+                        p = 2<sup>256</sup> - 2<sup>32</sup> - 977<br>
                         Esta curva fue elegida por Satoshi Nakamoto para asegurar Bitcoin debido a su estructura Koblitz, que permite endomorfismos eficientes para acelerar la multiplicación escalar clásica. Al ser el estándar en Bitcoin y Ethereum, optimizar el cómputo cuántico de esta curva es crítico para evaluar el riesgo existencial de las criptomonedas ante la computación cuántica.
                     </p>
                 </div>
@@ -679,16 +679,16 @@
                 <div class="info-card">
                     <h3>🔄 Inversión Modular Cuántica y Kaliski</h3>
                     <p style="margin-bottom: 10px;">
-                        El cálculo de la pendiente de la secante $\lambda = (y_2 - y_1)/(x_2 - x_1) \pmod p$ exige hallar la <strong>inversión modular</strong> del denominador: $d^{-1} \pmod p$. En un procesador cuántico reversible, no podemos usar la división clásica directa.
+                        El cálculo de la pendiente de la secante λ = (y<sub>2</sub> - y<sub>1</sub>)/(x<sub>2</sub> - x<sub>1</sub>) mod p exige hallar la <strong>inversión modular</strong> del denominador: d<sup>-1</sup> mod p. En un procesador cuántico reversible, no podemos usar la división clásica directa.
                     </p>
                     <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">
                         Implementamos el <strong>Algoritmo de Inversión de Kaliski</strong>, una variante del Algoritmo de Euclides Extendido (EEA) diseñada para hardware reversible. Kaliski calcula una fase de reducción por divisiones por 2 que genera un inverso provisional:
                     </p>
                     <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; text-align: center; font-family: monospace; font-size: 13px; color: var(--accent-primary); border: 1px solid var(--border-color);">
-                        R ≡ d⁻¹ · 2ᵏ  (mod p)
+                        R ≡ d⁻¹ · 2<sup>k</sup>  (mod p)
                     </div>
                     <p style="font-size: 13px; color: var(--text-secondary);">
-                        Luego se realiza una fase de corrección (reducción del factor de escala $2^k$) mediante multiplicaciones y restas condicionales en compuertas cuánticas reversibles.
+                        Luego se realiza una fase de corrección (reducción del factor de escala 2<sup>k</sup>) mediante multiplicaciones y restas condicionales en compuertas cuánticas reversibles.
                     </p>
                 </div>
             </div>
@@ -699,25 +699,25 @@
                     🧬 Estrategia de Inversión Única (Strategy C)
                 </h2>
                 <p style="color: var(--text-secondary); font-size: 14px; text-align: justify; margin-bottom: 15px;">
-                    En la suma estándar de puntos afines en curvas elípticas, la adición de dos puntos distintos $P(x_1, y_1)$ y $Q(x_2, y_2)$ para obtener $R(x_3, y_3)$ se calcula clásicamente como:
+                    En la suma estándar de puntos afines en curvas elípticas, la adición de dos puntos distintos P(x<sub>1</sub>, y<sub>1</sub>) y Q(x<sub>2</sub>, y<sub>2</sub>) para obtener R(x<sub>3</sub>, y<sub>3</sub>) se calcula clásicamente como:
                 </p>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-family: monospace; font-size: 14px; color: var(--text-primary); margin-bottom: 15px;">
                     <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
-                        λ = (y₂ - y₁) / (x₂ - x₁)  (mod p)<br>
-                        x₃ = λ² - x₁ - x₂  (mod p)
+                        λ = (y<sub>2</sub> - y<sub>1</sub>) / (x<sub>2</sub> - x<sub>1</sub>)  (mod p)<br>
+                        x<sub>3</sub> = λ² - x<sub>1</sub> - x<sub>2</sub>  (mod p)
                     </div>
                     <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
-                        y₃ = λ(x₁ - x₃) - y₁  (mod p)
+                        y<sub>3</sub> = λ(x<sub>1</sub> - x<sub>3</sub>) - y<sub>1</sub>  (mod p)
                     </div>
                 </div>
                 <p style="color: var(--text-secondary); font-size: 14px; text-align: justify; margin-bottom: 15px;">
                     Cuando se encadenan operaciones cuánticas para calcular múltiplos de puntos, la presencia de divisiones sucesivas requiere implementar circuitos de inversión secuenciales complejos. La <strong>Strategy C (Inversión Única)</strong> reformula algebraicamente el sistema. En lugar de procesar divisiones independientes, multiplicamos los denominadores y calculamos una sola inversión modular cuántica grande sobre una variable compuesta intermedia:
                 </p>
                 <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); padding: 15px; border-radius: 8px; text-align: center; font-family: monospace; font-size: 15px; color: var(--accent-primary); margin-bottom: 15px;">
-                    w = (x₂ - x₁)⁻¹  (mod p)
+                    w = (x<sub>2</sub> - x<sub>1</sub>)⁻¹  (mod p)
                 </div>
                 <p style="color: var(--text-secondary); font-size: 14px; text-align: justify;">
-                    Utilizando esta variable auxiliar $w$ precalculada de manera reversible, las coordenadas de salida se despejan mediante multiplicaciones y restas modulares puras sin necesidad de invocar un segundo circuito divisor. Esta restructuración nos permitió reducir drásticamente el uso de registros temporales auxiliares y bajar el pico de qubits activos a solo 1,698 qubits físicos.
+                    Utilizando esta variable auxiliar w precalculada de manera reversible, las coordenadas de salida se despejan mediante multiplicaciones y restas modulares puras sin necesidad de invocar un segundo circuito divisor. Esta restructuración nos permitió reducir drásticamente el uso de registros temporales auxiliares y bajar el pico de qubits activos a solo 1,698 qubits físicos.
                 </p>
             </div>
 
