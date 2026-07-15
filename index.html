@@ -213,6 +213,20 @@
             width: 100%;
         }
 
+        .bottom-grid {
+            display: grid;
+            grid-template-columns: 1.3fr 0.7fr;
+            gap: 30px;
+            margin-top: 30px;
+            align-items: start;
+        }
+
+        @media (max-width: 1024px) {
+            .bottom-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
         /* Leaderboard Table Section */
         .leaderboard-section {
             background: var(--bg-card);
@@ -437,87 +451,76 @@
                 <canvas id="historyChart"></canvas>
             </div>
             <div class="error-message" id="error-msg"></div>
-        </div>
-
-        <!-- Tabla de Posiciones -->
-        <div class="leaderboard-section">
-            <div class="table-header">
-                <div class="table-title">
-                    <h2>Historial de Commits del Desarrollador</h2>
-                    <p id="table-subtitle">Cargando datos históricos...</p>
+        <!-- Contenedor Separado en Dos Columnas (Tabla vs. Información) -->
+        <div class="bottom-grid">
+            <!-- Columna Izquierda: Historial de Commits y Resultados -->
+            <div class="leaderboard-section">
+                <div class="table-header">
+                    <div class="table-title">
+                        <h2>Historial de Commits</h2>
+                        <p id="table-subtitle">Cargando datos históricos...</p>
+                    </div>
+                    <div class="best-score-display">
+                        <div class="label">Score Mínimo Logrado</div>
+                        <div class="value" id="best-score-val">0</div>
+                    </div>
                 </div>
-                <div class="best-score-display">
-                    <div class="label">Score Mínimo Logrado</div>
-                    <div class="value" id="best-score-val">0</div>
+
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Commit / Mensaje</th>
+                                <th>Complejidad (Score)</th>
+                                <th>Métricas Detalladas</th>
+                                <th>Fecha de Envío</th>
+                                <th>Enlace</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-body">
+                            <!-- Filas dinámicas aquí -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            <div class="table-wrapper">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Commit / Mensaje</th>
-                            <th>Complejidad (Score)</th>
-                            <th>Métricas Detalladas</th>
-                            <th>Fecha de Envío</th>
-                            <th>Enlace</th>
-                        </tr>
-                    </thead>
-                    <tbody id="leaderboard-body">
-                        <!-- Filas dinámicas aquí -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
+            <!-- Columna Derecha: Información Científica y de RL -->
+            <div class="leaderboard-section" style="line-height: 1.5;">
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: var(--gold); margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                    Frontera Científica y Detalles de RL
+                </h2>
+                
+                <h3 style="color: var(--text-primary); font-size: 15px; margin-bottom: 6px;">Acerca del Proyecto e Implicaciones</h3>
+                <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px; text-align: justify;">
+                    Este proyecto implementa y valida un compilador cuántico para optimizar la <strong>Suma de Puntos en la Curva Elíptica secp256k1</strong>. Al reducir Toffolis y qubits físicos concurrentes, disminuimos exponencialmente el costo físico para ejecutar el algoritmo de Shor sobre criptografía de llave pública en curvas elípticas.
+                </p>
 
-        <!-- Sección Detallada del Proyecto -->
-        <div class="leaderboard-section" style="margin-top: 30px; line-height: 1.6;">
-            <h2 style="font-family: 'Outfit', sans-serif; font-size: 24px; font-weight: 700; color: var(--gold); margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
-                Frontera de Optimización y Detalles Científicos
-            </h2>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 25px;">
-                <div>
-                    <h3 style="color: var(--text-primary); font-size: 18px; margin-bottom: 10px;">Acerca del Proyecto e Implicaciones</h3>
-                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 15px; text-align: justify;">
-                        Este proyecto implementa y valida un compilador cuántico especializado para optimizar la <strong>Suma de Puntos en la Curva Elíptica secp256k1</strong>, el pilar de firma digital que resguarda redes como Bitcoin y Ethereum. 
-                    </p>
-                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 15px; text-align: justify;">
-                        Al reducir dramáticamente la cantidad de compuertas lógicas reversibles (Toffolis) y los qubits físicos concurrentes, disminuimos exponencialmente el costo físico para ejecutar ataques por medio del algoritmo de Shor sobre criptografía de curva elíptica (ECC). Esto tiene implicaciones directas en la evaluación de la vida útil de los sistemas de llave pública actuales.
-                    </p>
-                </div>
-                <div>
-                    <h3 style="color: var(--text-primary); font-size: 18px; margin-bottom: 10px;">Campo Matemático de Acción</h3>
-                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 15px; text-align: justify;">
-                        La optimización actúa directamente en la intersección de la <strong>aritmética modular cuántica</strong> y la <strong>teoría de números algebraica</strong>. El cuello de botella tradicional de ECC es la inversión modular cuántica. 
-                    </p>
-                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 15px; text-align: justify;">
-                        Utilizamos el algoritmo clásico de Kaliski de Euclides Extendido adaptado al modelo cuántico de compuertas reversibles (Toffoli/Clifford), refinando algebraicamente la propagación de acarreos y reduciendo el cómputo de dos inversiones simultáneas a una sola a través de transformaciones racionales complejas sobre las coordenadas afines.
-                    </p>
-                </div>
-            </div>
-            
-            <div style="border-top: 1px solid var(--border-color); padding-top: 20px;">
-                <h3 style="color: var(--text-primary); font-size: 18px; margin-bottom: 15px;">Estrategias y Aprendizaje por Refuerzo (RL)</h3>
-                <ul style="list-style-type: none; padding-left: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; color: var(--text-secondary); font-size: 14px;">
-                    <li style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
-                        <strong style="color: var(--accent-primary); display: block; margin-bottom: 5px;">Single Inversion Architecture (Strategy C)</strong>
-                        Se modificó la suma afín cuántica reduciendo algebraicamente dos divisiones modulares a una sola operación masiva sobre coordenadas racionales afines ($w = dx^3$), ahorrando espacio en el circuito.
+                <h3 style="color: var(--text-primary); font-size: 15px; margin-bottom: 6px;">Campo Matemático de Acción</h3>
+                <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px; text-align: justify;">
+                    Ubicado en la intersección de la <strong>aritmética modular cuántica</strong> y <strong>teoría de números</strong>. Optimizamos la inversión modular del algoritmo cuántico de Euclides Extendido (Kaliski) sobre compuertas reversibles (Toffoli/Clifford) usando transformaciones afines racionales complejas ($w = dx^3$) para procesar una única inversión en vez de dos secuenciales.
+                </p>
+
+                <h3 style="color: var(--text-primary); font-size: 15px; margin-bottom: 8px;">Estrategias y Heurísticas de RL</h3>
+                <ul style="list-style-type: none; padding-left: 0; display: flex; flex-direction: column; gap: 10px; color: var(--text-secondary); font-size: 12px;">
+                    <li style="background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                        <strong style="color: var(--accent-primary); display: block; margin-bottom: 2px;">Inversión Única (Strategy C)</strong>
+                        Fusión algebraica de divisiones en coordenadas afines para ejecutar una sola inversión cuántica masiva.
                     </li>
-                    <li style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
-                        <strong style="color: var(--accent-primary); display: block; margin-bottom: 5px;">Measured Comparators</strong>
-                        Incorporación de comparadores con limpiezas dinámicas de qubits de ancila sin requerir el des-cómputo total clásico, logrando una reducción de compuertas Toffoli de hasta un 8%.
+                    <li style="background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                        <strong style="color: var(--accent-primary); display: block; margin-bottom: 2px;">Comparadores Medidos</strong>
+                        Limpieza de ancilas dinámica mediante medidas cuánticas directas, reduciendo Toffolis en ~8% en comparadores.
                     </li>
-                    <li style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
-                        <strong style="color: var(--accent-primary); display: block; margin-bottom: 5px;">Ajuste Estricto de W-TRUNC y Reroll</strong>
-                        Reducción de la cota superior GCD de Toffolis mediante una técnica heurística de rerolls (Fiat-Shamir) para converger en estados coherentes libres de garbage a lo largo de los 9,024 shots de validación.
-                    </li>
-                    <li style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
-                        <strong style="color: var(--accent-primary); display: block; margin-bottom: 5px;">Aprendizaje por Refuerzo (RL Heurístico)</strong>
-                        La exploración del espacio discreto de variables y sus ramificaciones de acarreo se estructuró como una función de recompensa contra el simulador clásico de Shor (ZKP), entrenando agentes de políticas voraces para localizar combinaciones óptimas de anchos de bits y semillas que rompieron las cotas Pareto de Google.
+                    <li style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                        <strong style="color: var(--accent-primary); display: block; margin-bottom: 2px;">W-TRUNC & Reroll Heurístico</strong>
+                        Ajuste de anchos GCD y rerolls (Fiat-Shamir) guiados por una recompensa de RL para hallar islas libres de phase garbage.
                     </li>
                 </ul>
             </div>
         </div>
+
+    </div>
+
+
 
     </div>
 
@@ -724,27 +727,6 @@
                     var metrics = benchmarkData[shaShort] || (c.sha ? benchmarkData[c.sha] : null);
                     
                     if (metrics) {
-                        var authorName = (c.commit && c.commit.author && c.commit.author.name || "").toLowerCase();
-                        var login = (c.author && c.author.login || "").toLowerCase();
-                        var email = (c.commit && c.commit.author && c.commit.author.email || "").toLowerCase();
-                        
-                        var isUserOrGemini = 
-                            authorName.indexOf("jtoro") !== -1 || 
-                            authorName.indexOf("gemini") !== -1 || 
-                            authorName.indexOf("emanuel") !== -1 ||
-                            authorName.indexOf("toro") !== -1 ||
-                            login.indexOf("jtoro") !== -1 || 
-                            login.indexOf("gemini") !== -1 || 
-                            login.indexOf("emanuel") !== -1 || 
-                            email.indexOf("jtoro") !== -1 ||
-                            email.indexOf("toro") !== -1 ||
-                            email.indexOf("gemini") !== -1 ||
-                            email.indexOf("emanuel") !== -1;
-                        
-                        if (!isUserOrGemini) {
-                            return;
-                        }
-
                         processed.push({
                             shaShort: shaShort,
                             shaLong: c.sha,
