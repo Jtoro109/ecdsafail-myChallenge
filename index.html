@@ -931,41 +931,39 @@
                     var shaShort = c.sha ? c.sha.substring(0, 7) : "";
                     var metrics = benchmarkData[shaShort] || (c.sha ? benchmarkData[c.sha] : null);
                     
-                    if (metrics) {
-                        var authorName = (c.commit && c.commit.author && c.commit.author.name || "").toLowerCase();
-                        var login = (c.author && c.author.login || "").toLowerCase();
-                        var email = (c.commit && c.commit.author && c.commit.author.email || "").toLowerCase();
-                        
-                        var isUserOrGemini = 
-                            authorName.indexOf("jtoro") !== -1 || 
-                            authorName.indexOf("gemini") !== -1 || 
-                            authorName.indexOf("emanuel") !== -1 ||
-                            authorName.indexOf("toro") !== -1 ||
-                            login.indexOf("jtoro") !== -1 || 
-                            login.indexOf("gemini") !== -1 || 
-                            login.indexOf("emanuel") !== -1 || 
-                            email.indexOf("jtoro") !== -1 ||
-                            email.indexOf("toro") !== -1 ||
-                            email.indexOf("gemini") !== -1 ||
-                            email.indexOf("emanuel") !== -1;
-                        
-                        if (!isUserOrGemini) {
-                            return;
-                        }
-
-                        processed.push({
-                            shaShort: shaShort,
-                            shaLong: c.sha,
-                            message: (c.commit && c.commit.message) || "Optimización de rutina",
-                            authorName: (c.commit && c.commit.author && c.commit.author.name) || "Jtoro109",
-                            authorAvatar: (c.author && c.author.avatar_url) || 'https://github.com/Jtoro109.png',
-                            date: new Date((c.commit && c.commit.author && c.commit.author.date) || (metrics.timestamp * 1000)),
-                            htmlUrl: c.html_url || ("https://github.com/" + owner + "/" + repo + "/commit/" + shaShort),
-                            toffoli: metrics.toffoli,
-                            qubits: metrics.qubits,
-                            score: metrics.score
-                        });
+                    var authorName = (c.commit && c.commit.author && c.commit.author.name || "").toLowerCase();
+                    var login = (c.author && c.author.login || "").toLowerCase();
+                    var email = (c.commit && c.commit.author && c.commit.author.email || "").toLowerCase();
+                    
+                    var isUserOrGemini = 
+                        authorName.indexOf("jtoro") !== -1 || 
+                        authorName.indexOf("gemini") !== -1 || 
+                        authorName.indexOf("emanuel") !== -1 ||
+                        authorName.indexOf("toro") !== -1 ||
+                        login.indexOf("jtoro") !== -1 || 
+                        login.indexOf("gemini") !== -1 || 
+                        login.indexOf("emanuel") !== -1 || 
+                        email.indexOf("jtoro") !== -1 ||
+                        email.indexOf("toro") !== -1 ||
+                        email.indexOf("gemini") !== -1 ||
+                        email.indexOf("emanuel") !== -1;
+                    
+                    if (!isUserOrGemini) {
+                        return;
                     }
+
+                    processed.push({
+                        shaShort: shaShort,
+                        shaLong: c.sha,
+                        message: (c.commit && c.commit.message) || "Optimización de rutina",
+                        authorName: (c.commit && c.commit.author && c.commit.author.name) || "Jtoro109",
+                        authorAvatar: (c.author && c.author.avatar_url) || 'https://github.com/Jtoro109.png',
+                        date: new Date((c.commit && c.commit.author && c.commit.author.date) || (metrics ? metrics.timestamp * 1000 : new Date())),
+                        htmlUrl: c.html_url || ("https://github.com/" + owner + "/" + repo + "/commit/" + shaShort),
+                        toffoli: metrics ? metrics.toffoli : null,
+                        qubits: metrics ? metrics.qubits : null,
+                        score: metrics ? metrics.score : null
+                    });
                 } catch (err) {
                     console.error("Error al procesar commit individual:", err);
                 }
@@ -989,24 +987,28 @@
             var scores = processed.map(function(p) { return p.score; });
             var toffolis = processed.map(function(p) { return p.toffoli; });
             var qubitsList = processed.map(function(p) { return p.qubits; });
-            
-            var minToffoli = Math.min.apply(null, toffolis);
-            var minQubits = Math.min.apply(null, qubitsList);
-            document.getElementById('stat-min-toffoli').innerText = minToffoli.toLocaleString();
-            document.getElementById('stat-min-qubits').innerText = minQubits;
 
-            var initialScore = processed[0].score;
-            var bestScore = Math.min.apply(null, scores);
-            var improvementPct = (((initialScore - bestScore) / initialScore) * 100).toFixed(1);
+            var validScores = scores.filter(function(s) { return typeof s === 'number' && s !== null && !isNaN(s); });
+            var validToffolis = toffolis.filter(function(t) { return typeof t === 'number' && t !== null && !isNaN(t); });
+            var validQubits = qubitsList.filter(function(q) { return typeof q === 'number' && q !== null && !isNaN(q); });
+
+            var minToffoli = validToffolis.length > 0 ? Math.min.apply(null, validToffolis) : 0;
+            var minQubits = validQubits.length > 0 ? Math.min.apply(null, validQubits) : 0;
+            document.getElementById('stat-min-toffoli').innerText = minToffoli > 0 ? minToffoli.toLocaleString() : "N/A";
+            document.getElementById('stat-min-qubits').innerText = minQubits > 0 ? minQubits : "N/A";
+
+            var bestScore = validScores.length > 0 ? Math.min.apply(null, validScores) : 0;
+            var initialScore = validScores.length > 0 ? validScores[0] : bestScore;
+            var improvementPct = initialScore > 0 ? (((initialScore - bestScore) / initialScore) * 100).toFixed(1) : "0.0";
             document.getElementById('hero-percentage').innerText = improvementPct + "% de optimización lograda";
-            document.getElementById('best-score-val').innerText = bestScore.toLocaleString();
+            document.getElementById('best-score-val').innerText = bestScore > 0 ? bestScore.toLocaleString() : "N/A";
 
-            subtitle.innerText = processed.length + " ejecuciones exitosas registradas";
+            subtitle.innerText = processed.length + " commits registrados";
 
             // Gráfica y Tabla seguras
             try {
                 if (typeof Chart !== 'undefined') {
-                    renderChart(processed);
+                    renderChart(processed.filter(function(p) { return p.score !== null; }));
                 }
             } catch (chartErr) {
                 console.error("Error al renderizar gráfica:", chartErr);
@@ -1210,7 +1212,8 @@
             var tbody = document.getElementById('leaderboard-body');
             tbody.innerHTML = '';
 
-            var bestScore = Math.min.apply(null, data.map(function(d) { return d.score; }));
+            var validScores = data.filter(function(d) { return typeof d.score === 'number' && d.score !== null && !isNaN(d.score); }).map(function(d) { return d.score; });
+            var bestScore = validScores.length > 0 ? Math.min.apply(null, validScores) : null;
 
             data.forEach(function(item, index) {
                 var tr = document.createElement('tr');
@@ -1220,9 +1223,8 @@
                     tr.style.borderLeft = "4px solid var(--gold)";
                 }
 
-                var isBest = item.score === bestScore;
-                var diffText = isBest ? "🏆 Óptimo" : "+" + (((item.score - bestScore) / bestScore * 100).toFixed(1)) + "%";
-
+                var isBest = bestScore !== null && item.score === bestScore;
+                
                 var actionBtnHtml = "";
                 if (item.isGoogle) {
                     actionBtnHtml = "<button onclick=\"showGoogleDetails('" + item.googleType + "')\" class=\"link-btn\" style=\"background: var(--gold); color: #000; border-color: var(--gold); cursor: pointer; font-weight: 800;\">Ver Desglose 🛈</button>";
@@ -1247,6 +1249,10 @@
                     nameHtml = item.authorName + " <span style=\"font-size: 11px; font-weight: normal; color: var(--accent-primary); background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px; margin-left: 5px;\">+ Gemini-AI</span>";
                 }
 
+                var scoreText = item.score !== null ? item.score.toLocaleString() : "Sin Ejecutar";
+                var toffoliText = item.toffoli !== null ? item.toffoli.toLocaleString() : "N/A";
+                var qubitsText = item.qubits !== null ? item.qubits : "N/A";
+
                 tr.innerHTML = "<td>" +
                     "<div class=\"solver-cell\">" +
                         "<span style=\"font-weight: 800; color: " + (isBest ? 'var(--gold)' : 'var(--text-secondary)') + "; width: 25px;\">#" + (index + 1) + "</span>" +
@@ -1258,12 +1264,12 @@
                     "</div>" +
                 "</td>" +
                 "<td>" +
-                    "<div class=\"score-major\" style=\"color: " + (isBest ? 'var(--accent-primary)' : '#fff') + "\">" + item.score.toLocaleString() + "</div>" +
+                    "<div class=\"score-major\" style=\"color: " + (isBest ? 'var(--accent-primary)' : '#fff') + "\">" + scoreText + "</div>" +
                     "<div class=\"score-minor\">" + (item.isGoogle ? "Frontera" : "SHA: " + item.shaShort) + "</div>" +
                 "</td>" +
                 "<td>" +
-                    "<div style=\"font-size: 13px; font-weight: 600;\">Toffoli: " + item.toffoli.toLocaleString() + "</div>" +
-                    "<div style=\"font-size: 11px; color: var(--text-secondary); margin-top: 2px;\">Qubits: " + item.qubits + "</div>" +
+                    "<div style=\"font-size: 13px; font-weight: 600;\">Toffoli: " + toffoliText + "</div>" +
+                    "<div style=\"font-size: 11px; color: var(--text-secondary); margin-top: 2px;\">Qubits: " + qubitsText + "</div>" +
                 "</td>" +
                 "<td>" +
                     "<span class=\"date-text\">" + (item.isGoogle ? "Punto Objetivo" : item.date.toLocaleDateString('es-ES') + " " + item.date.toLocaleTimeString('es-ES', {hour: '2-digit', minute:'2-digit'})) + "</span>" +
