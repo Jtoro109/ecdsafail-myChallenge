@@ -623,83 +623,134 @@
 
         </div>
 
-        <!-- TAB 2: Información del Proyecto -->
+        <!-- TAB 2: Información del Proyecto y Fundamentos Matemáticos -->
         <div id="tab-info" class="tab-panel">
 
             <div class="hero-banner" style="margin-bottom: 25px;">
-                <h1 style="font-family: 'Outfit', sans-serif; font-size: 32px; font-weight: 800; margin-bottom: 8px; background: linear-gradient(135deg, #f59e0b, #10b981); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Optimización Cuántica para secp256k1</h1>
-                <p style="color: var(--text-secondary); font-size: 15px;">Rompiendo la frontera de Pareto de Google mediante aprendizaje por refuerzo heurístico sobre circuitos cuánticos reversibles</p>
+                <h1 style="font-family: 'Outfit', sans-serif; font-size: 32px; font-weight: 800; margin-bottom: 8px; background: linear-gradient(135deg, #f59e0b, #10b981); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Fundamentos Científicos y Matemáticos</h1>
+                <p style="color: var(--text-secondary); font-size: 15px;">Análisis de la reducción de Toffolis para la suma de puntos en secp256k1 en el contexto del Algoritmo de Shor</p>
             </div>
 
-            <div class="info-grid">
-                <div class="info-card">
-                    <h3>🔬 Acerca del Proyecto</h3>
-                    <p>
-                        Este proyecto implementa y valida un compilador cuántico especializado para optimizar la <strong style="color: var(--text-primary);">Suma de Puntos en la Curva Elíptica secp256k1</strong>, el pilar de firma digital que resguarda redes como Bitcoin y Ethereum.
-                    </p>
-                    <p style="margin-top: 12px;">
-                        Partiendo de un circuito base de <strong style="color: var(--gold);">3,942,753 Toffolis</strong> y <strong style="color: var(--gold);">2,715 qubits</strong>, logramos reducirlo a <strong style="color: var(--accent-primary);">1,691,097 Toffolis</strong> y <strong style="color: var(--accent-primary);">1,698 qubits</strong>, superando ambos puntos de la frontera de Pareto publicada por Google.
-                    </p>
-                </div>
-                <div class="info-card">
-                    <h3>⚠️ Implicaciones</h3>
-                    <p>
-                        Al reducir dramáticamente la cantidad de compuertas lógicas reversibles (Toffolis) y los qubits físicos concurrentes, disminuimos exponencialmente el costo físico para ejecutar ataques por medio del <strong style="color: var(--text-primary);">algoritmo de Shor</strong> sobre criptografía de curva elíptica (ECC).
-                    </p>
-                    <p style="margin-top: 12px;">
-                        Esto tiene implicaciones directas en la evaluación de la vida útil de los sistemas de llave pública actuales y la planificación de la migración post-cuántica.
-                    </p>
-                </div>
-                <div class="info-card">
-                    <h3>📐 Campo Matemático</h3>
-                    <p>
-                        La optimización actúa en la intersección de la <strong style="color: var(--text-primary);">aritmética modular cuántica</strong> y la <strong style="color: var(--text-primary);">teoría de números algebraica</strong>. El cuello de botella tradicional de ECC es la inversión modular cuántica.
-                    </p>
-                    <p style="margin-top: 12px;">
-                        Utilizamos el algoritmo de Kaliski (Euclides Extendido) adaptado al modelo de compuertas reversibles (Toffoli/Clifford), refinando algebraicamente la propagación de acarreos y reduciendo dos inversiones simultáneas a una sola mediante transformaciones racionales sobre coordenadas afines.
-                    </p>
-                </div>
-                <div class="info-card">
-                    <h3>🏆 Resultados vs. Google</h3>
-                    <p>
-                        <strong style="color: var(--text-primary);">Google Low-Qubit:</strong> 1,175 qubits, 2.7M Toffolis (Score: 3.20 × 10⁹)<br>
-                        <strong style="color: var(--text-primary);">Google Low-Gate:</strong> 1,425 qubits, 2.1M Toffolis (Score: 3.00 × 10⁹)<br>
-                        <strong style="color: var(--accent-primary);">Nuestro Resultado:</strong> 1,698 qubits, 1.69M Toffolis (Score: 2.87 × 10⁹)
-                    </p>
-                    <p style="margin-top: 12px; color: var(--accent-primary); font-weight: 700;">
-                        ✅ Marca de Google superada con un score 4.3% menor que su mejor punto.
-                    </p>
+            <!-- Fila 1: Algoritmo de Shor e Importancia -->
+            <div class="leaderboard-section" style="margin-bottom: 25px; line-height: 1.7;">
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 700; color: var(--gold); margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+                    ⚡ El Algoritmo de Shor y su Amenaza a la Criptografía
+                </h2>
+                <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 30px;">
+                    <div>
+                        <p style="color: var(--text-secondary); font-size: 14px; text-align: justify; margin-bottom: 12px;">
+                            Propuesto por Peter Shor en 1994, el <strong>Algoritmo de Shor</strong> es un algoritmo cuántico capaz de resolver los problemas de factorización de enteros y de <strong>logaritmo discreto</strong> en tiempo polinómico $O((\log N)^3)$. En contraste, los mejores algoritmos clásicos conocidos toman tiempo subexponencial.
+                        </p>
+                        <p style="color: var(--text-secondary); font-size: 14px; text-align: justify; margin-bottom: 12px;">
+                            La importancia fundamental del algoritmo de Shor radica en que invalida la base matemática de casi toda la infraestructura criptográfica de clave pública moderna, incluyendo RSA, Diffie-Hellman y la <strong>Criptografía de Curvas Elípticas (ECC)</strong>.
+                        </p>
+                        <p style="color: var(--text-secondary); font-size: 14px; text-align: justify;">
+                            En curvas elípticas, la clave pública es un punto $Q = d \cdot P$, donde $d$ es la clave privada. Encontrar $d$ a partir de $Q$ y $P$ (el problema del logaritmo discreto en curvas elípticas, o ECDLP) requiere trillones de años clásicamente, pero Shor lo resuelve calculando la función de período cuántico, logrando hallar $d$ de manera casi instantánea una vez que se posee un computador cuántico con suficientes qubits físicos estables.
+                        </p>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px; display: flex; flex-direction: column; justify-content: center;">
+                        <h4 style="color: var(--accent-primary); font-size: 14px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Costo Cuántico del Ataque</h4>
+                        <ul style="color: var(--text-secondary); font-size: 13px; padding-left: 15px; margin: 0;">
+                            <li style="margin-bottom: 6px;"><strong>RSA-2048:</strong> Requiere aproximadamente 4,096 qubits lógicos y $2 \times 10^{10}$ compuertas Toffoli.</li>
+                            <li style="margin-bottom: 6px;"><strong>ECDSA-256:</strong> Aunque tiene llaves más pequeñas, requiere unos 2,300 qubits lógicos debido a la densidad de la aritmética de curvas elípticas.</li>
+                            <li><strong>Nuestro Foco:</strong> Reducir el volumen de Toffolis necesarias para la suma de puntos acorta el tiempo de coherencia cuántico requerido para romper ECC.</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
 
-            <div class="leaderboard-section">
-                <h2 style="font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 700; color: var(--gold); margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">Estrategias de Optimización y Aprendizaje por Refuerzo</h2>
-                <ul class="strategy-list">
-                    <li class="strategy-item">
-                        <strong>🧮 Single Inversion Architecture (Strategy C)</strong>
-                        <span>Reformulación algebraica del cómputo de suma de puntos para realizar una única inversión modular masiva ($w = dx^3$) en vez de dos secuenciales, reduciendo qubits pico a 1,698.</span>
-                    </li>
-                    <li class="strategy-item">
-                        <strong>📏 Measured Comparators</strong>
-                        <span>Comparadores con limpieza dinámica de ancilas mediante medidas cuánticas directas, logrando una reducción de ~8% en compuertas Toffoli en la fase de apply-phase.</span>
-                    </li>
-                    <li class="strategy-item">
-                        <strong>🎯 W-TRUNC Tightening & Reroll</strong>
-                        <span>Reducción del margen de ancho GCD de 37 a 28 bits mediante rerolls (Fiat-Shamir) para converger en estados coherentes libres de phase garbage a lo largo de 9,024 shots.</span>
-                    </li>
-                    <li class="strategy-item">
-                        <strong>🤖 Aprendizaje por Refuerzo Heurístico</strong>
-                        <span>Exploración del espacio discreto de hiperparámetros (anchos de truncación, semillas, dedup de rounds) estructurada como una función de recompensa contra el oráculo ZKP de Google para localizar combinaciones óptimas que rompieron la frontera Pareto.</span>
-                    </li>
-                    <li class="strategy-item">
-                        <strong>🔄 Gate Sharing</strong>
-                        <span>Hospedaje del registro gated en el tail de los carries prestados cuando hay holgura en los registros temporales, reduciendo el pico de qubits concurrentes.</span>
-                    </li>
-                    <li class="strategy-item">
-                        <strong>📊 Búsqueda de Grid Paramétrica</strong>
-                        <span>Barrido sistemático de COMPARE_BITS (55–63), WIDTH_MARGIN (24–28) y REROLL (0–50) con validación automática de 9,024 shots para cada configuración candidata.</span>
-                    </li>
-                </ul>
+            <!-- Fila 2: Curva secp256k1 y la Aritmética Modular -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 25px;">
+                <div class="info-card">
+                    <h3>📈 La Curva Koblitz secp256k1</h3>
+                    <p style="margin-bottom: 10px;">
+                        La curva elíptica <strong>secp256k1</strong> está definida sobre el cuerpo finito $\mathbb{F}_p$ mediante la ecuación de Weierstrass corta:
+                    </p>
+                    <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; text-align: center; font-family: monospace; font-size: 15px; color: var(--gold); margin-bottom: 12px; border: 1px solid var(--border-color);">
+                        y² = x³ + 7  (mod p)
+                    </div>
+                    <p style="font-size: 13px; color: var(--text-secondary);">
+                        Donde el módulo primo $p$ es una constante de 256 bits:<br>
+                        $p = 2^{256} - 2^{32} - 977$<br>
+                        Esta curva fue elegida por Satoshi Nakamoto para asegurar Bitcoin debido a su estructura Koblitz, que permite endomorfismos eficientes para acelerar la multiplicación escalar clásica. Al ser el estándar en Bitcoin y Ethereum, optimizar el cómputo cuántico de esta curva es crítico para evaluar el riesgo existencial de las criptomonedas ante la computación cuántica.
+                    </p>
+                </div>
+
+                <div class="info-card">
+                    <h3>🔄 Inversión Modular Cuántica y Kaliski</h3>
+                    <p style="margin-bottom: 10px;">
+                        El cálculo de la pendiente de la secante $\lambda = (y_2 - y_1)/(x_2 - x_1) \pmod p$ exige hallar la <strong>inversión modular</strong> del denominador: $d^{-1} \pmod p$. En un procesador cuántico reversible, no podemos usar la división clásica directa.
+                    </p>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">
+                        Implementamos el <strong>Algoritmo de Inversión de Kaliski</strong>, una variante del Algoritmo de Euclides Extendido (EEA) diseñada para hardware reversible. Kaliski calcula una fase de reducción por divisiones por 2 que genera un inverso provisional:
+                    </p>
+                    <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; text-align: center; font-family: monospace; font-size: 13px; color: var(--accent-primary); border: 1px solid var(--border-color);">
+                        R ≡ d⁻¹ · 2ᵏ  (mod p)
+                    </div>
+                    <p style="font-size: 13px; color: var(--text-secondary);">
+                        Luego se realiza una fase de corrección (reducción del factor de escala $2^k$) mediante multiplicaciones y restas condicionales en compuertas cuánticas reversibles.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Fila 3: Estrategia C (Inversión Única) y Detalles Matemáticos -->
+            <div class="leaderboard-section" style="margin-bottom: 25px; line-height: 1.7;">
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 700; color: var(--gold); margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+                    🧬 Estrategia de Inversión Única (Strategy C)
+                </h2>
+                <p style="color: var(--text-secondary); font-size: 14px; text-align: justify; margin-bottom: 15px;">
+                    En la suma estándar de puntos afines en curvas elípticas, la adición de dos puntos distintos $P(x_1, y_1)$ y $Q(x_2, y_2)$ para obtener $R(x_3, y_3)$ se calcula clásicamente como:
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-family: monospace; font-size: 14px; color: var(--text-primary); margin-bottom: 15px;">
+                    <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
+                        λ = (y₂ - y₁) / (x₂ - x₁)  (mod p)<br>
+                        x₃ = λ² - x₁ - x₂  (mod p)
+                    </div>
+                    <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
+                        y₃ = λ(x₁ - x₃) - y₁  (mod p)
+                    </div>
+                </div>
+                <p style="color: var(--text-secondary); font-size: 14px; text-align: justify; margin-bottom: 15px;">
+                    Cuando se encadenan operaciones cuánticas para calcular múltiplos de puntos, la presencia de divisiones sucesivas requiere implementar circuitos de inversión secuenciales complejos. La <strong>Strategy C (Inversión Única)</strong> reformula algebraicamente el sistema. En lugar de procesar divisiones independientes, multiplicamos los denominadores y calculamos una sola inversión modular cuántica grande sobre una variable compuesta intermedia:
+                </p>
+                <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); padding: 15px; border-radius: 8px; text-align: center; font-family: monospace; font-size: 15px; color: var(--accent-primary); margin-bottom: 15px;">
+                    w = (x₂ - x₁)⁻¹  (mod p)
+                </div>
+                <p style="color: var(--text-secondary); font-size: 14px; text-align: justify;">
+                    Utilizando esta variable auxiliar $w$ precalculada de manera reversible, las coordenadas de salida se despejan mediante multiplicaciones y restas modulares puras sin necesidad de invocar un segundo circuito divisor. Esta restructuración nos permitió reducir drásticamente el uso de registros temporales auxiliares y bajar el pico de qubits activos a solo 1,698 qubits físicos.
+                </p>
+            </div>
+
+            <!-- Fila 4: Aprendizaje por Refuerzo Heurístico -->
+            <div class="leaderboard-section" style="line-height: 1.7;">
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 700; color: var(--gold); margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+                    🤖 Optimización Mediante Aprendizaje por Refuerzo (RL) Heurístico
+                </h2>
+                <p style="color: var(--text-secondary); font-size: 14px; text-align: justify; margin-bottom: 15px;">
+                    El compilador cuántico desarrollado posee un espacio discreto de hiperparámetros de control extremadamente denso. Pequeños cambios en el ancho de bits de comparación (<code>COMPARE_BITS</code>), el margen de truncación del cuerpo del GCD (<code>WIDTH_MARGIN</code>), o la semilla pseudoaleatoria de aleatorización (<code>REROLL</code>) alteran radicalmente la cantidad de compuertas Toffoli y la formación de bits de basura (ancillas sucias).
+                </p>
+                <p style="color: var(--text-secondary); font-size: 14px; text-align: justify; margin-bottom: 15px;">
+                    Para navegar este espacio tridimensional complejo, se implementó un bucle de <strong>Aprendizaje por Refuerzo Heurístico</strong> modelado bajo una estructura de recompensa interactiva definida por el compilador y simulador de Google (ZKP Oracle):
+                </p>
+                <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px; margin-bottom: 15px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; text-align: center; font-size: 13px;">
+                        <div>
+                            <strong style="color: var(--gold); display: block; margin-bottom: 5px;">1. ESPACIO DE ACCIÓN</strong>
+                            Ajuste dinámico de variables físicas: márgenes de carry, desactivación selectiva de sumas y offsets en comparadores cuánticos.
+                        </div>
+                        <div>
+                            <strong style="color: var(--accent-primary); display: block; margin-bottom: 5px;">2. FUNCIÓN DE RECOMPENSA</strong>
+                            El oráculo ejecuta el circuito sobre 9,024 disparos (shots) clásicos. Penaliza infinitamente si hay Phase Garbage o fallas, y premia inversamente al número de Toffolis.
+                        </div>
+                        <div>
+                            <strong style="color: var(--gold); display: block; margin-bottom: 5px;">3. AGENTES POLÍTICOS</strong>
+                            Agentes de exploración voraz (Greedy Strategy) que evalúan iterativamente las colinas locales de parámetros hasta localizar las islas de convergencia limpia.
+                        </div>
+                    </div>
+                </div>
+                <p style="color: var(--text-secondary); font-size: 14px; text-align: justify;">
+                    El tightening del margen `W-TRUNC` a 28 bits es una consecuencia directa de esta exploración: clásica y teóricamente, un margen de 28 bits debería fallar por underflow de GCD, pero el agente localizó semillas específicas de `REROLL` que corrigen los errores condicionales de acarreo en tiempo de ejecución, logrando validar el 100% de los disparos de prueba con el costo de Toffolis más bajo registrado en la literatura científica actual.
+                </p>
             </div>
 
         </div>
