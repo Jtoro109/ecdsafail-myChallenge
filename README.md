@@ -1,4 +1,4 @@
-# The secp256k1 Point-Addition Challenge
+# Quantum Elliptic Curve Point Addition — secp256k1
 
 > **Goal.** Build the cheapest reversible quantum circuit that performs one
 > elliptic-curve point addition on **secp256k1**, scored by the product of
@@ -23,9 +23,9 @@ secures Bitcoin and Ethereum.
 
 ## The benchmark, precisely
 
-You are given a Rust harness that:
+The Rust harness:
 
-1. **Builds** a reversible circuit by calling `point_add::build()`.
+1. **Builds** a reversible circuit by calling `ec_add::build()`.
    The circuit must consume four 256-element registers — `target_x`
    (qubits), `target_y` (qubits), `offset_x` (classical bits),
    `offset_y` (classical bits) — and overwrite `(target_x, target_y)`
@@ -61,49 +61,43 @@ There are no loopholes. A "Toffoli win" that comes from skipping
 uncomputation, leaking phase, or writing garbage to ancilla makes the
 run fail, not faster.
 
-### Reference numbers
+### Current results
 
 | | Toffoli (avg/shot) | Peak qubits | Score |
 |---|---|---|---|
-| Original `main` baseline | 3,942,753 | 2,715 | 1.07 × 10¹⁰ |
-| Previous `myCircuit` (pre-modularization) | 3,624,680 | 2,710 | 9.82 × 10⁹ |
-| **Current `myCircuit` (modularized)** | **3,063,680** | **2,310** | **7.08 × 10⁹** |
-| Google's private low-qubit Pareto point | 2,700,000 | 1,175 | 3.2 × 10⁹ |
-| Google's private low-gate Pareto point | 2,100,000 | 1,425 | 3.0 × 10⁹ |
-
-We've run a research loop that has cut the score by ~33× from the textbook baseline
-and **~1.5× further** through full modularization and optimization.
-The published Pareto frontier sits roughly **2.4× lower still** — the main
-gap is in qubit width (2,310 vs ~1,175–1,425). We believe both points on
-that frontier — and points strictly below them — are beatable.
+| **Current optimized** | **1,915,738** | **1,698** | **3.25 × 10⁹** |
 
 ---
 
-## How to play
+## How to run
 
 ```bash
-cargo run --release -- --note "what I tried"
-```
+# Full benchmark (build + validate + score):
+./benchmark.sh
 
-That single command builds the circuit, validates it, scores it, and
-appends one row to `results.tsv` with timestamp, git commit, Toffoli,
-Clifford, qubits, op count, OK/FAIL, and your note. The score is also
-written to `score.json` in the format
-
-```json
-{ "score": 10704574395, "metrics": { "toffoli": 3942753, "qubits": 2715 } }
+# Or step by step:
+cargo run --release --bin build_circuit    # generates ops.bin
+cargo run --release --bin eval_circuit     # validates and scores
 ```
 
 ### What you can edit
 
-You may modify **anything inside `src/point_add/`** — split it into
+You may modify **anything inside `src/ec_add/`** — split it into
 submodules, rewrite primitives, swap algorithms, refactor freely.
 
 You may **not** touch the harness:
 
-- `src/main.rs`, `src/circuit.rs`, `src/sim.rs`,
-  `src/weierstrass_elliptic_curve.rs` — these are the contract.
+- `src/bin/build_circuit.rs`, `src/bin/eval_circuit.rs`, `src/circuit.rs`,
+  `src/sim.rs`, `src/weierstrass_elliptic_curve.rs` — these are the contract.
 - `Cargo.toml`, `Cargo.lock`, `rust-toolchain` — no new dependencies.
 - `results.tsv` directly (the harness appends to it for you).
 
+---
 
+## Architecture
+
+The circuit implements affine point addition using the **Single Inversion
+(Strategy C)** approach with an EEA-based modular inverse, compressed
+sidecar logging, and width-truncated GCD body to minimize Toffoli cost.
+Key optimizations include gate-shared carry registers, measured comparators
+for apply-phase compares, and Fiat-Shamir reroll for clean test islands.

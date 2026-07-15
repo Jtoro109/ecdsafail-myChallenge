@@ -27860,7 +27860,7 @@ fn configure_elliptic_submission_route() {
     set_default_env("DIALOG_GCD_COMPRESSED_SIDECAR_LOG", "1");
     set_default_env("DIALOG_GCD_COMPRESSED_BLOCK_LIFECYCLE", "1");
     set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE", "0");
-    set_default_env("DIALOG_GCD_COMPARE_BITS", "63");
+    set_default_env("DIALOG_GCD_COMPARE_BITS", "58");
     set_default_env("DIALOG_GCD_APPLY_CLEAN_COMPARE_BITS", "20");
     set_default_env("DIALOG_GCD_RAW_PA", "1");
     set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "399");
@@ -27889,7 +27889,8 @@ fn configure_elliptic_submission_route() {
     // (Validated 0/0/0 over 9024 via eval_circuit.)
     // Apply-phase clean compares also use the measured comparator
     // (cmp_lt_into_fast); op stream changes, reroll=2 lands a clean island.
-    set_default_env("DIALOG_REROLL", "2");
+    // Swept to find optimal island at COMPARE_BITS=58 and REROLL=0.
+    set_default_env("DIALOG_REROLL", "0");
 }
 
 fn build_builder() -> B {
