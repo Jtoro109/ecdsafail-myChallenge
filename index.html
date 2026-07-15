@@ -796,37 +796,22 @@
             var commits = [];
             var loadedOnline = false;
 
-            // 1. Intentar cargar TSV y Commits en línea desde GitHub (con paginación)
+            // 1. Intentar cargar TSV y Commits en línea desde GitHub
             try {
                 var tsvUrl = "https://raw.githubusercontent.com/" + owner + "/" + repo + "/" + branch + "/results.tsv?nocache=" + new Date().getTime();
                 var tsvResponse = await fetch(tsvUrl);
                 if (tsvResponse.ok) {
                     tsvText = await tsvResponse.text();
                     
-                    // Paginar para obtener TODOS los commits
-                    var page = 1;
-                    var allCommits = [];
-                    var hasMore = true;
-                    while (hasMore) {
-                        var commitUrl = "https://api.github.com/repos/" + owner + "/" + repo + "/commits?sha=" + branch + "&per_page=100&page=" + page;
-                        var commitResponse = await fetch(commitUrl);
-                        if (commitResponse.ok) {
-                            var json = await commitResponse.json();
-                            if (Array.isArray(json) && json.length > 0) {
-                                allCommits = allCommits.concat(json);
-                                page++;
-                                if (json.length < 100) hasMore = false;
-                            } else {
-                                hasMore = false;
-                            }
-                        } else {
-                            hasMore = false;
+                    var commitUrl = "https://api.github.com/repos/" + owner + "/" + repo + "/commits?sha=" + branch + "&per_page=100&nocache=" + new Date().getTime();
+                    var commitResponse = await fetch(commitUrl);
+                    if (commitResponse.ok) {
+                        var json = await commitResponse.json();
+                        if (Array.isArray(json)) {
+                            commits = json;
+                            loadedOnline = true;
+                            syncStatus.innerText = "GitHub Sync OK";
                         }
-                    }
-                    if (allCommits.length > 0) {
-                        commits = allCommits;
-                        loadedOnline = true;
-                        syncStatus.innerText = "GitHub Sync OK (" + commits.length + " commits)";
                     }
                 }
             } catch (e) {
